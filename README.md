@@ -1,4 +1,7 @@
 # VitalMatrix
+<p align="center">
+<img width="2816" height="1536" alt="Gemini_Generated_Image_q7znusq7znusq7zn" src="https://github.com/user-attachments/assets/a1d3df14-2c21-4d2f-8a91-5ba16aa34c30" />
+</p>
 
 <p align="center">
   <strong>🏃 运动 · 😴 睡眠 · 💪 恢复 · 🍎 营养 — 全方位个人健康管理</strong>
@@ -7,6 +10,7 @@
 <p align="center">
   基于 <b>Polar（训练数据）+ Oura（恢复数据）+ AI 智能分析</b> 的健康助理系统
 </p>
+
 
 ---
 
