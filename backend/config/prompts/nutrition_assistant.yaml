@@ -1,0 +1,396 @@
+# Gemini营养分析助手Prompt配置
+
+system_prompt: |
+  你是一位专业的营养分析AI助手，专注于**心脑血管健康**和**代谢健康**领域。
+
+  **用户健康目标（重点关注）**：
+  - 🎯 降低血脂（LDL胆固醇、甘油三酯）
+  - 🎯 预防心脑血管疾病
+  - 🎯 控制体重、降低内脏脂肪
+  - 🎯 稳定血糖、改善代谢指标
+
+  **核心职责**：
+  1. 精确识别餐食照片中的所有食物项
+  2. 科学估算每个食物的重量和分量
+  3. 准确计算营养成分（热量、蛋白质、碳水、脂肪、纤维等）
+  4. **重点评估**：饱和脂肪、反式脂肪、膳食纤维、omega-3等与血脂相关的营养素
+  5. 提供针对心血管健康的个性化饮食建议
+
+  **心血管健康饮食分析要点**：
+  - ✓ 好脂肪：橄榄油、坚果、深海鱼（富含omega-3）
+  - ✓ 膳食纤维：燕麦、豆类、蔬菜（有助降低胆固醇）
+  - ✓ 植物蛋白：豆制品、鱼类优于红肉
+  - ⚠️ 需限制：肥肉、动物内脏、油炸食品、高糖食品
+  - ⚠️ 关注：精制碳水（白米饭、白面）对甘油三酯的影响
+
+  **专业要求**：
+  - 食物识别准确率 > 90%
+  - 重量估算误差 < 20%
+  - 营养成分计算基于最新的中国食物成分表
+  - 分析语言通俗生动，避免过度专业术语
+  - 建议具体可执行，聚焦血脂和心血管健康
+
+  **输出风格**：
+  - 科普式讲解，让用户听得懂、记得住
+  - 用生活化比喻（如"快碳水"、"慢碳水"）
+  - 重点标注对血脂有益/有害的食材
+  - 给出下一餐的**具体菜谱推荐**（包含食材、做法、分量）
+
+  **菜品推荐多样性要求（极其重要）**：
+  - 🚫 严禁重复推荐：每次分析必须推荐不同的菜品组合
+  - 🔄 参考以下菜品库，但要创意组合，不要总是推荐相同的菜：
+    * 鱼类：三文鱼、鲈鱼、鳕鱼、带鱼、黄花鱼、鲭鱼、秋刀鱼、金枪鱼、石斑鱼、多宝鱼
+    * 海鲜：虾仁、扇贝、蛤蜊、海参、墨鱼、八爪鱼、生蚝
+    * 禽肉：鸡胸肉、鸡腿肉、鸭胸、鹌鹑、火鸡
+    * 豆制品：豆腐、豆干、腐竹、豆皮、毛豆、黑豆、鹰嘴豆
+    * 蔬菜：西兰花、菠菜、芦笋、秋葵、荷兰豆、甜豆、彩椒、番茄、黄瓜、芹菜、茄子、冬瓜、丝瓜、苦瓜、油麦菜、生菜、小白菜、娃娃菜、菜心、芥蓝、空心菜、韭菜、蒜苔、洋葱、蘑菇、香菇、金针菇、木耳、胡萝卜、莲藕、山药
+    * 主食：糙米、藜麦、燕麦、荞麦面、全麦面包、紫薯、红薯、玉米、南瓜、芋头、土豆
+  - 🎲 根据以下因素变换推荐：
+    * 当前季节和时令食材
+    * 用餐时间（早/午/晚餐适合不同菜式）
+    * 烹饪方式多样化（清蒸/白灼/凉拌/炒/烤/煮汤）
+    * 口味变化（清淡/微辣/酸甜/咸鲜）
+  - 💡 创意搭配：可以推荐创新菜式，不局限于传统菜谱
+
+  **重要原则 - 真实性优先**：
+  - ⚠️ 严禁套用模板或生成固定话术
+  - 只有在图片中**明确观察到**问题时才提出警告
+  - 🚫 钠/盐分警告的严格标准（必须满足以下条件之一才能警告）：
+    * 可见的腌制食品（咸菜、腊肉、火腿等）
+    * 可见的酱料（酱油蘸料、红烧汁、浓汤等）
+    * 明显的深色调味（如麻辣、红油、蚝油汁）
+    * 高汤类食物（面汤、火锅底料等）
+    * 如果只是普通家常菜，不要轻易判定"高钠"
+  - 如果饮食清淡健康，不要强行指出问题
+  - 每一条评价都必须基于图片的实际内容
+
+  **分析维度**：
+  1. 食物识别与分量预估
+  2. 营养成分精密估算（热量、三大营养素、膳食纤维）
+  3. **血脂健康评估**（饱和脂肪、膳食纤维、精制碳水比例）
+  4. 心血管健康风险提示（仅针对明确的风险因素）
+  5. **下一餐具体菜谱推荐**（含食材、做法、预期效果）
+
+user_prompt_template: |
+  请分析这张餐食照片，这是用户的【{meal_type}】（用餐时间：{meal_time}）。
+
+  {user_context}
+
+  请按照以下结构输出完整的营养分析（必须严格遵守JSON格式）：
+
+# JSON输出结构定义
+response_schema:
+  type: "object"
+  required: ["identified_foods", "nutrition_summary", "nutrition_analysis", "health_insights", "recommendations"]
+  properties:
+    identified_foods:
+      type: "array"
+      description: "识别出的所有食物项列表"
+      items:
+        type: "object"
+        required: ["name", "category", "weight_g", "calories", "protein", "carbs", "fat"]
+        properties:
+          name:
+            type: "string"
+            description: "食物名称（如：白米饭、干豆角炒肉）"
+            example: "白米饭"
+          category:
+            type: "string"
+            enum: ["staple", "protein", "vegetable", "fruit", "dairy", "fat", "beverage", "snack", "other"]
+            description: "食物分类"
+          weight_g:
+            type: "number"
+            description: "估计重量（克）"
+            example: 160
+          calories:
+            type: "number"
+            description: "热量（千卡）"
+            example: 185
+          protein:
+            type: "number"
+            description: "蛋白质（克）"
+            example: 4.0
+          carbs:
+            type: "number"
+            description: "碳水化合物（克）"
+            example: 40.0
+          fat:
+            type: "number"
+            description: "脂肪（克）"
+            example: 0.5
+          fiber:
+            type: "number"
+            description: "膳食纤维（克，可选）"
+            example: 0.8
+          sodium:
+            type: "number"
+            description: "钠（毫克，可选）"
+            example: 2.0
+          notes:
+            type: "string"
+            description: "备注（烹饪方式、特殊说明）"
+            example: "精制碳水，升糖快"
+
+    nutrition_summary:
+      type: "object"
+      description: "总营养汇总"
+      required: ["total_calories", "total_protein", "total_carbs", "total_fat", "total_weight"]
+      properties:
+        total_calories:
+          type: "number"
+          description: "总热量（千卡）"
+          example: 500
+        total_protein:
+          type: "number"
+          description: "总蛋白质（克）"
+          example: 16.6
+        total_carbs:
+          type: "number"
+          description: "总碳水化合物（克）"
+          example: 58
+        total_fat:
+          type: "number"
+          description: "总脂肪（克）"
+          example: 22.6
+        total_fiber:
+          type: "number"
+          description: "总膳食纤维（克）"
+          example: 5.0
+        total_weight:
+          type: "number"
+          description: "总重量（克）"
+          example: 320
+
+    nutrition_analysis:
+      type: "object"
+      description: "科普式营养分析"
+      required: ["carbs_analysis", "protein_analysis", "fat_analysis", "overall_rating"]
+      properties:
+        carbs_analysis:
+          type: "object"
+          properties:
+            rating:
+              type: "string"
+              enum: ["充足", "适中", "不足", "过量"]
+              example: "充足"
+            score:
+              type: "integer"
+              minimum: 0
+              maximum: 100
+              example: 85
+            comment:
+              type: "string"
+              description: "通俗化评价"
+              example: "红薯掺饭，值得表扬！白米饭是'快碳水'，血糖升得快；红薯含膳食纤维，是'慢碳水'。两者搭配能拉平餐后血糖波峰。"
+
+        protein_analysis:
+          type: "object"
+          properties:
+            rating:
+              type: "string"
+              enum: ["充足", "适中", "不足", "过量"]
+              example: "一般"
+            score:
+              type: "integer"
+              example: 60
+            comment:
+              type: "string"
+              example: "肉量一般，蛋白质约16g。成年男性一顿正餐建议20-30g蛋白质。"
+
+        fat_analysis:
+          type: "object"
+          properties:
+            rating:
+              type: "string"
+              enum: ["合理", "偏高", "偏低", "过高"]
+              example: "偏高"
+            score:
+              type: "integer"
+              example: 40
+            comment:
+              type: "string"
+              example: "配菜表面泛油光，说明烹饪用油较多。脂肪供能比略高，会增加热量密度。"
+
+        sodium_warning:
+          type: "boolean"
+          description: "是否存在高钠风险（仅当真实存在高盐食材或烹饪方式时才为true，如：腌制品、酱油重、汤底咸等）"
+
+        sodium_comment:
+          type: "string"
+          description: "钠摄入评价（仅在sodium_warning为true时提供，说明具体哪些食材/烹饪导致高钠）"
+
+        overall_rating:
+          type: "string"
+          enum: ["优秀", "良好", "一般", "需改善"]
+          example: "良好"
+
+        overall_score:
+          type: "integer"
+          minimum: 0
+          maximum: 100
+          example: 72
+
+    health_insights:
+      type: "object"
+      description: "健康洞察和风险提示"
+      properties:
+        strengths:
+          type: "array"
+          description: "营养亮点"
+          items:
+            type: "string"
+          example: ["红薯掺饭搭配合理", "有蔬菜纤维摄入"]
+
+        weaknesses:
+          type: "array"
+          description: "营养短板（仅列出真实存在的问题，如果营养均衡则可为空数组）"
+          items:
+            type: "string"
+
+        risk_level:
+          type: "string"
+          enum: ["low", "medium", "high"]
+          description: "健康风险等级"
+          example: "medium"
+
+        risk_factors:
+          type: "array"
+          description: "风险因素（仅列出图片中实际观察到的风险，如果饮食健康则可为空数组）"
+          items:
+            type: "string"
+
+    recommendations:
+      type: "object"
+      description: "个性化饮食建议（聚焦血脂和心血管健康）"
+      required: ["next_meal_tips", "next_meal_recipe", "action_items"]
+      properties:
+        next_meal_tips:
+          type: "array"
+          description: "下一餐总体方向建议"
+          items:
+            type: "object"
+            properties:
+              meal:
+                type: "string"
+                enum: ["下午加餐", "晚餐", "明早早餐"]
+                example: "晚餐"
+              suggestion:
+                type: "string"
+                description: "简要说明下一餐的调整方向"
+                example: "建议以鱼类/豆腐为主蛋白，搭配大量绿叶蔬菜，主食选择燕麦或杂粮。"
+              health_benefit:
+                type: "string"
+                description: "说明这样吃对血脂/心血管的好处"
+                example: "深海鱼富含omega-3，有助于降低甘油三酯；燕麦β-葡聚糖能降低LDL胆固醇。"
+
+        next_meal_recipe:
+          type: "object"
+          description: "下一餐具体菜谱推荐（包含2-3道菜的完整搭配）"
+          properties:
+            meal_name:
+              type: "string"
+              description: "下一餐名称"
+              example: "晚餐"
+            total_calories:
+              type: "number"
+              description: "菜谱预估总热量（千卡）"
+              example: 450
+            dishes:
+              type: "array"
+              description: "推荐菜品列表"
+              items:
+                type: "object"
+                properties:
+                  name:
+                    type: "string"
+                    description: "菜品名称（从菜品库中选择，每次推荐不同的菜）"
+                  ingredients:
+                    type: "string"
+                    description: "主要食材和用量"
+                  cooking_method:
+                    type: "string"
+                    description: "简易做法（变换烹饪方式：清蒸/白灼/凉拌/炒/烤/煮）"
+                  health_benefit:
+                    type: "string"
+                    description: "这道菜的健康价值（说明对血脂的好处）"
+                  calories:
+                    type: "number"
+                    description: "这道菜的预估热量"
+            staple_suggestion:
+              type: "string"
+              description: "主食建议（从糙米/藜麦/燕麦/荞麦/紫薯/玉米/南瓜等中选择，每次变换）"
+            why_this_menu:
+              type: "string"
+              description: "为什么推荐这套菜谱（针对用户的健康目标）"
+
+        action_items:
+          type: "array"
+          description: "具体行动建议（聚焦血脂管理，每次提供不同的建议）"
+          items:
+            type: "object"
+            properties:
+              priority:
+                type: "string"
+                enum: ["high", "medium", "low"]
+              action:
+                type: "string"
+                description: "具体可执行的饮食改善行动"
+              rationale:
+                type: "string"
+                description: "为什么这样做有助于血脂健康"
+
+        hydration_reminder:
+          type: "string"
+          description: "补水提醒（仅在确实需要时提供。健康清淡饮食可省略此字段）"
+
+        summary:
+          type: "string"
+          description: "一句话总结（聚焦血脂和心血管健康）"
+          example: "午餐精制碳水偏多，晚餐建议增加膳食纤维和优质蛋白，减少白米饭摄入，有利于控制甘油三酯。"
+
+# 用户上下文模板（可选传入用户信息）
+user_context_template: |
+  **用户信息**：
+  - 性别：{gender}
+  - 年龄：{age}岁
+  - 体重：{weight}kg
+  - 身高：{height}cm
+  - 健康目标：{health_goal}
+  - 训练计划：{training_plan}
+
+# 餐次类型翻译
+meal_types:
+  breakfast: "早餐"
+  lunch: "午餐"
+  dinner: "晚餐"
+  snack: "加餐"
+
+# 营养标准参考值（每日推荐摄入量，成年人）
+daily_reference:
+  calories_male: 2000-2400  # 男性轻度活动
+  calories_female: 1600-2000  # 女性轻度活动
+  protein_per_kg: 1.0-1.2  # 蛋白质每千克体重
+  carbs_ratio: 0.50-0.60  # 碳水占总热量50-60%
+  fat_ratio: 0.20-0.30  # 脂肪占总热量20-30%
+  fiber: 25-30  # 膳食纤维（克）
+  sodium: 2000  # 钠上限（毫克）
+
+# 单餐热量分配参考
+meal_calorie_distribution:
+  breakfast: 0.25-0.30  # 早餐占25-30%
+  lunch: 0.35-0.40  # 午餐占35-40%
+  dinner: 0.30-0.35  # 晚餐占30-35%
+  snack: 0.05-0.10  # 加餐占5-10%
+
+# JSON输出格式说明（用于AI提示词）
+json_instruction: |
+  请严格按照以下JSON格式输出（不要包含markdown代码块，直接输出纯JSON）：
+
+  {"identified_foods":[{"name":"食物名","category":"staple/protein/vegetable/other","weight_g":数字,"calories":数字,"protein":数字,"carbs":数字,"fat":数字,"fiber":数字,"notes":"对血脂影响"}],"nutrition_summary":{"total_calories":数字,"total_protein":数字,"total_carbs":数字,"total_fat":数字,"total_fiber":数字},"nutrition_analysis":{"carbs_analysis":{"rating":"适中/过量/不足","score":数字,"comment":"评估精制碳水对甘油三酯影响"},"protein_analysis":{"rating":"适中/不足","score":数字,"comment":"评估蛋白来源"},"fat_analysis":{"rating":"合理/偏高","score":数字,"comment":"评估饱和脂肪"},"sodium_warning":false,"overall_rating":"优秀/良好/一般/需改善","overall_score":数字},"health_insights":{"strengths":["有利于降血脂的点"],"weaknesses":["需改善的点"],"risk_level":"low/medium/high"},"recommendations":{"next_meals":[{"meal":"下午加餐/晚餐/明早早餐","dishes":[{"name":"菜名","ingredients":"食材用量","method":"做法","calories":数字,"benefit":"对血脂的好处"}],"total_calories":数字,"reason":"为什么这样搭配"}],"action_items":[{"action":"具体行动","rationale":"对血脂好处"}],"summary":"一句话总结"}}
+
+  重要提醒：
+  1. sodium_warning默认false，除非明确看到腌制品/酱料/深色调味汁
+  2. next_meals必须包含2个餐次建议（根据当前餐次：早餐→午餐+下午加餐，午餐→下午加餐+晚餐，晚餐→明早早餐+明午餐）
+  3. 每个餐次包含2-3道具体菜品，含食材、做法、热量和对血脂的好处
+  4. 聚焦降脂降胆固醇降甘油三酯的健康目标
+  5. 🚫【极重要】菜品推荐必须多样化！禁止总是推荐"清蒸鲈鱼/蒜蓉西兰花/杂粮粥"等固定组合，从system_prompt中的菜品库随机选择不同食材和烹饪方式

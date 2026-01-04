@@ -1,0 +1,53 @@
+# FastAPI核心
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# 数据库
+sqlalchemy==2.0.25
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# Redis
+redis==5.0.1
+hiredis==2.3.2
+
+# 认证和安全
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.0
+python-multipart==0.0.6
+pyjwt==2.8.0
+
+# AI服务
+openai>=1.10.0
+# anthropic==0.18.0  # 暂时移除，可后续添加
+google-generativeai>=0.3.0  # Gemini API
+httpx>=0.25.0
+
+# 任务调度
+apscheduler==3.10.4
+
+# 工具
+python-dotenv==1.0.0
+pyyaml==6.0.1
+python-dateutil==2.8.2
+pytz==2024.1
+Pillow>=10.0.0  # 图片处理（缩略图生成）
+aiofiles>=24.1.0  # 异步文件操作
+
+# 开发工具
+pytest==8.0.0
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+black==24.1.1
+ruff==0.1.15
+
+# 监控日志
+structlog==24.1.0
+
+# MCP (Model Context Protocol)
+mcp>=1.24.0
+fastmcp>=2.14.0
