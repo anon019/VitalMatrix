@@ -1,0 +1,386 @@
+<!-- pages/nutrition-detail/nutrition-detail.wxml -->
+<!-- 设计概念：自然餐桌 Natural Table - 详情页 -->
+<view class="page-container">
+  <!-- 装饰背景 -->
+  <view class="bg-decoration">
+    <view class="bg-circle circle-1"></view>
+    <view class="bg-circle circle-2"></view>
+  </view>
+
+  <!-- 加载状态 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <view class="loading-bowl">
+      <view class="bowl-body"></view>
+      <view class="steam steam-1"></view>
+      <view class="steam steam-2"></view>
+      <view class="steam steam-3"></view>
+    </view>
+    <text class="loading-text">正在加载...</text>
+  </view>
+
+  <view wx:else class="content">
+    <!-- 餐食照片区域 - 沉浸式设计 -->
+    <view class="photo-hero">
+      <image
+        class="hero-image"
+        src="{{meal.photo_path}}"
+        mode="aspectFill"
+        binderror="onImageError"
+        bindload="onImageLoad"
+      />
+      <view wx:if="{{!meal.photo_path}}" class="no-image">
+        <text class="no-image-icon">📷</text>
+        <text class="no-image-text">暂无图片</text>
+      </view>
+      <!-- 渐变遮罩和信息 -->
+      <view class="hero-overlay">
+        <view class="hero-info">
+          <view class="meal-type-pill">{{mealTypeLabel}}</view>
+          <text class="meal-datetime">{{mealTimeFormatted}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 主内容区域 -->
+    <view class="main-content">
+      <!-- 营养概览卡片 -->
+      <view class="card nutrition-card anim-slide-up" style="animation-delay: 0ms;">
+        <view class="card-header green-theme">
+          <text class="card-icon">🥗</text>
+          <text class="card-title">营养成分</text>
+        </view>
+        <view class="card-body">
+          <view class="nutrition-showcase">
+            <!-- 热量中心 -->
+            <view class="calorie-display">
+              <text class="calorie-number">{{meal.total_calories}}</text>
+              <text class="calorie-unit">千卡</text>
+            </view>
+            <!-- 宏量元素 -->
+            <view class="macro-row">
+              <view class="macro-chip protein">
+                <text class="chip-label">蛋白质</text>
+                <text class="chip-value">{{meal.total_protein}}g</text>
+              </view>
+              <view class="macro-chip carbs">
+                <text class="chip-label">碳水</text>
+                <text class="chip-value">{{meal.total_carbs}}g</text>
+              </view>
+              <view class="macro-chip fat">
+                <text class="chip-label">脂肪</text>
+                <text class="chip-value">{{meal.total_fat}}g</text>
+              </view>
+            </view>
+          </view>
+          <view wx:if="{{meal.total_fiber > 0}}" class="fiber-note">
+            <text class="fiber-icon">🌾</text>
+            <text class="fiber-text">膳食纤维 {{meal.total_fiber}}g</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- AI 分析区域 -->
+      <view wx:if="{{analysis}}" class="analysis-area">
+        <!-- 综合评价卡片 -->
+        <view wx:if="{{analysis.nutrition_analysis}}" class="card rating-card anim-slide-up" style="animation-delay: 60ms;">
+          <view class="card-header amber-theme">
+            <text class="card-icon">⭐</text>
+            <text class="card-title">综合评价</text>
+            <view class="rating-pill" style="background: {{ratingBadgeColor}}">
+              {{analysis.nutrition_analysis.overall_rating}}
+            </view>
+          </view>
+          <view class="card-body rating-body">
+            <view class="score-display">
+              <text class="score-number" style="color: {{ratingScoreColor}}">{{analysis.nutrition_analysis.overall_score}}</text>
+              <text class="score-suffix">分</text>
+            </view>
+            <text wx:if="{{aiModel}}" class="ai-model-tag">{{aiModel}}</text>
+          </view>
+        </view>
+
+        <!-- 识别的食物卡片 -->
+        <view wx:if="{{analysis.identified_foods && analysis.identified_foods.length > 0}}" class="card foods-card anim-slide-up" style="animation-delay: 120ms;">
+          <view class="card-header blue-theme">
+            <text class="card-icon">🍱</text>
+            <text class="card-title">识别的食物</text>
+            <text class="card-count">{{analysis.identified_foods.length}}项</text>
+          </view>
+          <view class="card-body">
+            <view class="foods-list">
+              <view wx:for="{{analysis.identified_foods}}" wx:key="index" class="food-item">
+                <view class="food-main">
+                  <text class="food-name">{{item.name}}</text>
+                  <view class="food-weight-tag">约 {{item.weight_g}}g</view>
+                </view>
+                <view class="food-stats">
+                  <view class="food-calories">
+                    <text class="cal-value">{{item.calories}}</text>
+                    <text class="cal-unit">kcal</text>
+                  </view>
+                  <view class="food-macros">
+                    <text class="macro-item">P {{item.protein}}g</text>
+                    <text class="macro-sep">·</text>
+                    <text class="macro-item">C {{item.carbs}}g</text>
+                    <text class="macro-sep">·</text>
+                    <text class="macro-item">F {{item.fat}}g</text>
+                  </view>
+                </view>
+                <view wx:if="{{item.notes}}" class="food-notes">
+                  <text class="notes-icon">💡</text>
+                  <text class="notes-text">{{item.notes}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 营养分析卡片 -->
+        <view wx:if="{{analysis.nutrition_analysis}}" class="card analysis-card anim-slide-up" style="animation-delay: 180ms;">
+          <view class="card-header purple-theme">
+            <text class="card-icon">📊</text>
+            <text class="card-title">营养分析</text>
+          </view>
+          <view class="card-body">
+            <view class="analysis-list">
+              <!-- 碳水分析 -->
+              <view class="analysis-item">
+                <view class="analysis-top">
+                  <view class="analysis-label">
+                    <text class="label-emoji">🍚</text>
+                    <text class="label-text">碳水化合物</text>
+                  </view>
+                  <text class="analysis-rating {{carbsRatingClass}}">
+                    {{analysis.nutrition_analysis.carbs_analysis.rating}}
+                  </text>
+                </view>
+                <text class="analysis-comment">{{analysis.nutrition_analysis.carbs_analysis.comment}}</text>
+              </view>
+              <!-- 蛋白质分析 -->
+              <view class="analysis-item">
+                <view class="analysis-top">
+                  <view class="analysis-label">
+                    <text class="label-emoji">🥩</text>
+                    <text class="label-text">蛋白质</text>
+                  </view>
+                  <text class="analysis-rating {{proteinRatingClass}}">
+                    {{analysis.nutrition_analysis.protein_analysis.rating}}
+                  </text>
+                </view>
+                <text class="analysis-comment">{{analysis.nutrition_analysis.protein_analysis.comment}}</text>
+              </view>
+              <!-- 脂肪分析 -->
+              <view class="analysis-item">
+                <view class="analysis-top">
+                  <view class="analysis-label">
+                    <text class="label-emoji">🥑</text>
+                    <text class="label-text">脂肪</text>
+                  </view>
+                  <text class="analysis-rating {{fatRatingClass}}">
+                    {{analysis.nutrition_analysis.fat_analysis.rating}}
+                  </text>
+                </view>
+                <text class="analysis-comment">{{analysis.nutrition_analysis.fat_analysis.comment}}</text>
+              </view>
+            </view>
+            <!-- 钠警告 -->
+            <view wx:if="{{analysis.nutrition_analysis.sodium_warning && analysis.nutrition_analysis.sodium_comment}}" class="sodium-alert">
+              <text class="alert-icon">⚠️</text>
+              <text class="alert-text">{{analysis.nutrition_analysis.sodium_comment}}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 健康洞察卡片 -->
+        <view wx:if="{{analysis.health_insights}}" class="card insights-card anim-slide-up" style="animation-delay: 240ms;">
+          <view class="card-header teal-theme">
+            <text class="card-icon">💡</text>
+            <text class="card-title">健康洞察</text>
+          </view>
+          <view class="card-body">
+            <!-- 优点 -->
+            <view wx:if="{{analysis.health_insights.strengths && analysis.health_insights.strengths.length > 0}}" class="insight-group">
+              <view class="group-header good">
+                <text class="group-icon">✅</text>
+                <text class="group-title">优点</text>
+              </view>
+              <view class="insight-list">
+                <view wx:for="{{analysis.health_insights.strengths}}" wx:key="index" class="insight-item good">
+                  <text class="insight-bullet">•</text>
+                  <text class="insight-text">{{item}}</text>
+                </view>
+              </view>
+            </view>
+            <!-- 需改进 -->
+            <view wx:if="{{analysis.health_insights.weaknesses && analysis.health_insights.weaknesses.length > 0}}" class="insight-group">
+              <view class="group-header warn">
+                <text class="group-icon">💡</text>
+                <text class="group-title">需改进</text>
+              </view>
+              <view class="insight-list">
+                <view wx:for="{{analysis.health_insights.weaknesses}}" wx:key="index" class="insight-item warn">
+                  <text class="insight-bullet">•</text>
+                  <text class="insight-text">{{item}}</text>
+                </view>
+              </view>
+            </view>
+            <!-- 风险提示 -->
+            <view wx:if="{{analysis.health_insights.risk_factors && analysis.health_insights.risk_factors.length > 0}}" class="insight-group">
+              <view class="group-header risk">
+                <text class="group-icon">🚨</text>
+                <text class="group-title">风险提示</text>
+              </view>
+              <view class="insight-list">
+                <view wx:for="{{analysis.health_insights.risk_factors}}" wx:key="index" class="insight-item risk">
+                  <text class="insight-bullet">•</text>
+                  <text class="insight-text">{{item}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 饮食建议卡片 -->
+        <view wx:if="{{analysis.recommendations}}" class="card recommend-card anim-slide-up" style="animation-delay: 300ms;">
+          <view class="card-header green-theme">
+            <text class="card-icon">📝</text>
+            <text class="card-title">饮食建议</text>
+          </view>
+          <view class="card-body">
+            <!-- 总结 -->
+            <view wx:if="{{analysis.recommendations.summary}}" class="summary-box">
+              <text class="summary-text">{{analysis.recommendations.summary}}</text>
+            </view>
+
+            <!-- 行动清单 -->
+            <view wx:if="{{analysis.recommendations.action_items && analysis.recommendations.action_items.length > 0}}" class="action-section">
+              <view class="section-label">
+                <text class="label-icon">📋</text>
+                <text class="label-text">行动清单</text>
+              </view>
+              <view class="action-list">
+                <view wx:for="{{analysis.recommendations.action_items}}" wx:key="index" class="action-item priority-{{item.priority}}">
+                  <view class="action-header">
+                    <text class="action-number">{{index + 1}}</text>
+                    <text class="action-text">{{item.action}}</text>
+                  </view>
+                  <text class="action-rationale">{{item.rationale}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 补水提醒 -->
+            <view wx:if="{{analysis.recommendations.hydration_reminder}}" class="hydration-box">
+              <text class="hydration-icon">💧</text>
+              <text class="hydration-text">{{analysis.recommendations.hydration_reminder}}</text>
+            </view>
+
+            <!-- 下一餐推荐（新版本：数组格式） -->
+            <view wx:if="{{analysis.recommendations.next_meals && analysis.recommendations.next_meals.length > 0}}" class="next-meals-section">
+              <view class="section-label">
+                <text class="label-icon">🍽️</text>
+                <text class="label-text">下一餐推荐</text>
+              </view>
+              <view wx:for="{{analysis.recommendations.next_meals}}" wx:key="index" class="next-meal-card">
+                <view class="meal-card-header">
+                  <text class="meal-title">{{item.meal}}</text>
+                  <view class="meal-calories-tag">{{item.total_calories}} kcal</view>
+                </view>
+                <view class="dishes-list">
+                  <view wx:for="{{item.dishes}}" wx:for-item="dish" wx:for-index="dishIndex" wx:key="dishIndex" class="dish-card">
+                    <view class="dish-top">
+                      <text class="dish-name">{{dish.name}}</text>
+                      <text class="dish-cal">{{dish.calories}} kcal</text>
+                    </view>
+                    <view class="dish-detail">
+                      <view class="detail-row">
+                        <text class="detail-label">食材</text>
+                        <text class="detail-value">{{dish.ingredients}}</text>
+                      </view>
+                      <view class="detail-row">
+                        <text class="detail-label">做法</text>
+                        <text class="detail-value">{{dish.method}}</text>
+                      </view>
+                    </view>
+                    <view class="dish-benefit">
+                      <text class="benefit-icon">💚</text>
+                      <text class="benefit-text">{{dish.benefit}}</text>
+                    </view>
+                  </view>
+                </view>
+                <view wx:if="{{item.reason}}" class="meal-reason">
+                  <text class="reason-text">{{item.reason}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 下一餐建议（旧版本兼容：字符串格式） -->
+            <view wx:if="{{!analysis.recommendations.next_meals && analysis.recommendations.next_meal_menu}}" class="next-meal-menu">
+              <view class="section-label">
+                <text class="label-icon">🍽️</text>
+                <text class="label-text">下一餐推荐</text>
+              </view>
+              <view class="menu-content">
+                <text class="menu-text">{{formattedNextMealMenu}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 用户备注 -->
+      <view wx:if="{{meal.notes}}" class="card notes-card anim-slide-up" style="animation-delay: 360ms;">
+        <view class="card-header gray-theme">
+          <text class="card-icon">📌</text>
+          <text class="card-title">备注</text>
+        </view>
+        <view class="card-body">
+          <text class="notes-content">{{meal.notes}}</text>
+        </view>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="action-buttons anim-slide-up" style="animation-delay: 420ms;">
+        <button class="btn-primary" bindtap="generatePoster">
+          <text class="btn-icon">🎨</text>
+          <text class="btn-text">生成分享海报</text>
+        </button>
+        <button class="btn-danger" bindtap="deleteMeal">
+          <text class="btn-icon">🗑️</text>
+          <text class="btn-text">删除</text>
+        </button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 海报生成中遮罩 -->
+  <view wx:if="{{generatingPoster}}" class="modal-overlay">
+    <view class="modal-box">
+      <view class="modal-spinner">
+        <view class="spinner-ring"></view>
+        <text class="spinner-icon">🎨</text>
+      </view>
+      <text class="modal-title">正在生成海报</text>
+      <text class="modal-subtitle">请稍候...</text>
+    </view>
+  </view>
+
+  <!-- 海报预览弹窗 -->
+  <view wx:if="{{showPosterPreview}}" class="poster-overlay" bindtap="closePosterPreview">
+    <view class="poster-container" catchtap="onPreviewTap">
+      <image class="poster-image" src="{{posterPath}}" mode="widthFix" />
+      <view class="poster-buttons">
+        <button class="poster-btn save" bindtap="savePoster">
+          <text class="btn-icon">💾</text>
+          <text>保存到相册</text>
+        </button>
+        <button class="poster-btn close" bindtap="closePosterPreview">
+          <text>关闭</text>
+        </button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 隐藏的Canvas用于生成海报 -->
+  <canvas type="2d" id="posterCanvas" class="poster-canvas"></canvas>
+</view>

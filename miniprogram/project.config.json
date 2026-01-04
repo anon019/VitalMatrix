@@ -1,0 +1,35 @@
+{
+  "description": "Health Assistant 小程序项目配置",
+  "appid": "your_wechat_appid",
+  "compileType": "miniprogram",
+  "libVersion": "3.11.1",
+  "projectname": "Health Assistant",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true,
+    "coverView": true,
+    "autoAudits": false,
+    "showShadowRootInWxmlPanel": true,
+    "scopeDataCheck": false,
+    "checkInvalidKey": true,
+    "checkSiteMap": true,
+    "uploadWithSourceMap": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "useCompilerModule": true,
+    "userConfirmedUseCompilerModuleSwitch": false,
+    "minifyWXML": true
+  },
+  "condition": {},
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
+}

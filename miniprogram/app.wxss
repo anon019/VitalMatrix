@@ -1,0 +1,142 @@
+/**app.wxss**/
+page {
+  background-color: #F5F5F5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* 全局容器 */
+.container {
+  padding: 20rpx;
+  box-sizing: border-box;
+}
+
+/* 卡片样式 */
+.card {
+  background-color: #FFFFFF;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+.card-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 16rpx;
+}
+
+.card-subtitle {
+  font-size: 28rpx;
+  color: #666666;
+  margin-bottom: 12rpx;
+}
+
+/* 按钮样式 */
+.btn-primary {
+  background-color: #2E7D32;
+  color: #FFFFFF;
+  border-radius: 8rpx;
+  padding: 20rpx;
+  text-align: center;
+  font-size: 28rpx;
+}
+
+.btn-secondary {
+  background-color: #F5F5F5;
+  color: #333333;
+  border: 1rpx solid #E0E0E0;
+  border-radius: 8rpx;
+  padding: 20rpx;
+  text-align: center;
+  font-size: 28rpx;
+}
+
+/* 标签样式 */
+.tag {
+  display: inline-block;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  margin-right: 12rpx;
+}
+
+.tag-success {
+  background-color: #E8F5E9;
+  color: #2E7D32;
+}
+
+.tag-warning {
+  background-color: #FFF3E0;
+  color: #F57C00;
+}
+
+.tag-danger {
+  background-color: #FFEBEE;
+  color: #C62828;
+}
+
+.tag-info {
+  background-color: #E3F2FD;
+  color: #1976D2;
+}
+
+/* 文本样式 */
+.text-primary {
+  color: #2E7D32;
+}
+
+.text-secondary {
+  color: #666666;
+}
+
+.text-muted {
+  color: #999999;
+}
+
+.text-danger {
+  color: #C62828;
+}
+
+.text-large {
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.text-medium {
+  font-size: 28rpx;
+}
+
+.text-small {
+  font-size: 24rpx;
+}
+
+/* 分割线 */
+.divider {
+  height: 1rpx;
+  background-color: #E0E0E0;
+  margin: 20rpx 0;
+}
+
+/* 加载状态 */
+.loading {
+  text-align: center;
+  padding: 40rpx;
+  color: #999999;
+}
+
+/* 空状态 */
+.empty {
+  text-align: center;
+  padding: 80rpx 40rpx;
+  color: #999999;
+}
+
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 20rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+}

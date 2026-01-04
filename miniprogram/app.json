@@ -1,0 +1,52 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/trends/trends",
+    "pages/nutrition/nutrition",
+    "pages/nutrition-detail/nutrition-detail",
+    "pages/ai/ai",
+    "pages/settings/settings"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#2E7D32",
+    "navigationBarTitleText": "健康助理",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F5F5F5"
+  },
+  "tabBar": {
+    "color": "#666666",
+    "selectedColor": "#2E7D32",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "今日",
+        "iconPath": "images/tab-today.png",
+        "selectedIconPath": "images/tab-today-active.png"
+      },
+      {
+        "pagePath": "pages/trends/trends",
+        "text": "趋势",
+        "iconPath": "images/tab-trend.png",
+        "selectedIconPath": "images/tab-trend-active.png"
+      },
+      {
+        "pagePath": "pages/nutrition/nutrition",
+        "text": "饮食",
+        "iconPath": "images/tab-nutrition.png",
+        "selectedIconPath": "images/tab-nutrition-active.png"
+      },
+      {
+        "pagePath": "pages/ai/ai",
+        "text": "AI",
+        "iconPath": "images/tab-ai.png",
+        "selectedIconPath": "images/tab-ai-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

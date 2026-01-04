@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* Apple Health 风格色彩系统 */
+:root {
+  /* 主题色 */
+  --color-sleep: #5E5CE6;
+  --color-readiness: #30D158;
+  --color-activity: #FF9F0A;
+  --color-training: #FF375F;
+  --color-hrv: #64D2FF;
+  --color-stress: #AF52DE;
+
+  /* 中性色 */
+  --color-bg: #f5f5f7;
+  --color-card: #ffffff;
+  --color-text: #1d1d1f;
+  --color-text-secondary: #86868b;
+  --color-border: #d2d2d7;
+  --color-divider: #e5e5e5;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 骨架屏 */
+.skeleton {
+  background: linear-gradient(90deg, #e8e8e8 25%, #f5f5f5 50%, #e8e8e8 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* 卡片基础样式 */
+.card {
+  background: var(--color-card);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* 进度条 */
+.progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #e5e5e5;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* 简洁的过渡效果 */
+.transition-default {
+  transition: all 0.2s ease;
+}

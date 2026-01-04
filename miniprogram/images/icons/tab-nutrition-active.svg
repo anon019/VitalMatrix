@@ -1,0 +1,16 @@
+<svg width="81" height="81" viewBox="0 0 81 81" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 饮食：叶子+餐叉组合，象征健康饮食 - 激活态 -->
+  <g stroke="#2E7D32" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- 叶子外形 - 带填充 -->
+    <path d="M40.5 12 C55 12 68 25 68 40 C68 55 55 68 40.5 68 C26 68 18 55 25 40 C32 25 40.5 12 40.5 12" fill="#E8F5E9"/>
+    <!-- 叶脉主线 -->
+    <path d="M40.5 20 L40.5 60"/>
+    <!-- 叶脉分支 -->
+    <path d="M40.5 30 L50 24"/>
+    <path d="M40.5 38 L52 34"/>
+    <path d="M40.5 46 L50 44"/>
+    <path d="M40.5 30 L32 26"/>
+    <path d="M40.5 38 L30 36"/>
+    <path d="M40.5 46 L33 45"/>
+  </g>
+</svg>

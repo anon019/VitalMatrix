@@ -1,0 +1,655 @@
+<!--pages/trends/trends.wxml-->
+<view class="container">
+  <!-- 页面头部 - 新英雄区设计 -->
+  <view class="trends-hero">
+    <!-- 装饰性背景元素 -->
+    <view class="hero-decoration">
+      <view class="deco-circle circle-1"></view>
+      <view class="deco-circle circle-2"></view>
+      <view class="deco-line line-1"></view>
+      <view class="deco-line line-2"></view>
+    </view>
+
+    <view class="hero-content">
+      <view class="hero-title-row">
+        <text class="hero-title">数据趋势</text>
+        <text class="hero-badge">7天</text>
+      </view>
+      <text class="hero-date">{{dateRange}}</text>
+    </view>
+  </view>
+
+  <!-- 加载状态 -->
+  <view class="loading-state" wx:if="{{loading}}">
+    <view class="loading-spinner">
+      <view class="spinner-ring"></view>
+      <view class="spinner-ring"></view>
+      <view class="spinner-ring"></view>
+    </view>
+    <text class="loading-text">数据加载中...</text>
+  </view>
+
+  <!-- 内容区域 -->
+  <view class="content-area" wx:else>
+    <!-- ========== Polar 训练数据 ========== -->
+    <view class="section-group polar-section">
+      <view class="section-header">
+        <view class="section-icon polar-icon">
+          <text class="section-emoji">💪</text>
+        </view>
+        <view class="section-title-group">
+          <text class="section-title">Polar 训练数据</text>
+          <text class="section-subtitle">Training Metrics</text>
+        </view>
+      </view>
+
+    <!-- 脂肪燃烧 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.1s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🔥</text>
+          <text class="card-title">脂肪燃烧</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{fatBurnData.length > 0}}">
+        <!-- 均值虚线 -->
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{fatBurnAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{fatBurnLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{fatBurnAvgPercent}}) * 2.2rpx)">{{avgFatBurn}}g</view>
+        <!-- 柱状图 -->
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{fatBurnData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar orange {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- Zone2时长 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.15s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🏃</text>
+          <text class="card-title">Zone2时长</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{zone2Data.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{zone2AvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{zone2LabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{zone2AvgPercent}}) * 2.2rpx)">{{avgZone2}}min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{zone2Data}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar blue {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 训练卡路里 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.2s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">⚡</text>
+          <text class="card-title">训练卡路里</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{caloriesData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{caloriesAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{caloriesLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{caloriesAvgPercent}}) * 2.2rpx)">{{avgCalories}}kcal</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{caloriesData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar yellow {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+    </view><!-- /polar-section -->
+
+    <!-- ========== Oura 睡眠数据 ========== -->
+    <view class="section-group oura-sleep-section">
+      <view class="section-header">
+        <view class="section-icon oura-icon">
+          <text class="section-emoji">😴</text>
+        </view>
+        <view class="section-title-group">
+          <text class="section-title">Oura 睡眠数据</text>
+          <text class="section-subtitle">Sleep Metrics</text>
+        </view>
+      </view>
+
+    <!-- 睡眠评分（支持主睡眠+午睡叠加显示） -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.25s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">😴</text>
+          <text class="card-title">睡眠评分</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{sleepScoreData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{sleepScoreAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{sleepScoreLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{sleepScoreAvgPercent}}) * 2.2rpx)">{{avgSleepScore}}</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{sleepScoreData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <!-- 叠加柱状图：基础分+午睡加分 -->
+              <view class="stacked-bar {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <!-- 午睡加分部分 -->
+                <view class="bar-boost sleep-score-boost" wx:if="{{item.hasBoost}}" style="height: {{item.boostPercent / item.percent * 100}}%">
+                  <text class="boost-value">+{{item.boostValue}}</text>
+                </view>
+                <!-- 主睡眠基础部分 -->
+                <view class="bar-base sleep-blue" style="height: {{item.basePercent / item.percent * 100}}%">
+                  <text class="base-value">{{item.baseValue}}</text>
+                </view>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 睡眠总时长（支持主睡眠+午睡叠加显示） -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.3s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🛏️</text>
+          <text class="card-title">睡眠总时长</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{totalSleepData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{totalSleepAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{totalSleepLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{totalSleepAvgPercent}}) * 2.2rpx)">{{avgTotalSleep}}h</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{totalSleepData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <!-- 叠加柱状图：主睡眠时长+午睡时长 -->
+              <view class="stacked-bar {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <!-- 午睡时长部分 -->
+                <view class="bar-boost sleep-duration-boost" wx:if="{{item.hasBoost}}" style="height: {{item.boostPercent / item.percent * 100}}%">
+                  <text class="boost-value">+{{item.boostValue}}</text>
+                </view>
+                <!-- 主睡眠时长部分 -->
+                <view class="bar-base sleep-light" style="height: {{item.basePercent / item.percent * 100}}%">
+                  <text class="base-value">{{item.baseValue}}</text>
+                </view>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 深睡眠（支持主睡眠+午睡叠加显示） -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.35s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🌙</text>
+          <text class="card-title">深睡眠</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{deepSleepData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{deepSleepAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{deepSleepLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{deepSleepAvgPercent}}) * 2.2rpx)">{{avgDeepSleep}}min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{deepSleepData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <!-- 叠加柱状图：主睡眠深睡+午睡深睡 -->
+              <view class="stacked-bar {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <!-- 午睡深睡部分 -->
+                <view class="bar-boost deep-sleep-boost" wx:if="{{item.hasBoost}}" style="height: {{item.boostPercent / item.percent * 100}}%">
+                  <text class="boost-value">+{{item.boostValue}}</text>
+                </view>
+                <!-- 主睡眠深睡部分 -->
+                <view class="bar-base deep-blue" style="height: {{item.basePercent / item.percent * 100}}%">
+                  <text class="base-value">{{item.baseValue}}</text>
+                </view>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- REM睡眠（支持主睡眠+午睡叠加显示） -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.4s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">💤</text>
+          <text class="card-title">REM睡眠</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{remSleepData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{remSleepAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{remSleepLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{remSleepAvgPercent}}) * 2.2rpx)">{{avgRemSleep}}min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{remSleepData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <!-- 叠加柱状图：主睡眠REM+午睡REM -->
+              <view class="stacked-bar {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <!-- 午睡REM部分 -->
+                <view class="bar-boost rem-sleep-boost" wx:if="{{item.hasBoost}}" style="height: {{item.boostPercent / item.percent * 100}}%">
+                  <text class="boost-value">+{{item.boostValue}}</text>
+                </view>
+                <!-- 主睡眠REM部分 -->
+                <view class="bar-base violet" style="height: {{item.basePercent / item.percent * 100}}%">
+                  <text class="base-value">{{item.baseValue}}</text>
+                </view>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+    <!-- HRV 心率变异性 - 核心恢复指标 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.42s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">💗</text>
+          <text class="card-title">HRV 心率变异性</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{hrvData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{hrvAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{hrvLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{hrvAvgPercent}}) * 2.2rpx)">{{avgHrv}}ms</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{hrvData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar hrv-magenta {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 静息心率 RHR -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.44s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">❤️</text>
+          <text class="card-title">静息心率</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{rhrData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{rhrAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{rhrLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{rhrAvgPercent}}) * 2.2rpx)">{{avgRhr}}bpm</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{rhrData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar red {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 血氧 SpO2 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.46s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🫁</text>
+          <text class="card-title">血氧饱和度</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{spo2Data.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{spo2AvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{spo2LabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{spo2AvgPercent}}) * 2.2rpx)">{{avgSpo2}}%</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{spo2Data}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar red {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 呼吸频率 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.48s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🌬️</text>
+          <text class="card-title">呼吸频率</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{breathData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{breathAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{breathLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{breathAvgPercent}}) * 2.2rpx)">{{avgBreath}}/min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{breathData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar breath-cyan {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 心率恢复位置（最低心率出现的睡眠进度百分比，越低越好） -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.5s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">💓</text>
+          <text class="card-title">心率恢复位置</text>
+        </view>
+        <view class="card-hint">越低越好，≤50%为理想</view>
+      </view>
+      <view class="chart-container" wx:if="{{hrPositionData.length > 0}}">
+        <!-- 50%参考线（理想/次优分界线） -->
+        <view class="reference-line" style="top: calc(40rpx + 50 * 2.2rpx)"></view>
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{hrPositionAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{hrPositionLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{hrPositionAvgPercent}}) * 2.2rpx)">{{avgHrPosition}}%</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{hrPositionData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar {{item.colorClass}} {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+    </view><!-- /oura-sleep-section -->
+
+    <!-- ========== Oura 准备度/活动数据 ========== -->
+    <view class="section-group oura-activity-section">
+      <view class="section-header">
+        <view class="section-icon oura-icon">
+          <text class="section-emoji">🔋</text>
+        </view>
+        <view class="section-title-group">
+          <text class="section-title">Oura 活动数据</text>
+          <text class="section-subtitle">Activity Metrics</text>
+        </view>
+      </view>
+
+    <!-- 准备度评分（支持基础分+午睡加分叠加显示） -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.45s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🔋</text>
+          <text class="card-title">准备度评分</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{readinessData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{readinessAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{readinessLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{readinessAvgPercent}}) * 2.2rpx)">{{avgReadiness}}</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{readinessData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <!-- 叠加柱状图：基础分+午睡加分 -->
+              <view class="stacked-bar {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <!-- 午睡加分部分 -->
+                <view class="bar-boost readiness-boost" wx:if="{{item.hasBoost}}" style="height: {{item.boostPercent / item.percent * 100}}%">
+                  <text class="boost-value">+{{item.boostValue}}</text>
+                </view>
+                <!-- 基础准备度部分 -->
+                <view class="bar-base amber" style="height: {{item.basePercent / item.percent * 100}}%">
+                  <text class="base-value">{{item.baseValue}}</text>
+                </view>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 活动评分 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.5s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🎯</text>
+          <text class="card-title">活动评分</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{activityScoreData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{activityScoreAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{activityScoreLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{activityScoreAvgPercent}}) * 2.2rpx)">{{avgActivityScore}}</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{activityScoreData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar teal {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 步数 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.55s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">👟</text>
+          <text class="card-title">步数</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{stepsData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{stepsAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{stepsLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{stepsAvgPercent}}) * 2.2rpx)">{{avgSteps}}步</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{stepsData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar blue {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 久坐时间 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.6s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🪑</text>
+          <text class="card-title">久坐时间</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{sedentaryData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{sedentaryAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{sedentaryLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{sedentaryAvgPercent}}) * 2.2rpx)">{{avgSedentary}}min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{sedentaryData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar gray {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+    </view><!-- /oura-activity-section -->
+
+    <!-- ========== Oura 压力数据 ========== -->
+    <view class="section-group oura-stress-section">
+      <view class="section-header">
+        <view class="section-icon stress-icon">
+          <text class="section-emoji">🧘</text>
+        </view>
+        <view class="section-title-group">
+          <text class="section-title">Oura 压力与恢复</text>
+          <text class="section-subtitle">Stress & Recovery</text>
+        </view>
+      </view>
+
+    <!-- 压力时间 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.65s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">😰</text>
+          <text class="card-title">压力时间</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{stressedData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{stressedAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{stressedLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{stressedAvgPercent}}) * 2.2rpx)">{{avgStressed}}min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{stressedData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar stress-orange {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+
+    <!-- 恢复时间 -->
+    <view class="card trend-card card-animate" style="--card-delay: 0.7s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <text class="card-icon">🧘</text>
+          <text class="card-title">恢复时间</text>
+        </view>
+      </view>
+      <view class="chart-container" wx:if="{{restoredData.length > 0}}">
+        <view class="avg-line" style="top: calc(40rpx + (100 - {{restoredAvgPercent}}) * 2.2rpx)"></view>
+        <view class="avg-value-label {{restoredLabelBelow ? 'label-below' : 'label-above'}}" style="top: calc(40rpx + (100 - {{restoredAvgPercent}}) * 2.2rpx)">{{avgRestored}}min</view>
+        <view class="chart-bars">
+          <view class="bar-item avg-item">
+            <view class="bar-wrapper"></view>
+            <text class="bar-label">平均</text>
+          </view>
+          <view class="bar-item" wx:for="{{restoredData}}" wx:key="date">
+            <view class="bar-wrapper">
+              <view class="bar green {{item.isEmpty ? 'empty-bar' : ''}}" style="height: {{item.isEmpty ? 'auto' : item.percent + '%'}}">
+                <text class="bar-value">{{item.value}}</text>
+              </view>
+            </view>
+            <text class="bar-label">{{item.dayLabel}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无数据</text></view>
+    </view>
+    </view><!-- /oura-stress-section -->
+
+    <!-- 底部留白 -->
+    <view class="bottom-spacer"></view>
+  </view>
+</view>

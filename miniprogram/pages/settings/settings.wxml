@@ -1,0 +1,243 @@
+<!--pages/settings/settings.wxml-->
+<view class="container">
+  <!-- 页面标题 -->
+  <view class="page-header">
+    <text class="page-title">设置</text>
+    <text class="page-subtitle">个人数据与训练配置</text>
+  </view>
+
+  <!-- 加载状态 -->
+  <view class="loading" wx:if="{{loading}}">
+    <text>加载中...</text>
+  </view>
+
+  <!-- 内容区域 -->
+  <view wx:else>
+    <!-- 降脂目标卡片 -->
+    <view class="card goal-card">
+      <view class="card-header">
+        <text class="card-title">🎯 我的降脂目标</text>
+      </view>
+
+      <view class="goal-highlight">
+        <text class="goal-main">降脂降胆固醇</text>
+        <text class="goal-method">Zone2有氧训练为主，精准控制心率</text>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="training-plan-section">
+        <text class="section-subtitle">📋 训练方案</text>
+        <view class="plan-box">
+          <view class="plan-item">
+            <text class="plan-icon">🏃</text>
+            <view class="plan-content">
+              <text class="plan-label">Zone2 低强度有氧</text>
+              <text class="plan-value">55 <text class="plan-unit">分钟</text></text>
+              <text class="plan-desc text-small text-muted">脂肪燃烧最佳区间</text>
+            </view>
+          </view>
+          <view class="plan-item">
+            <text class="plan-icon">⚡</text>
+            <view class="plan-content">
+              <text class="plan-label">Zone4-5 高强度刺激</text>
+              <text class="plan-value">1-2 <text class="plan-unit">分钟</text></text>
+              <text class="plan-desc text-small text-muted">提升心肺功能，控制在5分钟内</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="goal-tips">
+        <text class="tip-icon">💡</text>
+        <text class="tip-text text-small">
+          目标：每周4-5天训练，累计Zone2 200-300分钟，高强度&lt;30分钟
+        </text>
+      </view>
+    </view>
+
+    <!-- 个人数据卡片 -->
+    <view class="card">
+      <view class="card-title">👤 个人数据</view>
+
+      <view class="personal-grid">
+        <view class="personal-item">
+          <text class="personal-icon">❤️</text>
+          <text class="personal-label">最大心率</text>
+          <text class="personal-value text-primary">{{hrMax || 185}}</text>
+          <text class="personal-unit">bpm</text>
+        </view>
+
+        <view class="personal-item">
+          <text class="personal-icon">💓</text>
+          <text class="personal-label">静息心率</text>
+          <text class="personal-value">{{restingHr || '--'}}</text>
+          <text class="personal-unit">bpm</text>
+        </view>
+
+        <view class="personal-item" wx:if="{{weight}}">
+          <text class="personal-icon">⚖️</text>
+          <text class="personal-label">体重</text>
+          <text class="personal-value">{{weight}}</text>
+          <text class="personal-unit">kg</text>
+        </view>
+
+        <view class="personal-item" wx:if="{{vo2max}}">
+          <text class="personal-icon">🫁</text>
+          <text class="personal-label">VO2max</text>
+          <text class="personal-value">{{vo2max}}</text>
+          <text class="personal-unit">ml/kg/min</text>
+        </view>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="btn-secondary" bindtap="updateHrMax">
+        <text>✏️ 修改最大心率</text>
+      </view>
+    </view>
+
+    <!-- Polar授权卡片 -->
+    <view class="card">
+      <view class="card-title">Polar 授权</view>
+
+      <view wx:if="{{polarAuth}}">
+        <view class="auth-status">
+          <text class="status-icon">✅</text>
+          <view class="status-text">
+            <text class="status-title">已授权</text>
+            <text class="status-subtitle text-muted text-small">
+              上次同步: {{polarAuth.last_sync_time || '从未'}}
+            </text>
+          </view>
+        </view>
+
+        <view class="divider"></view>
+
+        <view class="btn-secondary" bindtap="syncPolarData">
+          <text>🔄 立即同步数据</text>
+        </view>
+      </view>
+
+      <view wx:else>
+        <view class="auth-status">
+          <text class="status-icon">❌</text>
+          <view class="status-text">
+            <text class="status-title">未授权</text>
+            <text class="status-subtitle text-muted text-small">
+              请前往 Polar Flow 完成授权
+            </text>
+          </view>
+        </view>
+
+        <view class="divider"></view>
+
+        <view class="btn-primary" bindtap="authorizePolar">
+          <text>🔗 授权 Polar</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 心率区间卡片 -->
+    <view class="card zone-boundaries-card">
+      <view class="card-title">📊 心率区间（基于HR Max {{hrMax || 185}}）</view>
+
+      <view class="zone-boundaries-list">
+        <view class="zone-boundary-item zone1-bg">
+          <view class="zone-boundary-header">
+            <text class="zone-boundary-name">Zone 1 恢复区</text>
+            <text class="zone-boundary-percent text-small">50-60% HRmax</text>
+          </view>
+          <text class="zone-boundary-range">{{zoneRanges.zone1.min}}-{{zoneRanges.zone1.max}} bpm</text>
+          <text class="zone-boundary-desc text-small">热身、恢复训练</text>
+        </view>
+
+        <view class="zone-boundary-item zone2-bg zone-highlight">
+          <view class="zone-boundary-header">
+            <text class="zone-boundary-name">Zone 2 脂肪燃烧 🎯</text>
+            <text class="zone-boundary-percent text-small">60-70% HRmax</text>
+          </view>
+          <text class="zone-boundary-range">{{zoneRanges.zone2.min}}-{{zoneRanges.zone2.max}} bpm</text>
+          <text class="zone-boundary-desc text-small">降脂最佳区间，目标55分钟</text>
+        </view>
+
+        <view class="zone-boundary-item zone3-bg">
+          <view class="zone-boundary-header">
+            <text class="zone-boundary-name">Zone 3 有氧强化</text>
+            <text class="zone-boundary-percent text-small">70-80% HRmax</text>
+          </view>
+          <text class="zone-boundary-range">{{zoneRanges.zone3.min}}-{{zoneRanges.zone3.max}} bpm</text>
+          <text class="zone-boundary-desc text-small">有氧耐力提升</text>
+        </view>
+
+        <view class="zone-boundary-item zone4-bg">
+          <view class="zone-boundary-header">
+            <text class="zone-boundary-name">Zone 4 无氧阈值</text>
+            <text class="zone-boundary-percent text-small">80-90% HRmax</text>
+          </view>
+          <text class="zone-boundary-range">{{zoneRanges.zone4.min}}-{{zoneRanges.zone4.max}} bpm</text>
+          <text class="zone-boundary-desc text-small">间歇训练，控制时长</text>
+        </view>
+
+        <view class="zone-boundary-item zone5-bg">
+          <view class="zone-boundary-header">
+            <text class="zone-boundary-name">Zone 5 最大强度</text>
+            <text class="zone-boundary-percent text-small">90-100% HRmax</text>
+          </view>
+          <text class="zone-boundary-range">{{zoneRanges.zone5.min}}-{{zoneRanges.zone5.max}} bpm</text>
+          <text class="zone-boundary-desc text-small">极限冲刺，谨慎使用</text>
+        </view>
+      </view>
+
+      <view class="zone-calc-note">
+        <text class="text-small text-muted">
+          💡 心率区间根据 HRmax 自动计算，修改 HRmax 后区间会同步更新
+        </text>
+      </view>
+    </view>
+
+    <!-- 数据管理卡片 -->
+    <view class="card">
+      <view class="card-title">数据管理</view>
+
+      <view class="btn-secondary" bindtap="clearCache">
+        <text>🗑️ 清除本地缓存</text>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="btn-secondary" bindtap="refreshAllData">
+        <text>🔄 刷新所有数据</text>
+      </view>
+    </view>
+
+    <!-- 关于卡片 -->
+    <view class="card">
+      <view class="card-title">关于</view>
+
+      <view class="info-item">
+        <text class="info-label">应用名称</text>
+        <text class="info-value">Health Assistant</text>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="info-item">
+        <text class="info-label">版本号</text>
+        <text class="info-value">v0.2.0</text>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="info-item">
+        <text class="info-label">后端服务</text>
+        <text class="info-value text-small">{{apiUrl}}</text>
+      </view>
+    </view>
+
+    <!-- 退出登录按钮 -->
+    <view class="logout-btn" bindtap="logout">
+      <text>🚪 退出登录</text>
+    </view>
+  </view>
+</view>

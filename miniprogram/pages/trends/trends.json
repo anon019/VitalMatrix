@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "趋势",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#F5F5F5",
+  "backgroundTextStyle": "dark"
+}

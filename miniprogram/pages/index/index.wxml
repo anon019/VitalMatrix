@@ -1,0 +1,1311 @@
+<!--pages/index/index.wxml-->
+<view class="container">
+  <!-- ========== 核心健康状态区 - 统一浅色风格 ========== -->
+  <view class="health-hero">
+    <!-- 顶部问候栏 -->
+    <view class="hero-greeting">
+      <text class="greeting-emoji">{{greetingEmoji}}</text>
+      <view class="greeting-info">
+        <text class="greeting-text">{{greeting}}</text>
+        <text class="greeting-date">{{todayDateFull}}</text>
+      </view>
+    </view>
+
+    <!-- 双评分骨架屏 -->
+    <view class="dual-score-section skeleton-section" wx:if="{{loading}}">
+      <view class="score-card">
+        <view class="skeleton-ring skeleton-animate"></view>
+        <view class="score-info">
+          <view class="skeleton-text-md skeleton-animate"></view>
+          <view class="skeleton-badge skeleton-animate"></view>
+        </view>
+      </view>
+      <view class="score-divider"></view>
+      <view class="score-card">
+        <view class="skeleton-ring skeleton-animate"></view>
+        <view class="score-info">
+          <view class="skeleton-text-md skeleton-animate"></view>
+          <view class="skeleton-badge skeleton-animate"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 双评分核心区 -->
+    <view class="dual-score-section" wx:if="{{!loading}}">
+      <!-- 准备度评分 -->
+      <view class="score-card readiness-card">
+        <view class="score-ring-wrap">
+          <view class="score-ring readiness-ring">
+            <view class="ring-track"></view>
+            <view class="ring-progress {{readinessLevel}}" style="--progress: {{readinessData.score || 0}};"></view>
+            <view class="ring-center">
+              <text class="ring-value">{{readinessData.score || '--'}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="score-info">
+          <text class="score-label">准备度</text>
+          <text class="score-status {{readinessLevel}}">{{actionAdvice.title}}</text>
+        </view>
+      </view>
+
+      <!-- 分隔线 -->
+      <view class="score-divider"></view>
+
+      <!-- 睡眠评分 -->
+      <view class="score-card sleep-card">
+        <view class="score-ring-wrap">
+          <view class="score-ring sleep-ring">
+            <view class="ring-track"></view>
+            <view class="ring-progress {{sleepLevel}}" style="--progress: {{sleepData.score || 0}};"></view>
+            <view class="ring-center">
+              <text class="ring-value">{{sleepData.score || '--'}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="score-info">
+          <text class="score-label">睡眠</text>
+          <text class="score-status {{sleepLevel}}">{{sleepAdvice.title}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 四指标骨架屏 -->
+    <view class="metrics-row" wx:if="{{loading}}">
+      <view class="metric-item" wx:for="{{[1,2,3,4]}}" wx:key="index">
+        <view class="skeleton-icon-sm skeleton-animate"></view>
+        <view class="skeleton-text-sm skeleton-animate"></view>
+        <view class="skeleton-text-xs skeleton-animate"></view>
+      </view>
+    </view>
+
+    <!-- 核心四指标 -->
+    <view class="metrics-row" wx:if="{{!loading}}">
+      <view class="metric-item">
+        <view class="metric-icon-wrap hrv-icon"><text class="metric-icon">💓</text></view>
+        <text class="metric-value">{{readinessData.hrv || '--'}}</text>
+        <text class="metric-label">HRV</text>
+        <view class="metric-delta {{hrvDelta.direction}}" wx:if="{{hrvDelta}}">
+          <text>{{hrvDelta.direction === 'up' ? '↑' : '↓'}}{{hrvDelta.value}}</text>
+        </view>
+      </view>
+      <view class="metric-item">
+        <view class="metric-icon-wrap rhr-icon"><text class="metric-icon">❤️</text></view>
+        <text class="metric-value">{{readinessData.resting_hr || '--'}}</text>
+        <text class="metric-label">静息心率</text>
+        <view class="metric-delta {{rhrDelta.direction}}" wx:if="{{rhrDelta}}">
+          <text>{{rhrDelta.direction === 'up' ? '↑' : '↓'}}{{rhrDelta.value}}</text>
+        </view>
+      </view>
+      <view class="metric-item">
+        <view class="metric-icon-wrap deep-icon"><text class="metric-icon">🌙</text></view>
+        <text class="metric-value">{{sleepData.deep_min || '--'}}</text>
+        <text class="metric-label">深睡眠</text>
+        <view class="metric-delta {{deepDelta.direction}}" wx:if="{{deepDelta}}">
+          <text>{{deepDelta.direction === 'up' ? '↑' : '↓'}}{{deepDelta.value}}</text>
+        </view>
+      </view>
+      <view class="metric-item">
+        <view class="metric-icon-wrap rem-icon"><text class="metric-icon">💤</text></view>
+        <text class="metric-value">{{sleepData.rem_min || '--'}}</text>
+        <text class="metric-label">REM</text>
+        <view class="metric-delta {{remDelta.direction}}" wx:if="{{remDelta}}">
+          <text>{{remDelta.direction === 'up' ? '↑' : '↓'}}{{remDelta.value}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 异常警报 -->
+    <view class="alert-banner {{alertType}}" wx:if="{{morningAlert}}">
+      <text class="alert-icon">{{morningAlert.icon}}</text>
+      <text class="alert-text">{{morningAlert.message}}</text>
+    </view>
+  </view>
+
+
+  <!-- 骨架屏加载状态 -->
+  <view class="skeleton-container" wx:if="{{loading}}">
+    <view class="skeleton-card" wx:for="{{[1,2,3]}}" wx:key="index">
+      <view class="skeleton-header">
+        <view class="skeleton-icon skeleton-animate"></view>
+        <view class="skeleton-title skeleton-animate"></view>
+        <view class="skeleton-tag skeleton-animate"></view>
+      </view>
+      <view class="skeleton-stats">
+        <view class="skeleton-stat-item skeleton-animate"></view>
+        <view class="skeleton-stat-item skeleton-animate"></view>
+        <view class="skeleton-stat-item skeleton-animate"></view>
+      </view>
+      <view class="skeleton-bar skeleton-animate"></view>
+    </view>
+    <view class="skeleton-loading-tip">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">正在获取健康数据...</text>
+    </view>
+  </view>
+
+  <!-- 内容区域 -->
+  <view class="content-area" wx:if="{{!loading}}">
+
+    <!-- 数据异常提醒区 -->
+    <view class="alerts-section card-appear" wx:if="{{alerts.length > 0}}" style="animation-delay: 0.15s">
+      <view class="alert-item {{alert.type}}" wx:for="{{alerts}}" wx:key="index" wx:for-item="alert">
+        <text class="alert-icon">{{alert.icon}}</text>
+        <text class="alert-text">{{alert.message}}</text>
+      </view>
+    </view>
+
+    <!-- 训练数据卡片 - Polar -->
+    <view class="card training-card glass-card card-appear" style="animation-delay: 0.2s">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="training">
+        <view class="card-title-row">
+          <view class="card-icon-wrapper training-icon-bg">
+            <text class="card-icon">🏋️</text>
+          </view>
+          <view class="card-title-group">
+            <text class="card-title">训练数据</text>
+            <text class="card-subtitle">{{trainingDate}}</text>
+          </view>
+        </view>
+        <view class="card-meta">
+          <text class="brand-tag polar">Polar</text>
+          <view class="expand-arrow {{expandedCards.training ? 'expanded' : ''}}">
+            <text class="arrow-icon">›</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{trainingData}}">
+        <!-- 核心指标 - Zone2 + Zone4-5 双核心 -->
+        <view class="training-dual-hero">
+          <view class="training-hero-item zone2-hero">
+            <view class="zone-target-row">
+              <text class="training-big-value zone2-color">{{trainingData.zone2_min || 0}}</text>
+              <text class="training-big-unit">分钟</text>
+            </view>
+            <text class="training-big-label">🏃 Zone2燃脂区</text>
+          </view>
+          <view class="training-hero-divider"></view>
+          <view class="training-hero-item hi-hero">
+            <view class="zone-target-row">
+              <text class="training-big-value zone5-color">{{trainingData.hi_min || 0}}</text>
+              <text class="training-big-unit">分钟</text>
+            </view>
+            <text class="training-big-label">🔥 Zone4-5高强度</text>
+          </view>
+        </view>
+
+        <!-- 次要指标行 - 脂肪燃烧 + 卡路里 + 时长 -->
+        <view class="metric-row">
+          <view class="metric-chip highlight-chip">
+            <text class="chip-value orange">{{trainingData.fat_burn || 0}}<text class="chip-unit">g</text></text>
+            <text class="chip-label">脂肪燃烧</text>
+          </view>
+          <view class="metric-chip">
+            <text class="chip-value">{{trainingData.calories || 0}}<text class="chip-unit">kcal</text></text>
+            <text class="chip-label">消耗</text>
+          </view>
+          <view class="metric-chip">
+            <text class="chip-value">{{trainingData.duration_min || 0}}<text class="chip-unit">min</text></text>
+            <text class="chip-label">总时长</text>
+          </view>
+        </view>
+
+        <!-- 心率区间条 -->
+        <view class="zone-section">
+          <view class="zone-header">
+            <text class="zone-title">心率区间分布</text>
+          </view>
+          <view class="zone-stacked-bar animated-bar">
+            <view class="zone-bar-segment zone1-bar" style="width: {{trainingData.zone1_percent || 0}}%;" wx:if="{{trainingData.zone1_percent > 0}}">
+              <text class="bar-label" wx:if="{{trainingData.zone1_percent > 8}}">{{trainingData.zone1_min}}</text>
+            </view>
+            <view class="zone-bar-segment zone2-bar" style="width: {{trainingData.zone2_percent || 0}}%;" wx:if="{{trainingData.zone2_percent > 0}}">
+              <text class="bar-label" wx:if="{{trainingData.zone2_percent > 8}}">{{trainingData.zone2_min}}</text>
+            </view>
+            <view class="zone-bar-segment zone3-bar" style="width: {{trainingData.zone3_percent || 0}}%;" wx:if="{{trainingData.zone3_percent > 0}}">
+              <text class="bar-label" wx:if="{{trainingData.zone3_percent > 8}}">{{trainingData.zone3_min}}</text>
+            </view>
+            <view class="zone-bar-segment zone4-bar" style="width: {{trainingData.zone4_percent || 0}}%;" wx:if="{{trainingData.zone4_percent > 0}}">
+              <text class="bar-label" wx:if="{{trainingData.zone4_percent > 8}}">{{trainingData.zone4_min}}</text>
+            </view>
+            <view class="zone-bar-segment zone5-bar" style="width: {{trainingData.zone5_percent || 0}}%;" wx:if="{{trainingData.zone5_percent > 0}}">
+              <text class="bar-label" wx:if="{{trainingData.zone5_percent > 8}}">{{trainingData.zone5_min}}</text>
+            </view>
+          </view>
+          <view class="zone-legend-inline">
+            <view class="legend-item"><view class="legend-dot zone2-dot"></view><text>Z2 {{trainingData.zone2_min}}分</text></view>
+            <view class="legend-item"><view class="legend-dot zone4-dot"></view><text>Z4-5 {{trainingData.hi_min}}分</text></view>
+          </view>
+        </view>
+
+        <!-- 展开详情 -->
+        <view class="card-details {{expandedCards.training ? 'expanded' : ''}}">
+          <view class="detail-grid detail-grid-4">
+            <view class="detail-item">
+              <text class="detail-value {{trainingData.avgHrColor}}">{{trainingData.avg_hr || '--'}} <text class="detail-unit">bpm</text></text>
+              <text class="detail-label">平均心率</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value zone5-color">{{trainingData.max_hr || '--'}} <text class="detail-unit">bpm</text></text>
+              <text class="detail-label">最大心率</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value">{{trainingData.trimp || 0}}</text>
+              <text class="detail-label">TRIMP</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value">{{trainingData.distance || 0}} <text class="detail-unit">米</text></text>
+              <text class="detail-label">距离</text>
+            </view>
+          </view>
+
+          <view class="time-range-new">
+            <view class="time-point">
+              <text class="time-icon">🏁</text>
+              <view class="time-info">
+                <text class="time-label-small">开始</text>
+                <text class="time-value-large">{{trainingData.start_time}}</text>
+              </view>
+            </view>
+            <view class="time-connector">
+              <view class="time-line"></view>
+              <text class="time-duration">{{trainingData.duration_min}}分钟</text>
+              <view class="time-line"></view>
+            </view>
+            <view class="time-point">
+              <text class="time-icon">🎯</text>
+              <view class="time-info">
+                <text class="time-label-small">结束</text>
+                <text class="time-value-large">{{trainingData.end_time}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="empty-state" wx:else>
+        <text class="empty-icon">🏃</text>
+        <text class="empty-text">暂无训练数据</text>
+      </view>
+    </view>
+
+    <!-- 睡眠数据卡片 - Oura -->
+    <view class="card sleep-card glass-card card-appear" style="animation-delay: 0.25s">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="sleep">
+        <view class="card-title-row">
+          <view class="card-icon-wrapper sleep-icon-bg">
+            <text class="card-icon">😴</text>
+          </view>
+          <view class="card-title-group">
+            <text class="card-title">睡眠数据</text>
+            <text class="card-subtitle">{{sleepDate}}</text>
+          </view>
+        </view>
+        <view class="card-meta">
+          <text class="brand-tag oura">Oura</text>
+          <view class="expand-arrow {{expandedCards.sleep ? 'expanded' : ''}}">
+            <text class="arrow-icon">›</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{sleepData}}">
+        <!-- 核心指标 - 深睡眠 + 睡眠评分 双核心 -->
+        <view class="sleep-dual-hero">
+          <view class="sleep-hero-item deep-hero">
+            <view class="zone-target-row">
+              <text class="sleep-big-value deep-color">{{sleepData.deep_min || 0}}</text>
+              <text class="sleep-big-unit">分钟</text>
+              <view class="target-badge {{sleepData.deep_min >= 60 ? 'badge-success' : sleepData.deep_min >= 45 ? 'badge-warning' : 'badge-danger'}}">
+                <text>{{sleepData.deep_min >= 60 ? '充足' : sleepData.deep_min >= 45 ? '一般' : '不足'}}</text>
+              </view>
+            </view>
+            <text class="sleep-big-label">🌙 深睡眠</text>
+            <text class="target-hint">目标≥60分钟</text>
+          </view>
+          <view class="sleep-hero-divider"></view>
+          <view class="sleep-hero-item score-hero">
+            <view class="zone-target-row">
+              <text class="sleep-big-value purple">{{sleepData.score || 0}}</text>
+              <text class="nap-badge-small" wx:if="{{sleepData.hasNap}}">+{{sleepData.napScoreBoost}}</text>
+            </view>
+            <text class="sleep-big-label">😴 睡眠评分</text>
+            <text class="target-hint">{{sleepData.total_duration || '--'}}</text>
+          </view>
+        </view>
+
+        <!-- 关键监测指标（与深睡眠改善相关） -->
+        <view class="metric-row four-col">
+          <view class="metric-chip small highlight-chip-blue">
+            <text class="chip-value {{sleepData.restlessColor}}">{{sleepData.restless_periods || 0}}<text class="chip-unit">次</text></text>
+            <text class="chip-label">翻身次数</text>
+          </view>
+          <view class="metric-chip small">
+            <text class="chip-value {{sleepData.efficiencyColor}}">{{sleepData.efficiency || 0}}%</text>
+            <text class="chip-label">效率</text>
+          </view>
+          <view class="metric-chip small">
+            <text class="chip-value {{sleepData.latencyColor}}">{{sleepData.latency_min || 0}}<text class="chip-unit">min</text></text>
+            <text class="chip-label">入睡延迟</text>
+          </view>
+          <view class="metric-chip small spo2-chip">
+            <text class="chip-value red">{{sleepData.spo2 || '--'}}%</text>
+            <text class="chip-label">血氧</text>
+          </view>
+        </view>
+
+        <!-- 睡眠阶段条 -->
+        <view class="zone-section">
+          <view class="zone-header">
+            <text class="zone-title">睡眠阶段</text>
+          </view>
+          <view class="sleep-stage-bar animated-bar">
+            <view class="sleep-bar-segment deep-bar" style="width: {{sleepData.deepPercent || 0}}%;" wx:if="{{sleepData.deepPercent > 0}}">
+              <text class="bar-label" wx:if="{{sleepData.deepPercent > 10}}">{{sleepData.deep_min}}</text>
+            </view>
+            <view class="sleep-bar-segment rem-bar" style="width: {{sleepData.remPercent || 0}}%;" wx:if="{{sleepData.remPercent > 0}}">
+              <text class="bar-label" wx:if="{{sleepData.remPercent > 10}}">{{sleepData.rem_min}}</text>
+            </view>
+            <view class="sleep-bar-segment light-bar" style="width: {{sleepData.lightPercent || 0}}%;" wx:if="{{sleepData.lightPercent > 0}}">
+              <text class="bar-label" wx:if="{{sleepData.lightPercent > 10}}">{{sleepData.light_min}}</text>
+            </view>
+            <view class="sleep-bar-segment awake-bar" style="width: {{sleepData.awakePercent || 0}}%;" wx:if="{{sleepData.awakePercent > 0}}">
+              <text class="bar-label" wx:if="{{sleepData.awakePercent > 10}}">{{sleepData.awake_min}}</text>
+            </view>
+          </view>
+          <view class="zone-legend-inline sleep-legend-inline">
+            <view class="legend-item"><view class="legend-dot deep-dot"></view><text>深睡 {{sleepData.deep_min}}分</text></view>
+            <view class="legend-item"><view class="legend-dot rem-dot"></view><text>REM {{sleepData.rem_min}}分</text></view>
+            <view class="legend-item"><view class="legend-dot light-dot"></view><text>浅睡 {{sleepData.light_min}}分</text></view>
+            <view class="legend-item"><view class="legend-dot awake-dot"></view><text>清醒 {{sleepData.awake_min}}分</text></view>
+          </view>
+        </view>
+
+        <!-- 展开详情 -->
+        <view class="card-details {{expandedCards.sleep ? 'expanded' : ''}}">
+          <view class="detail-section-title">心率与呼吸</view>
+          <view class="detail-grid">
+            <view class="detail-item">
+              <text class="detail-value {{sleepData.hrAverageColor}}">{{sleepData.hr_average || '--'}} <text class="detail-unit">bpm</text></text>
+              <text class="detail-label">平均心率</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value {{sleepData.hrLowestColor}}">{{sleepData.hr_lowest || '--'}} <text class="detail-unit">bpm</text></text>
+              <text class="detail-label">最低心率</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value {{sleepData.breathingColor}}">{{sleepData.breathing_rate || '--'}} <text class="detail-unit">次/分</text></text>
+              <text class="detail-label">呼吸频率</text>
+            </view>
+          </view>
+
+          <view class="detail-section-title">睡眠质量</view>
+          <view class="detail-grid">
+            <view class="detail-item">
+              <text class="detail-value {{sleepData.latencyColor}}">{{sleepData.latency_min || 0}} <text class="detail-unit">分钟</text></text>
+              <text class="detail-label">入睡延迟</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value {{sleepData.restlessColor}}">{{sleepData.restless_periods || 0}} <text class="detail-unit">次</text></text>
+              <text class="detail-label">翻身次数</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value">{{sleepData.time_in_bed || 0}} <text class="detail-unit">分钟</text></text>
+              <text class="detail-label">在床时间</text>
+            </view>
+          </view>
+
+          <!-- 睡眠时间段 -->
+          <view class="sleep-time-blocks">
+            <!-- 碎片睡眠提示 -->
+            <view class="fragmented-sleep-hint" wx:if="{{!sleepData.hasMainSleep}}">
+              <text class="hint-icon">⚠️</text>
+              <text class="hint-text">{{sleepData.sleep_type}}，未检测到连续长睡眠</text>
+            </view>
+
+            <!-- 主睡眠/最长睡眠段 -->
+            <view class="time-block {{sleepData.hasMainSleep ? '' : 'fragmented'}}">
+              <view class="block-header">
+                <text class="block-icon">{{sleepData.hasMainSleep ? '🌙' : '💤'}}</text>
+                <text class="block-title">{{sleepData.hasMainSleep ? '主睡眠' : '最长睡眠'}}</text>
+                <text class="block-duration">{{sleepData.main_sleep_duration}}</text>
+              </view>
+              <view class="time-range">
+                <view class="time-start">
+                  <text class="time-label">入睡</text>
+                  <text class="time-text">{{sleepData.bedtime}}</text>
+                </view>
+                <view class="range-line"></view>
+                <view class="time-end">
+                  <text class="time-label">醒来</text>
+                  <text class="time-text">{{sleepData.wake_time}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 午睡/第二段睡眠 -->
+            <view class="time-block nap-block" wx:if="{{sleepData.nap_bedtime}}">
+              <view class="block-header">
+                <text class="block-icon">{{sleepData.hasMainSleep ? '☀️' : '😴'}}</text>
+                <text class="block-title">{{sleepData.hasMainSleep ? '午睡' : '第二段'}}</text>
+                <text class="block-duration nap">{{sleepData.hasMainSleep ? sleepData.nap_duration : sleepData.second_sleep_duration}}</text>
+              </view>
+              <view class="time-range">
+                <view class="time-start">
+                  <text class="time-label">入睡</text>
+                  <text class="time-text">{{sleepData.nap_bedtime}}</text>
+                </view>
+                <view class="range-line nap-line"></view>
+                <view class="time-end">
+                  <text class="time-label">醒来</text>
+                  <text class="time-text">{{sleepData.nap_wake_time}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 总计（有多段睡眠时显示） -->
+            <view class="time-summary" wx:if="{{sleepData.hasNap || sleepData.hasMultipleSegments}}">
+              <text class="summary-icon">💤</text>
+              <text class="summary-text">总睡眠</text>
+              <text class="summary-value">{{sleepData.total_duration}}</text>
+            </view>
+          </view>
+
+          <!-- 睡眠心率详情 - 最低心率时间点分析 -->
+          <view class="heartrate-detail-section" wx:if="{{heartrateDetail}}">
+            <view class="detail-section-title">💓 睡眠心率详情</view>
+
+            <!-- 核心指标：最低心率 + 出现时间 -->
+            <view class="hr-timing-hero">
+              <view class="hr-timing-icon-bg">
+                <text class="hr-timing-icon">♥</text>
+              </view>
+              <view class="hr-timing-main">
+                <text class="hr-timing-value {{heartrateDetail.progress_color}}">{{heartrateDetail.lowest_hr}}</text>
+                <text class="hr-timing-unit">bpm</text>
+              </view>
+              <view class="hr-timing-sub">
+                <text class="hr-timing-time">{{heartrateDetail.lowest_hr_time}}</text>
+                <text class="hr-timing-divider">·</text>
+                <text class="hr-timing-phase">{{heartrateDetail.sleep_phase}}</text>
+                <view class="hr-timing-badge {{heartrateDetail.recovery_quality_color}}" wx:if="{{heartrateDetail.recovery_quality}}">
+                  <text>{{heartrateDetail.recovery_quality}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 睡眠进度条：显示最低心率出现的时间点 -->
+            <view class="sleep-progress-container">
+              <view class="sleep-progress-header">
+                <text class="progress-title">恢复时机</text>
+                <text class="progress-value {{heartrateDetail.progress_color}}">{{heartrateDetail.sleep_progress_percent}}%</text>
+              </view>
+              <view class="sleep-progress-track">
+                <view class="progress-zone zone-optimal"></view>
+                <view class="progress-zone zone-suboptimal"></view>
+                <view class="progress-marker-line {{heartrateDetail.progress_color}}" style="left: {{heartrateDetail.sleep_progress_percent}}%;"></view>
+                <view class="progress-marker-dot {{heartrateDetail.progress_color}}" style="left: {{heartrateDetail.sleep_progress_percent}}%;"></view>
+              </view>
+              <view class="sleep-progress-zone-labels">
+                <text class="zone-name green">理想区</text>
+                <text class="zone-name orange">次优区</text>
+              </view>
+              <view class="sleep-progress-labels">
+                <text class="progress-label">入睡</text>
+                <text class="progress-label center">50%</text>
+                <text class="progress-label">醒来</text>
+              </view>
+              <view class="progress-note" wx:if="{{heartrateDetail.recovery_note}}">
+                <text class="{{heartrateDetail.recovery_quality_color}}">{{heartrateDetail.recovery_note}}</text>
+              </view>
+            </view>
+
+            <!-- 睡眠心率范围 -->
+            <view class="hr-range-card">
+              <view class="hr-range-item">
+                <view class="hr-range-icon-wrap green-bg">
+                  <text class="hr-range-icon">↓</text>
+                </view>
+                <view class="hr-range-data">
+                  <text class="hr-range-value green">{{heartrateDetail.hr_min}}</text>
+                  <text class="hr-range-label">最低</text>
+                </view>
+              </view>
+              <view class="hr-range-divider"></view>
+              <view class="hr-range-item">
+                <view class="hr-range-icon-wrap gray-bg">
+                  <text class="hr-range-icon">≈</text>
+                </view>
+                <view class="hr-range-data">
+                  <text class="hr-range-value">{{heartrateDetail.hr_avg}}</text>
+                  <text class="hr-range-label">平均</text>
+                </view>
+              </view>
+              <view class="hr-range-divider"></view>
+              <view class="hr-range-item">
+                <view class="hr-range-icon-wrap orange-bg">
+                  <text class="hr-range-icon">↑</text>
+                </view>
+                <view class="hr-range-data">
+                  <text class="hr-range-value orange">{{heartrateDetail.hr_max}}</text>
+                  <text class="hr-range-label">最高</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 贡献因子雷达图 - 使用wx:if解决原生canvas层叠问题 -->
+          <view class="radar-section" wx:if="{{expandedCards.sleep}}">
+            <view class="detail-section-title">
+              贡献因子
+              <text class="history-hint" wx:if="{{sleepData.contributorsSource === 'history'}}">（最近主睡眠）</text>
+            </view>
+            <view class="radar-container" wx:if="{{sleepData.contributors && sleepData.contributors.deep_sleep != null}}">
+              <canvas canvas-id="sleepRadar" class="radar-canvas"></canvas>
+            </view>
+            <view class="no-radar-data" wx:else>
+              <text class="no-radar-hint">暂无贡献因子数据</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="empty-state" wx:else>
+        <text class="empty-icon">💤</text>
+        <text class="empty-text">暂无睡眠数据</text>
+      </view>
+    </view>
+
+    <!-- 准备度数据卡片 - Oura（含压力数据） -->
+    <view class="card readiness-card glass-card card-appear" style="animation-delay: 0.3s">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="readiness">
+        <view class="card-title-row">
+          <view class="card-icon-wrapper readiness-icon-bg">
+            <text class="card-icon">🔋</text>
+          </view>
+          <view class="card-title-group">
+            <text class="card-title">准备度</text>
+            <text class="card-subtitle">{{readinessDate}}</text>
+          </view>
+        </view>
+        <view class="card-meta">
+          <text class="brand-tag oura">Oura</text>
+          <view class="expand-arrow {{expandedCards.readiness ? 'expanded' : ''}}">
+            <text class="arrow-icon">›</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{readinessData}}">
+        <!-- 核心指标 - HRV + 准备度评分 双核心 -->
+        <view class="readiness-dual-hero">
+          <view class="readiness-hero-item hrv-hero">
+            <view class="zone-target-row">
+              <text class="readiness-big-value hrv-color">{{readinessData.hrv || '--'}}</text>
+              <text class="readiness-big-unit">ms</text>
+              <view class="target-badge {{readinessData.hrv >= 40 ? 'badge-success' : readinessData.hrv >= 25 ? 'badge-warning' : 'badge-danger'}}" wx:if="{{readinessData.hrv && readinessData.hrv !== '--'}}">
+                <text>{{readinessData.hrv >= 40 ? '良好' : readinessData.hrv >= 25 ? '一般' : '偏低'}}</text>
+              </view>
+            </view>
+            <text class="readiness-big-label">💓 HRV心率变异</text>
+            <text class="target-hint">恢复状态核心指标</text>
+          </view>
+          <view class="readiness-hero-divider"></view>
+          <view class="readiness-hero-item score-hero">
+            <view class="zone-target-row">
+              <text class="readiness-big-value amber">{{readinessData.score || 0}}</text>
+              <text class="nap-badge-small" wx:if="{{readinessData.hasNap}}">+{{readinessData.napBoost}}</text>
+            </view>
+            <text class="readiness-big-label">🔋 准备度评分</text>
+            <text class="target-hint">{{readinessData.score >= 85 ? '状态极佳' : readinessData.score >= 70 ? '状态良好' : '需要休息'}}</text>
+          </view>
+        </view>
+
+        <!-- 恢复关键监测指标 -->
+        <view class="metric-row four-col">
+          <view class="metric-chip small highlight-chip-green">
+            <text class="chip-value {{readinessData.restingHrColor}}">{{readinessData.resting_hr || '--'}}<text class="chip-unit">bpm</text></text>
+            <text class="chip-label">静息心率</text>
+          </view>
+          <view class="metric-chip small">
+            <text class="chip-value {{readinessData.recoveryColor}}">{{readinessData.recovery_index || 0}}</text>
+            <text class="chip-label">恢复指数</text>
+          </view>
+          <view class="metric-chip small">
+            <text class="chip-value {{readinessData.tempDevColor}}">{{readinessData.temperature_deviation || '--'}}°</text>
+            <text class="chip-label">体温偏差</text>
+          </view>
+          <view class="metric-chip small">
+            <text class="chip-value {{readinessData.sleepBalanceColor}}">{{readinessData.sleep_balance || '--'}}</text>
+            <text class="chip-label">睡眠平衡</text>
+          </view>
+        </view>
+
+        <!-- 压力与恢复平衡 - 对比卡片设计 -->
+        <view class="stress-balance-card" wx:if="{{stressData}}">
+          <!-- 日期标注（当非今天数据时显示） -->
+          <view class="stress-date-hint" wx:if="{{stressDate && stressDate !== todayDateISO}}">
+            <text class="stress-date-icon">📅</text>
+            <text class="stress-date-text">{{stressDateDisplay}}数据</text>
+          </view>
+          <!-- 对比区域 -->
+          <view class="stress-compare">
+            <!-- 压力侧 -->
+            <view class="stress-side stress-left">
+              <view class="stress-side-header">
+                <text class="stress-side-icon">😰</text>
+                <text class="stress-side-label">压力</text>
+              </view>
+              <text class="stress-side-value orange">{{stressData.stressed_display}}</text>
+              <text class="stress-side-percent">{{stressData.stress_percent}}%</text>
+            </view>
+
+            <!-- 中间分隔 -->
+            <view class="stress-divider-center">
+              <view class="divider-line"></view>
+              <view class="divider-badge {{stressData.summaryColor}}">
+                <text class="divider-badge-text">{{stressData.day_summary}}</text>
+              </view>
+              <view class="divider-line"></view>
+            </view>
+
+            <!-- 恢复侧 -->
+            <view class="stress-side stress-right">
+              <view class="stress-side-header">
+                <text class="stress-side-icon">😌</text>
+                <text class="stress-side-label">恢复</text>
+              </view>
+              <text class="stress-side-value green">{{stressData.restored_display}}</text>
+              <text class="stress-side-percent">{{stressData.recovery_percent}}%</text>
+            </view>
+          </view>
+
+          <!-- 底部平衡条 -->
+          <view class="stress-balance-bar">
+            <view class="balance-segment stress-segment" style="width: {{stressData.stress_percent || 50}}%;"></view>
+            <view class="balance-segment recovery-segment" style="width: {{stressData.recovery_percent || 50}}%;"></view>
+          </view>
+        </view>
+
+        <!-- 展开详情 -->
+        <view class="card-details {{expandedCards.readiness ? 'expanded' : ''}}">
+          <!-- 日间心率详情 -->
+          <view class="daytime-hr-section" wx:if="{{heartrateDetail && heartrateDetail.data_points_count > 0}}">
+            <view class="detail-section-title">☀️ 日间心率</view>
+
+            <!-- 日间静息心率 - 核心指标 -->
+            <view class="daytime-hr-hero">
+              <view class="daytime-hr-icon-bg">
+                <text class="daytime-hr-icon">☀</text>
+              </view>
+              <view class="daytime-hr-main">
+                <text class="daytime-hr-label">日间静息心率</text>
+                <view class="daytime-hr-value-row">
+                  <text class="daytime-hr-value">{{heartrateDetail.daytime_lowest_avg}}</text>
+                  <text class="daytime-hr-unit">bpm</text>
+                </view>
+                <view class="daytime-hr-time-row">
+                  <text class="daytime-hr-time-icon">🕐</text>
+                  <text class="daytime-hr-time">出现于 {{heartrateDetail.daytime_lowest_avg_time}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 活动心率范围 -->
+            <view class="hr-range-card">
+              <view class="hr-range-item">
+                <view class="hr-range-icon-wrap green-bg">
+                  <text class="hr-range-icon">↓</text>
+                </view>
+                <view class="hr-range-data">
+                  <text class="hr-range-value green">{{heartrateDetail.activity_hr_min}}</text>
+                  <text class="hr-range-label">最低</text>
+                </view>
+              </view>
+              <view class="hr-range-divider"></view>
+              <view class="hr-range-item">
+                <view class="hr-range-icon-wrap gray-bg">
+                  <text class="hr-range-icon">≈</text>
+                </view>
+                <view class="hr-range-data">
+                  <text class="hr-range-value">{{heartrateDetail.activity_hr_avg}}</text>
+                  <text class="hr-range-label">平均</text>
+                </view>
+              </view>
+              <view class="hr-range-divider"></view>
+              <view class="hr-range-item">
+                <view class="hr-range-icon-wrap orange-bg">
+                  <text class="hr-range-icon">↑</text>
+                </view>
+                <view class="hr-range-data">
+                  <text class="hr-range-value orange">{{heartrateDetail.activity_hr_max}}</text>
+                  <text class="hr-range-label">最高</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 贡献因子雷达图 - 使用wx:if解决原生canvas层叠问题 -->
+          <view class="radar-section" wx:if="{{expandedCards.readiness}}">
+            <view class="detail-section-title">贡献因子</view>
+            <view class="radar-container">
+              <canvas canvas-id="readinessRadar" class="radar-canvas"></canvas>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="empty-state" wx:else>
+        <text class="empty-icon">⚡</text>
+        <text class="empty-text">暂无准备度数据</text>
+      </view>
+    </view>
+
+    <!-- 活动数据卡片 - Oura -->
+    <view class="card activity-card glass-card card-appear" style="animation-delay: 0.35s">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="activity">
+        <view class="card-title-row">
+          <view class="card-icon-wrapper activity-icon-bg">
+            <text class="card-icon">🏃</text>
+          </view>
+          <view class="card-title-group">
+            <text class="card-title">活动数据</text>
+            <text class="card-subtitle">{{activityDate}}</text>
+          </view>
+        </view>
+        <view class="card-meta">
+          <text class="brand-tag oura">Oura</text>
+          <view class="expand-arrow {{expandedCards.activity ? 'expanded' : ''}}">
+            <text class="arrow-icon">›</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{activityData}}">
+        <!-- 双核心指标：久坐时间（负面） + 步数（正面） -->
+        <view class="activity-dual-hero">
+          <view class="activity-hero-item sedentary-hero">
+            <view class="zone-target-row">
+              <text class="activity-big-value {{activityData.sedentary_hours >= 8 ? 'danger-color' : activityData.sedentary_hours >= 6 ? 'warning-color' : 'gray-color'}}">{{activityData.sedentary_hours || 0}}</text>
+              <text class="activity-big-unit">小时</text>
+              <view class="target-badge {{activityData.sedentary_hours < 6 ? 'badge-success' : activityData.sedentary_hours < 8 ? 'badge-warning' : 'badge-danger'}}">
+                <text>{{activityData.sedentary_hours < 6 ? '良好' : activityData.sedentary_hours < 8 ? '偏多' : '过长'}}</text>
+              </view>
+            </view>
+            <text class="activity-big-label">🪑 久坐时间</text>
+            <text class="target-hint">建议≤6小时</text>
+          </view>
+          <view class="activity-hero-divider"></view>
+          <view class="activity-hero-item steps-hero">
+            <view class="zone-target-row">
+              <text class="activity-big-value steps">{{activityData.stepsDisplay || activityData.steps || 0}}</text>
+              <text class="activity-big-unit">{{activityData.stepsUnit || '步'}}</text>
+              <view class="target-badge {{activityData.steps >= 10000 ? 'badge-success' : activityData.steps >= 5000 ? 'badge-warning' : 'badge-info'}}">
+                <text>{{activityData.steps >= 10000 ? '达标' : activityData.steps >= 5000 ? '一般' : '不足'}}</text>
+              </view>
+            </view>
+            <text class="activity-big-label">👟 今日步数</text>
+            <text class="target-hint">目标10,000步</text>
+          </view>
+        </view>
+
+        <!-- 步数进度条（紧凑版） -->
+        <view class="activity-steps-progress">
+          <view class="steps-bar-bg">
+            <view class="steps-bar-fill" style="width: {{activityData.stepsProgress > 100 ? 100 : activityData.stepsProgress || 0}}%;"></view>
+          </view>
+          <text class="steps-target-text">{{activityData.stepsProgress || 0}}%</text>
+        </view>
+
+        <!-- 次要指标 - 3列紧凑布局 -->
+        <view class="activity-stats-row">
+          <view class="activity-stat-item">
+            <text class="activity-stat-value {{activityData.scoreColor}}">{{activityData.score || 0}}</text>
+            <text class="activity-stat-label">活动评分</text>
+          </view>
+          <view class="activity-stat-item">
+            <text class="activity-stat-value">{{activityData.active_calories || 0}}<text class="activity-stat-unit">kcal</text></text>
+            <text class="activity-stat-label">活动消耗</text>
+          </view>
+          <view class="activity-stat-item">
+            <text class="activity-stat-value {{activityData.totalActivityColor}}">{{activityData.total_activity_min || 0}}<text class="activity-stat-unit">min</text></text>
+            <text class="activity-stat-label">中高强度</text>
+          </view>
+        </view>
+
+        <!-- 展开详情 -->
+        <view class="card-details {{expandedCards.activity ? 'expanded' : ''}}">
+          <view class="detail-section-title">活动强度分布</view>
+          <view class="detail-grid">
+            <view class="detail-item">
+              <text class="detail-value {{activityData.highColor}}">{{activityData.high_min || 0}} <text class="detail-unit">min</text></text>
+              <text class="detail-label">高强度</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value {{activityData.mediumColor}}">{{activityData.medium_min || 0}} <text class="detail-unit">min</text></text>
+              <text class="detail-label">中强度</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value">{{activityData.low_min || 0}} <text class="detail-unit">min</text></text>
+              <text class="detail-label">低强度</text>
+            </view>
+          </view>
+
+          <view class="detail-section-title">时间分配</view>
+          <view class="detail-grid">
+            <view class="detail-item">
+              <text class="detail-value">{{activityData.rest_min || 0}} <text class="detail-unit">min</text></text>
+              <text class="detail-label">休息</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value blue">{{activityData.non_wear_min || 0}} <text class="detail-unit">min</text></text>
+              <text class="detail-label">未佩戴</text>
+            </view>
+            <view class="detail-item">
+              <text class="detail-value">{{activityData.inactivity_alerts || 0}} <text class="detail-unit">次</text></text>
+              <text class="detail-label">久坐提醒</text>
+            </view>
+          </view>
+
+          <!-- 贡献因子雷达图 - 使用wx:if解决原生canvas层叠问题 -->
+          <view class="radar-section" wx:if="{{expandedCards.activity}}">
+            <view class="detail-section-title">贡献因子</view>
+            <view class="radar-container">
+              <canvas canvas-id="activityRadar" class="radar-canvas"></canvas>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="empty-state" wx:else>
+        <text class="empty-icon">🚶</text>
+        <text class="empty-text">暂无活动数据</text>
+      </view>
+    </view>
+
+    <!-- 本周/上周训练总结卡片 -->
+    <view class="card weekly-card glass-card card-appear" style="animation-delay: 0.4s">
+      <view class="card-header">
+        <view class="card-title-row">
+          <view class="card-icon-wrapper weekly-icon-bg">
+            <text class="card-icon">📅</text>
+          </view>
+          <view class="card-title-group">
+            <text class="card-title">{{weeklyData && weeklyData.isLastWeek ? '上周训练' : '本周训练'}}</text>
+            <text class="card-subtitle" wx:if="{{weeklyData && weeklyData.isLastWeek}}">本周暂无训练</text>
+            <text class="card-subtitle" wx:elif="{{weeklyData}}">{{weeklyDateRange}}</text>
+          </view>
+        </view>
+        <text class="brand-tag polar">Polar</text>
+      </view>
+
+      <view wx:if="{{weeklyData}}">
+        <!-- 核心指标 - 周累计Zone2 -->
+        <view class="weekly-zone2-hero">
+          <view class="zone-target-row">
+            <text class="weekly-zone2-value zone2-color">{{weeklyData.zone2_min || 0}}</text>
+            <text class="weekly-zone2-unit">/250分钟</text>
+            <view class="target-badge {{weeklyData.zone2_min >= 250 ? 'badge-success' : weeklyData.zone2_min >= 200 ? 'badge-warning' : 'badge-info'}}">
+              <text>{{weeklyData.zone2_min >= 250 ? '达标' : weeklyData.zone2_min >= 200 ? '接近' : '进行中'}}</text>
+            </view>
+          </view>
+          <text class="weekly-zone2-label">🎯 周累计Zone2燃脂时长</text>
+          <view class="weekly-zone2-bar">
+            <view class="zone2-bar-track-new">
+              <view class="zone2-bar-fill-new" style="width: {{weeklyData.zone2_progress > 100 ? 100 : weeklyData.zone2_progress || 0}}%;"></view>
+            </view>
+            <text class="zone2-percent">{{weeklyData.zone2_progress || 0}}%</text>
+          </view>
+        </view>
+
+        <!-- 双指标区：训练天数 + 脂肪燃烧 -->
+        <view class="weekly-dual-stats">
+          <view class="weekly-stat-block">
+            <view class="stat-block-value">
+              <text class="stat-value-num">{{weeklyData.training_days || 0}}</text>
+              <text class="stat-value-suffix">/5天</text>
+            </view>
+            <text class="stat-block-label">训练天数</text>
+          </view>
+          <view class="weekly-stat-divider"></view>
+          <view class="weekly-stat-block">
+            <view class="stat-block-value">
+              <text class="stat-value-num orange">{{weeklyData.fat_burn || 0}}</text>
+              <text class="stat-value-suffix">克</text>
+            </view>
+            <text class="stat-block-label">脂肪燃烧</text>
+          </view>
+        </view>
+
+        <!-- 底部指标行 -->
+        <view class="weekly-stats-row">
+          <view class="weekly-stat-cell">
+            <text class="stat-cell-value">{{weeklyData.total_min || 0}}<text class="stat-cell-unit">min</text></text>
+            <text class="stat-cell-label">总时长</text>
+          </view>
+          <view class="weekly-stat-cell">
+            <text class="stat-cell-value">{{weeklyData.hi_min || 0}}<text class="stat-cell-unit">min</text></text>
+            <text class="stat-cell-label">高强度</text>
+          </view>
+          <view class="weekly-stat-cell">
+            <text class="stat-cell-value">{{weeklyData.weekly_trimp || 0}}</text>
+            <text class="stat-cell-label">周TRIMP</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="empty-state" wx:else>
+        <text class="empty-icon">📊</text>
+        <text class="empty-text">暂无本周数据</text>
+      </view>
+    </view>
+
+    <!-- 帮助按钮 -->
+    <view class="help-button card-appear" bindtap="showGlossary" style="animation-delay: 0.45s">
+      <text class="help-icon">📖</text>
+      <text class="help-text">数值解读</text>
+    </view>
+
+  </view>
+
+  <!-- 名词解释弹窗 -->
+  <view class="glossary-modal {{showGlossaryModal ? 'show' : ''}}" bindtap="hideGlossary">
+    <view class="glossary-content" catchtap="stopPropagation">
+      <view class="glossary-header">
+        <text class="glossary-title">📊 数值解读</text>
+        <view class="glossary-close" bindtap="hideGlossary">×</view>
+      </view>
+
+      <scroll-view class="glossary-scroll" scroll-y>
+        <!-- 训练指标 -->
+        <view class="glossary-section">
+          <view class="glossary-section-title green-title">🏋️ 训练指标</view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">Zone2 有氧区间</text>
+            <text class="glossary-desc">心率维持在最大心率60-70%的训练区间。这是脂肪供能比例最高的区间，能有效提升线粒体密度和有氧基础。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">建议目标：</text>
+              <text class="ref-value">每次45-60分钟，每周累计200-300分钟</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">Zone2训练时应能进行简单对话但无法唱歌，呼吸略加深但不喘</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">Zone4-5 高强度区间</text>
+            <text class="glossary-desc">Zone4为乳酸阈值区（80-90%最大心率），Zone5为最大摄氧量区（90-100%）。高强度训练能提升心肺能力上限，但恢复成本高。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">建议目标：</text>
+              <text class="ref-value">每次1-5分钟，每周不超过20-30分钟</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">⚠️</text>
+              <text class="tip-text">连续3天以上高强度训练可能导致过度疲劳，需关注HRV变化</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">TRIMP 训练负荷</text>
+            <text class="glossary-desc">Training Impulse，综合训练时长和心率强度计算的负荷指标。数值越高表示训练对身体的刺激越大。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考范围：</text>
+              <text class="ref-value">轻松训练50-100 | 中等训练100-200 | 高强度200+</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">周TRIMP应保持渐进增长（每周增幅≤10%），避免突然大幅增加</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">心率区间 Z1-Z5</text>
+            <text class="glossary-desc">基于最大心率百分比划分的五个训练强度区间，每个区间有不同的生理适应效果。</text>
+            <view class="glossary-zones">
+              <view class="zone-row"><text class="zone-name zone1">Z1 恢复区</text><text class="zone-range">50-60% · 主动恢复、热身冷身</text></view>
+              <view class="zone-row"><text class="zone-name zone2">Z2 燃脂区</text><text class="zone-range">60-70% · 有氧基础、脂肪燃烧</text></view>
+              <view class="zone-row"><text class="zone-name zone3">Z3 有氧区</text><text class="zone-range">70-80% · 有氧耐力、心肺效率</text></view>
+              <view class="zone-row"><text class="zone-name zone4">Z4 阈值区</text><text class="zone-range">80-90% · 乳酸阈值、速度耐力</text></view>
+              <view class="zone-row"><text class="zone-name zone5">Z5 极限区</text><text class="zone-range">90-100% · 最大摄氧量、爆发力</text></view>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">脂肪燃烧量</text>
+            <text class="glossary-desc">训练过程中消耗的脂肪克数，主要在Zone2区间达到最高效率。脂肪供能需要充足氧气，强度过高反而会切换到糖原供能。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考值：</text>
+              <text class="ref-value">Zone2训练1小时约燃烧30-50g脂肪</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 睡眠指标 -->
+        <view class="glossary-section">
+          <view class="glossary-section-title blue-title">😴 睡眠指标</view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">睡眠评分</text>
+            <text class="glossary-desc">Oura综合睡眠时长、效率、各阶段比例、心率等多维度计算的整体睡眠质量评分。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">评分解读：</text>
+              <text class="ref-value">85+最佳 | 70-84良好 | 70以下需关注</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">关注趋势比单日数值更重要，连续多天低于70分需要调整作息</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">深睡眠</text>
+            <text class="glossary-desc">也称慢波睡眠(SWS)，是身体物理修复的关键阶段。此时生长激素大量分泌，肌肉修复、免疫增强、记忆巩固都在此阶段进行。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">建议目标：</text>
+              <text class="ref-value">每晚60-120分钟，占总睡眠15-20%</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">深睡眠主要出现在前半夜，早睡有助于获得更多深睡眠</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">REM睡眠</text>
+            <text class="glossary-desc">快速眼动睡眠，大脑高度活跃的阶段。对情绪调节、记忆整合、创造力至关重要，做梦主要发生在此阶段。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">建议目标：</text>
+              <text class="ref-value">每晚90-120分钟，占总睡眠20-25%</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">REM睡眠主要出现在后半夜，睡眠不足时REM会被优先削减</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">睡眠效率</text>
+            <text class="glossary-desc">实际睡眠时间占在床总时间的比例。效率过低可能表示入睡困难、夜间频繁醒来或早醒。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考标准：</text>
+              <text class="ref-value">≥85%优秀 | 75-84%良好 | 75%以下需改善</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">避免在床上玩手机、工作，让大脑建立"床=睡眠"的条件反射</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">入睡延迟</text>
+            <text class="glossary-desc">从躺下到真正入睡所花的时间。过长可能表示睡前过度兴奋、焦虑或生物钟紊乱。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考标准：</text>
+              <text class="ref-value">≤15分钟理想 | 15-30分钟正常 | >30分钟偏长</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">翻身次数</text>
+            <text class="glossary-desc">睡眠期间身体翻转和移动的次数。适度翻身是正常的睡眠行为，但过于频繁可能影响深睡眠质量。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考标准：</text>
+              <text class="ref-value">10次以下优秀 | 10-20次正常 | 20次以上偏多</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">睡眠最低心率时间点</text>
+            <text class="glossary-desc">夜间心率降至最低点的时刻。理想情况下应出现在睡眠前半段（入睡后2-4小时），表示身体进入深度恢复状态。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">理想范围：</text>
+              <text class="ref-value">睡眠进度20-50%时出现最低心率</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">最低心率出现过晚（>50%）可能表示前半夜恢复不佳，需关注睡前习惯</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 恢复指标 -->
+        <view class="glossary-section">
+          <view class="glossary-section-title yellow-title">🔋 恢复指标</view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">准备度评分</text>
+            <text class="glossary-desc">Oura综合前一天活动、睡眠质量、HRV、静息心率、体温等多项指标计算的身体状态评分，反映当天适合进行高强度活动的程度。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">评分解读：</text>
+              <text class="ref-value">85+最佳状态 | 70-84良好 | 70以下建议休息</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">准备度低于70时建议以Zone1-2轻松训练为主，避免高强度</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">HRV 心率变异性</text>
+            <text class="glossary-desc">相邻心跳间隔时间的变化程度（毫秒）。HRV反映自主神经系统的平衡状态，是评估恢复和压力的核心指标。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">个人基线：</text>
+              <text class="ref-value">HRV因人而异，关注相对于自己基线的变化更重要</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">HRV比基线低15%+可能表示疲劳或压力，建议降低训练强度</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">静息心率</text>
+            <text class="glossary-desc">完全休息状态下的心率，通常在清晨醒来未起床时测量最准确。长期训练会使静息心率下降，但短期升高可能表示疲劳或生病。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考范围：</text>
+              <text class="ref-value">运动员40-60bpm | 普通成人60-80bpm</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">⚠️</text>
+              <text class="tip-text">静息心率突然升高5-10bpm以上，可能是过度训练或即将生病的信号</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">恢复指数</text>
+            <text class="glossary-desc">衡量夜间心率从睡前到最低点下降幅度的指标。下降幅度越大，说明副交感神经激活越充分，身体恢复越好。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考标准：</text>
+              <text class="ref-value">下降10-20bpm为良好恢复</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">体温偏差</text>
+            <text class="glossary-desc">当前皮肤温度与个人基线的偏差。体温受月经周期、免疫反应、环境等因素影响。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">正常范围：</text>
+              <text class="ref-value">±0.3°C以内为正常波动</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">⚠️</text>
+              <text class="tip-text">体温连续偏高0.5°C以上可能是免疫系统在对抗感染，建议休息</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">睡眠平衡</text>
+            <text class="glossary-desc">过去两周的睡眠时长与个人需求的匹配程度。负值表示睡眠债务累积，正值表示睡眠充足。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">理想状态：</text>
+              <text class="ref-value">保持在0附近，避免长期负债</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 活动指标 -->
+        <view class="glossary-section">
+          <view class="glossary-section-title orange-title">🏃 活动指标</view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">活动评分</text>
+            <text class="glossary-desc">Oura综合步数、活动消耗、中高强度活动时间、久坐时间等计算的日常活动水平评分。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">评分解读：</text>
+              <text class="ref-value">85+活跃 | 70-84正常 | 70以下活动不足</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">久坐时间</text>
+            <text class="glossary-desc">一天中处于静坐/躺卧状态的累计时间。久坐是独立的健康风险因素，即使有运动习惯也应减少久坐。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">建议目标：</text>
+              <text class="ref-value">每天≤6小时，每小时起身活动一次</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">设置久坐提醒，每45-60分钟起身走动2-3分钟</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">中高强度活动</text>
+            <text class="glossary-desc">心率达到中等以上强度的活动时间，包括快走、跑步、骑车等。WHO建议成人每周至少150分钟中等强度或75分钟高强度活动。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">每日目标：</text>
+              <text class="ref-value">≥30分钟中高强度活动</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 压力指标 -->
+        <view class="glossary-section">
+          <view class="glossary-section-title purple-title">😰 压力指标</view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">压力时间</text>
+            <text class="glossary-desc">通过HRV检测身体处于交感神经激活（战斗或逃跑）状态的时间。包括运动、工作压力、情绪波动、身体不适等各种压力源。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">参考标准：</text>
+              <text class="ref-value">每日压力时间应少于恢复时间</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">恢复时间</text>
+            <text class="glossary-desc">身体处于副交感神经主导（休息与消化）状态的时间。包括放松、冥想、轻度活动等低压力时段。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">理想比例：</text>
+              <text class="ref-value">恢复时间 > 压力时间，恢复占比≥50%</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">💡</text>
+              <text class="tip-text">如压力长期高于恢复，可尝试呼吸练习、冥想或降低训练强度</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">日评估</text>
+            <text class="glossary-desc">Oura对一天压力与恢复平衡状态的综合评价。</text>
+            <view class="glossary-zones">
+              <view class="zone-row"><text class="zone-name restored">已恢复</text><text class="zone-range">恢复时间充足，身体状态良好</text></view>
+              <view class="zone-row"><text class="zone-name normal">正常</text><text class="zone-range">压力与恢复基本平衡</text></view>
+              <view class="zone-row"><text class="zone-name stressed">压力大</text><text class="zone-range">压力时间过长，建议增加休息</text></view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 血氧指标 -->
+        <view class="glossary-section">
+          <view class="glossary-section-title red-title">🫁 血氧指标</view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">血氧饱和度 SpO2</text>
+            <text class="glossary-desc">血液中氧合血红蛋白的比例，反映身体获取和输送氧气的能力。睡眠期间的血氧水平对恢复质量有重要影响。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">正常范围：</text>
+              <text class="ref-value">95-100%正常 | 90-94%偏低 | 90%以下需就医</text>
+            </view>
+            <view class="glossary-tip">
+              <text class="tip-icon">⚠️</text>
+              <text class="tip-text">睡眠血氧频繁低于95%可能提示睡眠呼吸问题，建议咨询医生</text>
+            </view>
+          </view>
+
+          <view class="glossary-item">
+            <text class="glossary-term">呼吸频率</text>
+            <text class="glossary-desc">睡眠期间每分钟的呼吸次数。呼吸频率相对稳定，突然变化可能反映身体状态变化。</text>
+            <view class="glossary-reference">
+              <text class="ref-label">正常范围：</text>
+              <text class="ref-value">睡眠时12-20次/分钟</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

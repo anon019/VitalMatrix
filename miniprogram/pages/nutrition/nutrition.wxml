@@ -1,0 +1,220 @@
+<!-- pages/nutrition/nutrition.wxml -->
+<!-- 设计概念：自然餐桌 Natural Table -->
+<view class="page-container">
+  <!-- 装饰背景元素 -->
+  <view class="bg-decoration">
+    <view class="bg-circle circle-1"></view>
+    <view class="bg-circle circle-2"></view>
+    <view class="bg-circle circle-3"></view>
+  </view>
+
+  <!-- 加载状态 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <view class="loading-bowl">
+      <view class="bowl-body"></view>
+      <view class="steam steam-1"></view>
+      <view class="steam steam-2"></view>
+      <view class="steam steam-3"></view>
+    </view>
+    <text class="loading-text">正在准备...</text>
+  </view>
+
+  <view wx:else class="content">
+    <!-- 页面标题区 -->
+    <view class="page-header">
+      <view class="header-main">
+        <text class="page-title">饮食记录</text>
+        <text class="page-subtitle">记录每一餐，关爱每一天</text>
+      </view>
+      <view class="header-date">
+        <text class="date-day">{{currentDay}}</text>
+        <text class="date-week">{{currentWeekday}}</text>
+      </view>
+    </view>
+
+    <!-- 快捷上传区域 -->
+    <view class="upload-card">
+      <view class="upload-header">
+        <text class="upload-title">记录这一餐</text>
+      </view>
+
+      <!-- 餐次选择 - 胶囊式设计 -->
+      <view class="meal-selector">
+        <view class="meal-pill {{selectedMealType === 'breakfast' ? 'active' : ''}}"
+              data-type="breakfast" bindtap="selectMealType">
+          <text class="pill-icon">🌅</text>
+          <text class="pill-text">早餐</text>
+        </view>
+        <view class="meal-pill {{selectedMealType === 'lunch' ? 'active' : ''}}"
+              data-type="lunch" bindtap="selectMealType">
+          <text class="pill-icon">☀️</text>
+          <text class="pill-text">午餐</text>
+        </view>
+        <view class="meal-pill {{selectedMealType === 'dinner' ? 'active' : ''}}"
+              data-type="dinner" bindtap="selectMealType">
+          <text class="pill-icon">🌙</text>
+          <text class="pill-text">晚餐</text>
+        </view>
+        <view class="meal-pill {{selectedMealType === 'snack' ? 'active' : ''}}"
+              data-type="snack" bindtap="selectMealType">
+          <text class="pill-icon">🍎</text>
+          <text class="pill-text">加餐</text>
+        </view>
+      </view>
+
+      <!-- 拍照按钮 -->
+      <button class="capture-btn" bindtap="takePhoto">
+        <view class="btn-icon-wrap">
+          <text class="btn-icon">📷</text>
+        </view>
+        <text class="btn-text">拍照记录</text>
+        <view class="btn-arrow">→</view>
+      </button>
+    </view>
+
+    <!-- 今日营养概览 -->
+    <view wx:if="{{todaySummary}}" class="summary-section">
+      <view class="section-header">
+        <text class="section-title">今日营养</text>
+        <view class="section-badge">
+          <text class="badge-text">{{todaySummary.meals_count || 0}}餐</text>
+        </view>
+      </view>
+
+      <!-- 营养环形图卡片 -->
+      <view class="nutrition-overview">
+        <!-- 热量中心 -->
+        <view class="calorie-center">
+          <view class="calorie-ring">
+            <view class="ring-progress" style="--progress: {{calorieProgress}}deg;"></view>
+            <view class="ring-inner">
+              <text class="calorie-value">{{todaySummary.total_calories}}</text>
+              <text class="calorie-unit">千卡</text>
+            </view>
+          </view>
+          <text class="calorie-label">总热量</text>
+        </view>
+
+        <!-- 三大宏量元素 -->
+        <view class="macro-grid">
+          <view class="macro-item protein">
+            <view class="macro-bar">
+              <view class="bar-fill" style="height: {{proteinProgress}}%;"></view>
+            </view>
+            <view class="macro-info">
+              <text class="macro-value">{{todaySummary.total_protein}}</text>
+              <text class="macro-unit">g</text>
+            </view>
+            <text class="macro-label">蛋白质</text>
+          </view>
+          <view class="macro-item carbs">
+            <view class="macro-bar">
+              <view class="bar-fill" style="height: {{carbsProgress}}%;"></view>
+            </view>
+            <view class="macro-info">
+              <text class="macro-value">{{todaySummary.total_carbs}}</text>
+              <text class="macro-unit">g</text>
+            </view>
+            <text class="macro-label">碳水</text>
+          </view>
+          <view class="macro-item fat">
+            <view class="macro-bar">
+              <view class="bar-fill" style="height: {{fatProgress}}%;"></view>
+            </view>
+            <view class="macro-info">
+              <text class="macro-value">{{todaySummary.total_fat}}</text>
+              <text class="macro-unit">g</text>
+            </view>
+            <text class="macro-label">脂肪</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 餐食记录列表 -->
+    <view class="meals-section">
+      <view class="section-header">
+        <text class="section-title">最近记录</text>
+      </view>
+
+      <!-- 空状态 -->
+      <view wx:if="{{meals.length === 0}}" class="empty-state">
+        <view class="empty-illustration">
+          <text class="empty-plate">🍽️</text>
+          <view class="empty-sparkle sparkle-1">✨</view>
+          <view class="empty-sparkle sparkle-2">✨</view>
+        </view>
+        <text class="empty-title">还没有饮食记录</text>
+        <text class="empty-hint">拍张照片开始记录今天的美食吧</text>
+      </view>
+
+      <!-- 餐食列表 -->
+      <view wx:else class="meals-list">
+        <view wx:for="{{meals}}" wx:key="id"
+              class="meal-card anim-slide-up"
+              style="animation-delay: {{index * 60}}ms;"
+              data-meal-id="{{item.id}}" bindtap="viewMealDetail">
+
+          <!-- 餐食图片 -->
+          <view class="meal-image-wrap">
+            <image class="meal-image" src="{{item.thumbnail_path}}" mode="aspectFill" />
+            <view class="meal-type-tag">{{item.meal_type_label}}</view>
+          </view>
+
+          <!-- 餐食信息 -->
+          <view class="meal-content">
+            <view class="meal-top-row">
+              <text class="meal-time">{{item.meal_time_formatted}}</text>
+              <text wx:if="{{item.model_name}}" class="ai-badge">{{item.model_name}}</text>
+            </view>
+
+            <!-- 营养数据 -->
+            <view class="meal-nutrition-row">
+              <view class="nutrition-pill calories-pill">
+                <text class="pill-value">{{item.total_calories}}</text>
+                <text class="pill-unit">kcal</text>
+              </view>
+              <view class="nutrition-mini">
+                <text class="mini-item">P {{item.total_protein}}g</text>
+                <text class="mini-sep">·</text>
+                <text class="mini-item">C {{item.total_carbs}}g</text>
+                <text class="mini-sep">·</text>
+                <text class="mini-item">F {{item.total_fat}}g</text>
+              </view>
+            </view>
+
+            <!-- 评分 -->
+            <view wx:if="{{item.gemini_analysis && item.gemini_analysis.nutrition_analysis}}" class="meal-rating-row">
+              <view class="rating-chip {{item.ratingColorClass}}">
+                <text class="chip-label">{{item.gemini_analysis.nutrition_analysis.overall_rating}}</text>
+                <text class="chip-score">{{item.gemini_analysis.nutrition_analysis.overall_score}}分</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 箭头 -->
+          <view class="meal-arrow">
+            <text class="arrow-icon">›</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分析中弹窗 -->
+  <view wx:if="{{analyzing}}" class="analyzing-overlay">
+    <view class="analyzing-modal">
+      <view class="analyzing-animation">
+        <view class="scan-ring"></view>
+        <text class="scan-icon">🔍</text>
+      </view>
+      <text class="analyzing-title">AI 分析中</text>
+      <text class="analyzing-subtitle">正在识别食物和营养成分...</text>
+      <view class="progress-dots">
+        <view class="dot"></view>
+        <view class="dot"></view>
+        <view class="dot"></view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,15 @@
+<svg width="81" height="81" viewBox="0 0 81 81" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- AI：大脑+星光，象征智能健康助理 - 激活态 -->
+  <g stroke="#2E7D32" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- 大脑轮廓 - 带填充 -->
+    <path d="M28 55 C18 55 14 45 16 38 C14 32 18 24 26 22 C28 16 36 12 44 14 C52 12 60 18 60 26 C68 28 70 38 66 46 C68 54 62 62 52 62 C48 66 38 66 34 62 C30 64 24 60 28 55" fill="#E8F5E9"/>
+    <!-- 大脑沟回 -->
+    <path d="M32 32 Q40 28 48 32"/>
+    <path d="M30 42 Q40 38 50 42"/>
+    <path d="M40 26 L40 52"/>
+    <!-- 星光点缀 - 激活态更亮 -->
+    <circle cx="62" cy="16" r="2.5" fill="#2E7D32" stroke="none"/>
+    <circle cx="70" cy="24" r="2" fill="#2E7D32" stroke="none"/>
+    <circle cx="18" cy="18" r="2" fill="#2E7D32" stroke="none"/>
+  </g>
+</svg>

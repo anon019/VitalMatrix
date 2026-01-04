@@ -1,0 +1,904 @@
+/* pages/nutrition/nutrition.wxss */
+/* 设计概念：自然餐桌 Natural Table */
+/* 美学风格：有机自然 + 现代精致 */
+
+/* ========== CSS变量定义 ========== */
+page {
+  /* 主色调 - 自然暖色系 */
+  --color-bg-primary: #FAF7F2;
+  --color-bg-secondary: #F5F0E8;
+  --color-bg-card: #FFFFFF;
+
+  /* 强调色 */
+  --color-accent-green: #2D5A27;
+  --color-accent-green-light: #4A7C43;
+  --color-accent-amber: #D97706;
+  --color-accent-amber-light: #F59E0B;
+
+  /* 营养色彩 */
+  --color-calories: #E85D04;
+  --color-protein: #9D4EDD;
+  --color-carbs: #E9C46A;
+  --color-fat: #52B788;
+
+  /* 文字色彩 */
+  --color-text-primary: #2C2417;
+  --color-text-secondary: #6B5E4C;
+  --color-text-muted: #9C8E7C;
+  --color-text-light: #B8A898;
+
+  /* 边框和阴影 */
+  --color-border: rgba(44, 36, 23, 0.08);
+  --shadow-sm: 0 2rpx 8rpx rgba(44, 36, 23, 0.06);
+  --shadow-md: 0 4rpx 16rpx rgba(44, 36, 23, 0.08);
+  --shadow-lg: 0 8rpx 32rpx rgba(44, 36, 23, 0.12);
+
+  /* 圆角 */
+  --radius-sm: 12rpx;
+  --radius-md: 20rpx;
+  --radius-lg: 28rpx;
+  --radius-xl: 40rpx;
+  --radius-full: 200rpx;
+
+  background-color: var(--color-bg-primary);
+}
+
+/* ========== 页面容器 ========== */
+.page-container {
+  min-height: 100vh;
+  padding-bottom: 60rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ========== 装饰背景 ========== */
+.bg-decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 600rpx;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bg-circle {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.4;
+}
+
+.circle-1 {
+  width: 300rpx;
+  height: 300rpx;
+  background: radial-gradient(circle, rgba(45, 90, 39, 0.15) 0%, transparent 70%);
+  top: -100rpx;
+  right: -50rpx;
+}
+
+.circle-2 {
+  width: 200rpx;
+  height: 200rpx;
+  background: radial-gradient(circle, rgba(217, 119, 6, 0.12) 0%, transparent 70%);
+  top: 80rpx;
+  left: -60rpx;
+}
+
+.circle-3 {
+  width: 250rpx;
+  height: 250rpx;
+  background: radial-gradient(circle, rgba(233, 196, 106, 0.18) 0%, transparent 70%);
+  top: 200rpx;
+  right: 100rpx;
+}
+
+/* ========== 加载状态 ========== */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  padding: 40rpx;
+}
+
+.loading-bowl {
+  position: relative;
+  width: 120rpx;
+  height: 80rpx;
+}
+
+.bowl-body {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100rpx;
+  height: 60rpx;
+  background: linear-gradient(180deg, #E8DFD3 0%, #D4C8B8 100%);
+  border-radius: 0 0 50rpx 50rpx;
+  box-shadow: inset 0 -6rpx 12rpx rgba(0,0,0,0.1);
+}
+
+.steam {
+  position: absolute;
+  bottom: 50rpx;
+  width: 8rpx;
+  height: 30rpx;
+  background: linear-gradient(180deg, transparent 0%, rgba(150, 140, 130, 0.4) 100%);
+  border-radius: 4rpx;
+  animation: steam-rise 1.5s ease-in-out infinite;
+}
+
+.steam-1 {
+  left: 30rpx;
+  animation-delay: 0s;
+}
+
+.steam-2 {
+  left: 55rpx;
+  animation-delay: 0.3s;
+}
+
+.steam-3 {
+  left: 80rpx;
+  animation-delay: 0.6s;
+}
+
+@keyframes steam-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-40rpx) scaleY(1.5);
+  }
+}
+
+.loading-text {
+  margin-top: 32rpx;
+  font-size: 28rpx;
+  color: var(--color-text-muted);
+  letter-spacing: 2rpx;
+}
+
+/* ========== 内容区域 ========== */
+.content {
+  position: relative;
+  padding: 24rpx;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== 页面头部 ========== */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28rpx;
+  padding: 8rpx 4rpx;
+}
+
+.header-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: 2rpx;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+  letter-spacing: 1rpx;
+}
+
+.header-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--color-bg-card);
+  padding: 16rpx 24rpx;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.date-day {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--color-accent-green);
+  line-height: 1;
+}
+
+.date-week {
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: var(--color-text-muted);
+}
+
+/* ========== 上传卡片 ========== */
+.upload-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+  box-shadow: var(--shadow-md);
+}
+
+.upload-header {
+  margin-bottom: 20rpx;
+}
+
+.upload-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* ========== 餐次选择器 - 胶囊设计 ========== */
+.meal-selector {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.meal-pill {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx 8rpx;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 2rpx solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.meal-pill.active {
+  background: linear-gradient(135deg, var(--color-accent-green) 0%, var(--color-accent-green-light) 100%);
+  border-color: var(--color-accent-green);
+  transform: translateY(-4rpx);
+  box-shadow: 0 6rpx 20rpx rgba(45, 90, 39, 0.25);
+}
+
+.pill-icon {
+  font-size: 32rpx;
+  margin-bottom: 6rpx;
+}
+
+.pill-text {
+  font-size: 22rpx;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.meal-pill.active .pill-text {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+/* ========== 拍照按钮 ========== */
+.capture-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 24rpx 28rpx;
+  background: linear-gradient(135deg, var(--color-accent-amber) 0%, var(--color-accent-amber-light) 100%);
+  border-radius: var(--radius-full);
+  border: none;
+  box-shadow: 0 6rpx 24rpx rgba(217, 119, 6, 0.3);
+  transition: all 0.3s ease;
+}
+
+.capture-btn::after {
+  border: none;
+}
+
+.capture-btn:active {
+  transform: scale(0.98);
+  box-shadow: 0 4rpx 16rpx rgba(217, 119, 6, 0.25);
+}
+
+.btn-icon-wrap {
+  width: 56rpx;
+  height: 56rpx;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon {
+  font-size: 28rpx;
+}
+
+.btn-text {
+  flex: 1;
+  margin-left: 20rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+  text-align: left;
+}
+
+.btn-arrow {
+  font-size: 32rpx;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 300;
+}
+
+/* ========== 区块标题 ========== */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+  padding: 0 4rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.section-badge {
+  background: linear-gradient(135deg, var(--color-accent-green) 0%, var(--color-accent-green-light) 100%);
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-full);
+}
+
+.badge-text {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+}
+
+/* ========== 今日营养概览 ========== */
+.summary-section {
+  margin-bottom: 28rpx;
+}
+
+.nutrition-overview {
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: 28rpx;
+  box-shadow: var(--shadow-md);
+}
+
+/* 热量环形图 */
+.calorie-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 32rpx;
+}
+
+.calorie-ring {
+  position: relative;
+  width: 140rpx;
+  height: 140rpx;
+}
+
+.ring-progress {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--color-calories) 0deg,
+    var(--color-calories) var(--progress, 0deg),
+    rgba(232, 93, 4, 0.15) var(--progress, 0deg),
+    rgba(232, 93, 4, 0.15) 360deg
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 16rpx), #fff calc(100% - 16rpx));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 16rpx), #fff calc(100% - 16rpx));
+}
+
+.ring-inner {
+  position: absolute;
+  inset: 16rpx;
+  background: var(--color-bg-card);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.calorie-value {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--color-calories);
+  line-height: 1;
+}
+
+.calorie-unit {
+  font-size: 18rpx;
+  color: var(--color-text-muted);
+  margin-top: 4rpx;
+}
+
+.calorie-label {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: var(--color-text-muted);
+}
+
+/* 宏量元素网格 */
+.macro-grid {
+  flex: 1;
+  display: flex;
+  justify-content: space-around;
+  gap: 20rpx;
+}
+
+.macro-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.macro-bar {
+  width: 32rpx;
+  height: 80rpx;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: var(--radius-full);
+  transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.macro-item.protein .bar-fill {
+  background: linear-gradient(180deg, var(--color-protein) 0%, #7B2CBF 100%);
+}
+
+.macro-item.carbs .bar-fill {
+  background: linear-gradient(180deg, var(--color-carbs) 0%, #DDA15E 100%);
+}
+
+.macro-item.fat .bar-fill {
+  background: linear-gradient(180deg, var(--color-fat) 0%, #40916C 100%);
+}
+
+.macro-info {
+  display: flex;
+  align-items: baseline;
+  margin-top: 10rpx;
+}
+
+.macro-value {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.macro-unit {
+  font-size: 18rpx;
+  color: var(--color-text-muted);
+  margin-left: 2rpx;
+}
+
+.macro-label {
+  font-size: 20rpx;
+  color: var(--color-text-muted);
+  margin-top: 4rpx;
+}
+
+.macro-item.protein .macro-value {
+  color: var(--color-protein);
+}
+
+.macro-item.carbs .macro-value {
+  color: #C59545;
+}
+
+.macro-item.fat .macro-value {
+  color: var(--color-fat);
+}
+
+/* ========== 餐食记录区域 ========== */
+.meals-section {
+  margin-bottom: 24rpx;
+}
+
+/* ========== 空状态 ========== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80rpx 40rpx;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.empty-illustration {
+  position: relative;
+  margin-bottom: 24rpx;
+}
+
+.empty-plate {
+  font-size: 80rpx;
+  opacity: 0.7;
+}
+
+.empty-sparkle {
+  position: absolute;
+  font-size: 24rpx;
+  animation: sparkle 2s ease-in-out infinite;
+}
+
+.sparkle-1 {
+  top: -10rpx;
+  right: -20rpx;
+  animation-delay: 0s;
+}
+
+.sparkle-2 {
+  bottom: 10rpx;
+  left: -20rpx;
+  animation-delay: 0.5s;
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 12rpx;
+}
+
+.empty-hint {
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+}
+
+/* ========== 餐食列表 ========== */
+.meals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+/* 入场动画 */
+.anim-slide-up {
+  animation: slideUp 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== 餐食卡片 ========== */
+.meal-card {
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  padding: 16rpx;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+}
+
+.meal-card:active {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-md);
+}
+
+/* 餐食图片 */
+.meal-image-wrap {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+  flex-shrink: 0;
+}
+
+.meal-image {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  object-fit: cover;
+}
+
+.meal-type-tag {
+  position: absolute;
+  bottom: 6rpx;
+  left: 6rpx;
+  background: rgba(0, 0, 0, 0.6);
+  color: #FFFFFF;
+  font-size: 18rpx;
+  font-weight: 600;
+  padding: 4rpx 10rpx;
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(4px);
+}
+
+/* 餐食内容 */
+.meal-content {
+  flex: 1;
+  margin-left: 16rpx;
+  min-width: 0;
+}
+
+.meal-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.meal-time {
+  font-size: 22rpx;
+  color: var(--color-text-muted);
+}
+
+.ai-badge {
+  font-size: 18rpx;
+  color: var(--color-text-light);
+  background: var(--color-bg-secondary);
+  padding: 4rpx 10rpx;
+  border-radius: var(--radius-sm);
+}
+
+/* 营养数据行 */
+.meal-nutrition-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.nutrition-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+}
+
+.calories-pill {
+  background: linear-gradient(135deg, rgba(232, 93, 4, 0.12) 0%, rgba(232, 93, 4, 0.06) 100%);
+  padding: 6rpx 12rpx;
+  border-radius: var(--radius-full);
+}
+
+.pill-value {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--color-calories);
+}
+
+.pill-unit {
+  font-size: 18rpx;
+  color: var(--color-text-muted);
+}
+
+.nutrition-mini {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.mini-item {
+  font-size: 20rpx;
+  color: var(--color-text-muted);
+}
+
+.mini-sep {
+  font-size: 16rpx;
+  color: var(--color-text-light);
+}
+
+/* 评分行 */
+.meal-rating-row {
+  margin-top: 4rpx;
+}
+
+.rating-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 12rpx;
+  border-radius: var(--radius-full);
+  background: #6B7280;
+}
+
+.chip-label {
+  font-size: 20rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+}
+
+.chip-score {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 评分颜色 */
+.rating-chip.rating-excellent {
+  background: linear-gradient(135deg, #22C55E 0%, #16A34A 100%);
+}
+
+.rating-chip.rating-good {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+}
+
+.rating-chip.rating-fair {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+}
+
+.rating-chip.rating-poor {
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+}
+
+/* 箭头 */
+.meal-arrow {
+  padding: 0 8rpx;
+  margin-left: 8rpx;
+}
+
+.arrow-icon {
+  font-size: 36rpx;
+  color: var(--color-text-light);
+  font-weight: 300;
+}
+
+/* ========== 分析中弹窗 ========== */
+.analyzing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(44, 36, 23, 0.6);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.3s ease;
+}
+
+.analyzing-modal {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: 48rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: var(--shadow-lg);
+  animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.analyzing-animation {
+  position: relative;
+  width: 100rpx;
+  height: 100rpx;
+  margin-bottom: 24rpx;
+}
+
+.scan-ring {
+  position: absolute;
+  inset: 0;
+  border: 4rpx solid transparent;
+  border-top-color: var(--color-accent-green);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.scan-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+}
+
+.analyzing-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8rpx;
+}
+
+.analyzing-subtitle {
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+  margin-bottom: 24rpx;
+}
+
+.progress-dots {
+  display: flex;
+  gap: 12rpx;
+}
+
+.dot {
+  width: 12rpx;
+  height: 12rpx;
+  background: var(--color-accent-green);
+  border-radius: 50%;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotPulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

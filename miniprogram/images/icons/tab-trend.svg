@@ -1,0 +1,16 @@
+<svg width="81" height="81" viewBox="0 0 81 81" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 趋势：上升曲线+数据点，象征健康进步 -->
+  <g stroke="#666666" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- 坐标轴 -->
+    <path d="M16 65 L16 16"/>
+    <path d="M16 65 L65 65"/>
+    <!-- 上升趋势线 -->
+    <path d="M20 55 Q30 52 35 45 T50 30 T62 18"/>
+    <!-- 数据点 -->
+    <circle cx="20" cy="55" r="3" fill="#666666"/>
+    <circle cx="35" cy="45" r="3" fill="#666666"/>
+    <circle cx="50" cy="30" r="3" fill="#666666"/>
+    <!-- 箭头 -->
+    <path d="M58 22 L62 18 L58 14" fill="none"/>
+  </g>
+</svg>

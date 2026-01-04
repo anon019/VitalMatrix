@@ -1,0 +1,765 @@
+/* pages/trends/trends.wxss */
+
+/* ========== 通用样式 ========== */
+.container {
+  padding: 0 24rpx 40rpx;
+  background-color: #F5F5F5;
+  min-height: 100vh;
+}
+
+/* 新加载状态 */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 50vh;
+  gap: 32rpx;
+}
+
+.loading-spinner {
+  position: relative;
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.spinner-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 4rpx solid transparent;
+  animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.spinner-ring:nth-child(1) {
+  border-top-color: #2E7D32;
+  animation-delay: -0.45s;
+}
+
+.spinner-ring:nth-child(2) {
+  border-top-color: #43A047;
+  animation-delay: -0.3s;
+}
+
+.spinner-ring:nth-child(3) {
+  border-top-color: #66BB6A;
+  animation-delay: -0.15s;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #666;
+  font-weight: 500;
+}
+
+/* 内容区域 */
+.content-area {
+  padding-top: 8rpx;
+}
+
+/* ========== 新英雄区头部 ========== */
+.trends-hero {
+  position: relative;
+  padding: 80rpx 32rpx 48rpx;
+  margin: 0 -24rpx 24rpx;
+  background: linear-gradient(135deg, #2E7D32 0%, #388E3C 50%, #43A047 100%);
+  border-radius: 0 0 48rpx 48rpx;
+  overflow: hidden;
+}
+
+/* 装饰性背景元素 */
+.hero-decoration {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.deco-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.circle-1 {
+  width: 200rpx;
+  height: 200rpx;
+  top: -60rpx;
+  right: -40rpx;
+}
+
+.circle-2 {
+  width: 120rpx;
+  height: 120rpx;
+  top: 100rpx;
+  right: 80rpx;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.deco-line {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.1);
+  transform: rotate(-15deg);
+}
+
+.line-1 {
+  width: 2rpx;
+  height: 160rpx;
+  top: 20rpx;
+  left: 25%;
+}
+
+.line-2 {
+  width: 2rpx;
+  height: 100rpx;
+  top: 60rpx;
+  left: 35%;
+}
+
+/* 头部内容 */
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 8rpx;
+}
+
+.hero-title {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: 2rpx;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8rpx 20rpx;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 24rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+  backdrop-filter: blur(10rpx);
+}
+
+.hero-date {
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 4rpx;
+}
+
+/* ========== 分组区块样式 ========== */
+.section-group {
+  margin-bottom: 32rpx;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 8rpx 16rpx;
+  gap: 16rpx;
+}
+
+.section-icon {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-emoji {
+  font-size: 32rpx;
+}
+
+/* Polar 训练 - 红色主题 */
+.polar-icon {
+  background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+}
+
+/* Oura 睡眠 - 靛蓝主题 */
+.oura-icon {
+  background: linear-gradient(135deg, #E8EAF6 0%, #C5CAE9 100%);
+}
+
+/* 压力恢复 - 青绿主题 */
+.stress-icon {
+  background: linear-gradient(135deg, #E0F2F1 0%, #B2DFDB 100%);
+}
+
+/* 健康指标 - 粉红心脏主题 */
+.health-icon {
+  background: linear-gradient(135deg, #FCE4EC 0%, #F8BBD9 100%);
+}
+
+.section-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.section-subtitle {
+  font-size: 22rpx;
+  color: #999;
+  font-weight: 400;
+}
+
+/* ========== 卡片基础样式 ========== */
+.card {
+  background-color: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+  border: 1rpx solid rgba(0, 0, 0, 0.03);
+}
+
+.trend-card {
+  background-color: #FFFFFF;
+}
+
+/* 卡片入场动画 */
+.card-animate {
+  animation: cardSlideIn 0.5s ease-out forwards;
+  animation-delay: var(--card-delay, 0s);
+  opacity: 0;
+  transform: translateY(20rpx);
+}
+
+@keyframes cardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== 卡片头部 ========== */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.card-hint {
+  font-size: 20rpx;
+  color: #999;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 4rpx 12rpx;
+  border-radius: 12rpx;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+}
+
+.card-icon {
+  font-size: 44rpx;
+  margin-right: 12rpx;
+  position: relative;
+  top: -4rpx;
+}
+
+.card-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* 品牌标签 */
+.brand-tag {
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  color: #FFFFFF;
+}
+
+.brand-tag.polar {
+  background-color: #E60000;
+}
+
+.brand-tag.oura {
+  background-color: #2F4A73;
+}
+
+/* ========== 图表容器 ========== */
+.chart-container {
+  position: relative;
+  min-height: 300rpx;
+  padding-top: 40rpx;
+}
+
+/* 均值虚线 - 横跨整个图表 */
+/* 50%参考线 */
+.reference-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2rpx dashed rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+
+.avg-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2rpx dashed #F57C00;
+  z-index: 10;
+}
+
+/* 均值标签 - 居中在平均列上方 */
+.avg-value-label {
+  position: absolute;
+  left: 5%;
+  font-size: 20rpx;
+  font-weight: 600;
+  color: #F57C00;
+  z-index: 11;
+  white-space: nowrap;
+}
+
+/* 标签在虚线上方 */
+.avg-value-label.label-above {
+  transform: translate(-50%, -120%);
+}
+
+/* 标签在虚线下方 */
+.avg-value-label.label-below {
+  transform: translate(-50%, 20%);
+}
+
+/* ========== 柱状图区域 ========== */
+.chart-bars {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 260rpx;
+  padding-bottom: 48rpx;
+}
+
+.bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 平均列特殊样式 */
+.bar-item.avg-item {
+  flex: 0.8;
+}
+
+.bar-wrapper {
+  width: 100%;
+  height: 220rpx;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  position: relative;
+}
+
+.bar {
+  width: 56rpx;
+  border-radius: 8rpx 8rpx 0 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 10rpx;
+  min-height: 40rpx;
+  transition: height 0.3s ease;
+}
+
+/* ========== 叠加柱状图样式 ========== */
+.stacked-bar {
+  width: 56rpx;
+  border-radius: 8rpx 8rpx 0 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 40rpx;
+  transition: height 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 叠加柱体的基础部分 */
+.bar-base {
+  width: 100%;
+  border-radius: 0 0 0 0;
+  flex-shrink: 0;
+}
+
+/* 叠加柱体的增量部分（午睡加分） */
+.bar-boost {
+  width: 100%;
+  border-radius: 8rpx 8rpx 0 0;
+  flex-shrink: 0;
+}
+
+/* 午睡加分颜色 - 各卡片浅色版本 */
+/* 睡眠评分叠加：浅靛蓝色（基于sleep-blue #5C6BC0） */
+.bar-boost.sleep-score-boost {
+  background: linear-gradient(180deg, #C5CAE9 0%, #9FA8DA 100%);
+}
+
+/* 睡眠时长叠加：浅天蓝色（基于sleep-light #64B5F6） */
+.bar-boost.sleep-duration-boost {
+  background: linear-gradient(180deg, #BBDEFB 0%, #90CAF9 100%);
+}
+
+/* 深睡眠叠加：浅深蓝色（基于deep-blue #3949AB） */
+.bar-boost.deep-sleep-boost {
+  background: linear-gradient(180deg, #9FA8DA 0%, #7986CB 100%);
+}
+
+/* REM睡眠叠加：浅紫罗兰色（基于violet #9575CD） */
+.bar-boost.rem-sleep-boost {
+  background: linear-gradient(180deg, #D1C4E9 0%, #B39DDB 100%);
+}
+
+/* 准备度叠加：浅琥珀色（基于amber #FFB300） */
+.bar-boost.readiness-boost {
+  background: linear-gradient(180deg, #FFE082 0%, #FFD54F 100%);
+}
+
+/* 叠加柱状图中的数值显示 */
+/* 基础部分数值（主睡眠、主时长等） */
+.bar-base .base-value {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 20rpx;
+  color: #FFFFFF;
+  font-weight: 600;
+  text-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.3);
+  padding: 8rpx 0;
+  line-height: 1.2;
+}
+
+/* 叠加部分数值（午睡加分） */
+.bar-boost .boost-value {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 18rpx;
+  color: #FFFFFF;
+  font-weight: 600;
+  text-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.3);
+  padding: 6rpx 0;
+  line-height: 1.2;
+}
+
+/* 空数据的叠加柱体 */
+.stacked-bar.empty-bar {
+  min-height: 30rpx;
+  height: 30rpx !important;
+  background: rgba(200, 200, 200, 0.3);
+}
+
+.stacked-bar.empty-bar .base-value {
+  color: rgba(100, 100, 100, 0.6);
+  font-weight: 400;
+}
+
+/* 叠加柱状图中基础部分的颜色 */
+.bar-base.sleep-blue {
+  background: linear-gradient(180deg, #7986CB 0%, #5C6BC0 100%);
+}
+
+.bar-base.sleep-light {
+  background: linear-gradient(180deg, #90CAF9 0%, #64B5F6 100%);
+}
+
+.bar-base.amber {
+  background: linear-gradient(180deg, #FFD54F 0%, #FFB300 100%);
+}
+
+/* 深睡眠深蓝色基础 */
+.bar-base.deep-blue {
+  background: linear-gradient(180deg, #5C6BC0 0%, #3949AB 100%);
+}
+
+/* REM紫罗兰色基础 */
+.bar-base.violet {
+  background: linear-gradient(180deg, #B39DDB 0%, #9575CD 100%);
+}
+
+/* 空数据柱体样式 - 基础 */
+.bar.empty-bar {
+  min-height: 30rpx;
+  height: 30rpx !important;
+}
+
+.bar.empty-bar .bar-value {
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 400;
+}
+
+/* 空数据柱体 - 各颜色浅色版本 */
+.bar.orange.empty-bar {
+  background: rgba(255, 153, 68, 0.3) !important;
+}
+
+.bar.blue.empty-bar {
+  background: rgba(74, 159, 217, 0.3) !important;
+}
+
+.bar.yellow.empty-bar {
+  background: rgba(255, 170, 51, 0.3) !important;
+}
+
+.bar.sleep-blue.empty-bar {
+  background: rgba(92, 107, 192, 0.3) !important;
+}
+
+.bar.sleep-light.empty-bar {
+  background: rgba(100, 181, 246, 0.3) !important;
+}
+
+.bar.deep-blue.empty-bar {
+  background: rgba(57, 73, 171, 0.3) !important;
+}
+
+.bar.violet.empty-bar {
+  background: rgba(149, 117, 205, 0.3) !important;
+}
+
+.bar.amber.empty-bar {
+  background: rgba(255, 179, 0, 0.3) !important;
+}
+
+.bar.teal.empty-bar {
+  background: rgba(38, 166, 154, 0.3) !important;
+}
+
+.bar.gray.empty-bar {
+  background: rgba(117, 117, 117, 0.3) !important;
+}
+
+.bar.purple.empty-bar {
+  background: rgba(123, 31, 162, 0.3) !important;
+}
+
+.bar.stress-orange.empty-bar {
+  background: rgba(230, 74, 25, 0.3) !important;
+}
+
+.bar.green.empty-bar {
+  background: rgba(76, 175, 80, 0.3) !important;
+}
+
+.bar-value {
+  font-size: 20rpx;
+  color: #FFFFFF;
+  font-weight: 600;
+  text-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.2);
+}
+
+.bar-label {
+  font-size: 26rpx;
+  color: #666666;
+  margin-top: 12rpx;
+  text-align: center;
+}
+
+/* ========== 柱状图颜色 ========== */
+/* 橙色 - 脂肪燃烧, Zone2时长 */
+.bar.orange {
+  background: linear-gradient(180deg, #FFBB77 0%, #FF9944 100%);
+}
+
+/* 蓝色 - 步数 */
+.bar.blue {
+  background: linear-gradient(180deg, #6DB3E8 0%, #4A9FD9 100%);
+}
+
+/* 黄橙色 - 训练卡路里 */
+.bar.yellow {
+  background: linear-gradient(180deg, #FFCC66 0%, #FFAA33 100%);
+}
+
+/* 睡眠靛蓝色 - 睡眠评分 */
+.bar.sleep-blue {
+  background: linear-gradient(180deg, #7986CB 0%, #5C6BC0 100%);
+}
+
+/* 睡眠浅蓝色 - 睡眠总时长 */
+.bar.sleep-light {
+  background: linear-gradient(180deg, #90CAF9 0%, #64B5F6 100%);
+}
+
+/* 深睡眠深蓝色 - 深睡眠 */
+.bar.deep-blue {
+  background: linear-gradient(180deg, #5C6BC0 0%, #3949AB 100%);
+}
+
+/* REM紫罗兰色 - REM睡眠 */
+.bar.violet {
+  background: linear-gradient(180deg, #B39DDB 0%, #9575CD 100%);
+}
+
+/* 准备度琥珀色 - 准备度评分 */
+.bar.amber {
+  background: linear-gradient(180deg, #FFD54F 0%, #FFB300 100%);
+}
+
+/* 活动青绿色 - 活动评分 */
+.bar.teal {
+  background: linear-gradient(180deg, #4DB6AC 0%, #26A69A 100%);
+}
+
+/* 灰色 - 久坐时间 */
+.bar.gray {
+  background: linear-gradient(180deg, #9E9E9E 0%, #757575 100%);
+}
+
+/* 红色 - 血氧饱和度 */
+.bar.red {
+  background: linear-gradient(180deg, #E57373 0%, #D32F2F 100%);
+}
+
+/* 呼吸紊乱黄色 */
+.bar.breathing-yellow {
+  background: linear-gradient(180deg, #FFD54F 0%, #FFAB40 100%);
+}
+
+/* 紫色 - 压力时间（已弃用，保留兼容） */
+.bar.purple {
+  background: linear-gradient(180deg, #B39DDB 0%, #7B1FA2 100%);
+}
+
+/* 橙红色 - 压力时间（新） */
+.bar.stress-orange {
+  background: linear-gradient(180deg, #FFAB91 0%, #E64A19 100%);
+}
+
+/* 绿色 - 恢复时间 */
+.bar.green {
+  background: linear-gradient(180deg, #81C784 0%, #4CAF50 100%);
+}
+
+/* ========== 空状态 ========== */
+.empty {
+  padding: 60rpx 0;
+  text-align: center;
+  color: #999;
+  font-size: 28rpx;
+}
+
+/* ========== 核心/控制指标标签 - 优雅柔和设计 ========== */
+/* 核心指标标签 - 柔和渐变，呼吸感 */
+.key-metric-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 14rpx;
+  margin-left: 12rpx;
+  background: rgba(46, 125, 50, 0.08);
+  border-radius: 20rpx;
+  font-size: 18rpx;
+  font-weight: 500;
+  color: #43A047;
+  letter-spacing: 1rpx;
+}
+
+/* 控制指标标签 - 低饱和度橙调 */
+.control-metric-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 14rpx;
+  margin-left: 12rpx;
+  background: rgba(255, 152, 0, 0.08);
+  border-radius: 20rpx;
+  font-size: 18rpx;
+  font-weight: 500;
+  color: #FB8C00;
+  letter-spacing: 1rpx;
+}
+
+/* 高亮卡片样式 - 微妙的左侧装饰线 */
+.highlight-card {
+  position: relative;
+  border-left: 3rpx solid rgba(46, 125, 50, 0.4);
+}
+
+.highlight-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 32rpx;
+  bottom: 32rpx;
+  width: 3rpx;
+  background: linear-gradient(180deg, transparent, rgba(46, 125, 50, 0.6), transparent);
+  border-radius: 2rpx;
+}
+
+/* HRV 心率变异性 - 品红色 */
+.bar.hrv-magenta {
+  background: linear-gradient(180deg, #F48FB1 0%, #EC407A 100%);
+}
+
+.bar.hrv-magenta.empty-bar {
+  background: rgba(236, 64, 122, 0.3) !important;
+}
+
+/* 静息心率 - 深红色 */
+.bar.rhr-red {
+  background: linear-gradient(180deg, #EF9A9A 0%, #E53935 100%);
+}
+
+.bar.rhr-red.empty-bar {
+  background: rgba(229, 57, 53, 0.3) !important;
+}
+
+/* 血氧 - 红色（与主题一致） */
+.bar.spo2-red {
+  background: linear-gradient(180deg, #EF9A9A 0%, #D32F2F 100%);
+}
+
+.bar.spo2-red.empty-bar {
+  background: rgba(211, 47, 47, 0.3) !important;
+}
+
+/* 呼吸频率 - 青色 */
+.bar.breath-cyan {
+  background: linear-gradient(180deg, #80DEEA 0%, #00ACC1 100%);
+}
+
+.bar.breath-cyan.empty-bar {
+  background: rgba(0, 172, 193, 0.3) !important;
+}
+
+/* ========== 底部留白 ========== */
+.bottom-spacer {
+  height: 40rpx;
+}
