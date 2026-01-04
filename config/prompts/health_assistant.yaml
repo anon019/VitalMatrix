@@ -1,0 +1,227 @@
+system_prompt: |
+  你是一个专业的个人健康助理AI，专注于心血管健康和降脂训练指导。
+  你的建议基于运动生理学和心率训练理论，特别关注Zone2有氧训练和高强度间歇训练的平衡。
+
+  核心专业知识：
+  1. Zone2训练（最大心率的60-70%）是有氧基础和脂肪代谢的关键，建议每周200-300分钟
+  2. 高强度训练(Zone4-5，最大心率85%以上)能提升VO2max，但应适量，避免过度应激和皮质醇升高
+  3. 训练负荷管理：通过TRIMP（训练冲量）评估训练压力，防止过度训练综合征
+  4. 静息心率下降是心血管适应性提升的重要标志
+  5. 心血管健康的关键指标：Zone2耐受性、心率恢复速度、静息心率
+
+  恢复状态评估知识：
+  1. 睡眠是恢复的基础：深睡≥1.5小时、REM≥1.5小时是理想状态，效率>85%表示睡眠质量好
+  2. HRV（心率变异性）是自主神经系统恢复的核心指标，HRV持续下降提示身体压力/疲劳
+  3. 准备度评分综合反映身体恢复状态，<70分建议降低训练强度或休息
+  4. 静息心率升高可能提示过度训练、生病前兆或恢复不足
+  5. 压力与恢复的平衡：恢复时长应大于压力时长，否则需要主动恢复
+
+  你的职责：
+  - 基于用户训练数据（心率区间、训练负荷）和恢复数据（睡眠、HRV、准备度）提供科学的运动建议
+  - 综合分析训练压力和恢复状态，动态调整训练强度建议
+  - 识别训练风险（过度训练、训练不足、高强度过量、恢复不足）
+  - 提供可执行的行动建议（拉伸、恢复、营养补充、睡眠改善等）
+  - 追踪心血管健康进展，关注长期趋势
+
+  输出要求：
+  - 建议必须具体、可执行
+  - 用通俗易懂的语言解释专业概念
+  - 强调个性化，基于用户实际数据而非理论模板
+  - JSON格式输出，严格遵守schema
+
+user_prompt_template: |
+  ## 用户基本信息
+  {user_profile}
+  健康目标：{health_goal}
+  当前训练方案：{training_plan}
+
+  ## 昨日训练数据
+  - Zone2时长：{zone2_min}分钟
+  - Zone4-5时长：{hi_min}分钟
+  - 总训练时长：{total_duration_min}分钟
+  - 训练负荷（TRIMP）：{trimp}
+  - 平均心率：{avg_hr} bpm
+  - 运动类型：{sport_type}
+
+  ## 最近7天训练汇总
+  - Zone2累计：{weekly_zone2}分钟
+  - 高强度累计：{weekly_hi}分钟
+  - 总训练时长：{weekly_total}分钟
+  - 训练天数：{training_days}天
+  - 休息天数：{rest_days}天
+  - 周训练负荷：{weekly_trimp}
+
+  ## 昨日恢复数据（Oura）
+  {oura_data_section}
+
+  ## 风险标记
+  {flags_description}
+
+  ## 任务
+  请基于以上用户个人信息和健康数据，生成今日（{today_date}）的综合健康评估与建议。
+  注意：结合用户的年龄、身高、体重、心率等个人特征，提供个性化的训练、恢复和生活方式建议。
+
+  输出JSON格式（严格遵守以下结构）：
+  ```json
+  {
+    "summary": "一句话总结今日建议（30字以内）",
+    "yesterday_assessment": {
+      "training_score": 85,
+      "training_comment": "昨日训练评价（Zone2达标情况、强度控制等，50字以内）",
+      "sleep_score": 78,
+      "sleep_comment": "睡眠质量评价（深睡、REM、HRV等，50字以内）",
+      "recovery_score": 80,
+      "recovery_comment": "恢复状态评价（准备度、压力等，50字以内）",
+      "overall_score": 81,
+      "overall_comment": "综合评价（训练+恢复+睡眠的整体状态，80字以内）"
+    },
+    "training_advice": {
+      "intensity": "rest|zone2|zone4-5|active_recovery",
+      "duration_min": "建议训练时长（如：45-60，或0表示休息）",
+      "rationale": "建议理由，结合用户实际数据说明（100字以内）"
+    },
+    "risk_assessment": {
+      "level": "low|medium|high",
+      "warnings": [
+        "风险提示1（如果存在）",
+        "风险提示2（如果存在）"
+      ]
+    },
+    "action_items": [
+      {
+        "task": "具体行动1（如：晚间进行10分钟静态拉伸）",
+        "priority": "high|medium|low",
+        "rationale": "为什么要做这个（20字以内）"
+      },
+      {
+        "task": "具体行动2",
+        "priority": "high|medium|low",
+        "rationale": "理由"
+      },
+      {
+        "task": "具体行动3",
+        "priority": "high|medium|low",
+        "rationale": "理由"
+      }
+    ],
+    "cardiovascular_insights": "心血管健康分析（基于训练数据的长期趋势分析，80-150字）"
+  }
+  ```
+
+health_goal_default: "降脂心血管健康优化，通过Zone2有氧训练提升脂肪代谢能力，适量高强度训练提升心肺功能"
+
+training_plan_default: "Zone2 55分钟 + Zone4-5 2分钟"
+
+response_schema:
+  type: object
+  required:
+    - summary
+    - training_advice
+    - risk_assessment
+    - action_items
+    - cardiovascular_insights
+  properties:
+    summary:
+      type: string
+      description: 一句话总结
+      maxLength: 50
+    training_advice:
+      type: object
+      required:
+        - intensity
+        - duration_min
+        - rationale
+      properties:
+        intensity:
+          type: string
+          enum:
+            - rest
+            - zone2
+            - zone4-5
+            - active_recovery
+          description: 训练强度
+        duration_min:
+          type: string
+          description: 建议时长范围
+        rationale:
+          type: string
+          description: 建议理由
+          maxLength: 200
+    risk_assessment:
+      type: object
+      required:
+        - level
+        - warnings
+      properties:
+        level:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          description: 风险等级
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 风险提示列表
+    action_items:
+      type: array
+      minItems: 3
+      maxItems: 5
+      items:
+        type: object
+        required:
+          - task
+          - priority
+          - rationale
+        properties:
+          task:
+            type: string
+            description: 具体行动
+          priority:
+            type: string
+            enum:
+              - high
+              - medium
+              - low
+          rationale:
+            type: string
+            description: 行动理由
+            maxLength: 50
+    cardiovascular_insights:
+      type: string
+      description: 心血管健康分析
+      minLength: 50
+      maxLength: 300
+
+# 风险标记说明模板
+risk_flags:
+  zone2_low:
+    name: "Zone2不足"
+    description: "昨日Zone2训练时长低于目标下限"
+    severity: medium
+  hi_excessive:
+    name: "高强度过量"
+    description: "昨日高强度训练超出建议范围"
+    severity: medium
+  consecutive_high:
+    name: "连续高强度"
+    description: "最近3天连续进行高强度训练"
+    severity: high
+  weekly_low:
+    name: "周训练量不足"
+    description: "最近7天总训练量低于最低建议"
+    severity: low
+  weekly_overload:
+    name: "周训练负荷过载"
+    description: "最近7天训练负荷过高，需要注意恢复"
+    severity: high
+  weekly_hi_excessive:
+    name: "周高强度过量"
+    description: "最近7天高强度训练累计超出建议上限"
+    severity: high
+  insufficient_rest:
+    name: "休息不足"
+    description: "连续训练天数过多，缺乏恢复日"
+    severity: medium
