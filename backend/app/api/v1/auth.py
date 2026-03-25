@@ -1,6 +1,7 @@
 """
 认证API - 微信登录、JWT生成
 """
+import hmac
 import logging
 from typing import Optional
 from datetime import datetime, timedelta
@@ -12,8 +13,10 @@ from jose import jwt
 import httpx
 
 from app.database.session import get_db
+from app.api.dependencies import resolve_default_user
 from app.models.user import User
 from app.config import settings
+from app.utils.datetime_helper import now_hk
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -89,8 +92,8 @@ async def wechat_login(
             # 创建新用户
             user = User(
                 openid=openid,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                created_at=now_hk(),
+                updated_at=now_hk(),
             )
             db.add(user)
             await db.commit()
@@ -130,24 +133,16 @@ async def simple_login(
     如果配置了密码则验证，否则直接登录
     返回 7 天有效期的 token
     """
-    # 如果配置了密码，则需要验证
+    # 如果配置了密码，则需要验证（使用常数时间比较防止时序攻击）
     if settings.WEB_ACCESS_PASSWORD:
-        if request.password != settings.WEB_ACCESS_PASSWORD:
+        if not hmac.compare_digest(request.password or "", settings.WEB_ACCESS_PASSWORD):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="密码错误"
             )
 
     try:
-        # 查询第一个用户
-        result = await db.execute(select(User).limit(1))
-        user = result.scalar_one_or_none()
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="系统中没有用户"
-            )
+        user = await resolve_default_user(db)
 
         # 生成 7 天有效期的 token
         access_token = create_access_token(user.id, expires_days=7)

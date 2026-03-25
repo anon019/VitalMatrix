@@ -3,13 +3,11 @@
 """
 from __future__ import annotations
 
-import os
 import logging
 import uuid
 from datetime import datetime, date, timedelta
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
-from sqlalchemy import select, func, and_, desc
+from typing import List, Optional, Dict, Any
+from sqlalchemy import select, func, and_, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,17 +15,9 @@ from app.models.nutrition import MealRecord, FoodItem, NutritionDailySummary, Me
 from app.models.user import User
 from app.services.gemini_service import get_gemini_service
 from app.services.file_storage import get_file_storage
-from app.schemas.nutrition import (
-    MealRecordCreate,
-    FoodItemCreate,
-    MealRecordResponse,
-    NutritionDailySummaryResponse
-)
+from app.utils.datetime_helper import today_hk, start_of_day_hk
 
 logger = logging.getLogger(__name__)
-
-# 获取 backend 根目录
-BACKEND_ROOT = Path(__file__).parent.parent.parent
 
 
 class NutritionService:
@@ -66,12 +56,13 @@ class NutritionService:
         Returns:
             分析结果和保存的meal_id
         """
-        try:
-            # 生成meal_id（用于文件命名）
-            meal_id = uuid.uuid4()
+        meal_id = uuid.uuid4()
+        photo_path = None
+        thumbnail_path = None
 
+        try:
             # 1. 保存照片文件（返回web路径和绝对路径）
-            photo_path, thumbnail_path, abs_photo_path, abs_thumbnail_path = await self.file_storage.save_meal_photo(
+            photo_path, thumbnail_path, abs_photo_path, _ = await self.file_storage.save_meal_photo(
                 user_id=str(user_id),
                 meal_id=str(meal_id),
                 file_content=image_content,
@@ -105,7 +96,8 @@ class NutritionService:
             )
 
             # 5. 更新每日营养汇总
-            await self.update_daily_summary(db, user_id, meal_time.date())
+            await self.update_daily_summary(db, user_id, meal_time.date(), commit=False)
+            await db.commit()
 
             logger.info(f"Meal analysis and save completed for user {user_id}, meal {meal_id}")
 
@@ -116,6 +108,13 @@ class NutritionService:
             }
 
         except Exception as e:
+            if photo_path or thumbnail_path:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                self.file_storage.delete_meal_photos(photo_path, thumbnail_path)
+
             logger.error(f"Failed to analyze and save meal: {str(e)}", exc_info=True)
             raise
 
@@ -130,7 +129,7 @@ class NutritionService:
         # 计算年龄
         age = None
         if user.birth_year:
-            age = datetime.now().year - user.birth_year
+            age = today_hk().year - user.birth_year
 
         return {
             "gender": "男",  # 暂时写死，后续可以从用户表添加gender字段
@@ -198,7 +197,7 @@ class NutritionService:
             )
             db.add(food_item)
 
-        await db.commit()
+        await db.flush()
 
         # 重新查询以加载 food_items 关联关系（解决 ResponseValidationError）
         result = await db.execute(
@@ -259,10 +258,12 @@ class NutritionService:
         conditions = [MealRecord.user_id == user_id]
 
         if start_date:
-            conditions.append(func.date(MealRecord.meal_time) >= start_date)
+            start_datetime = start_of_day_hk(start_date)
+            conditions.append(MealRecord.meal_time >= start_datetime)
 
         if end_date:
-            conditions.append(func.date(MealRecord.meal_time) <= end_date)
+            next_day = end_date + timedelta(days=1)
+            conditions.append(MealRecord.meal_time < start_of_day_hk(next_day))
 
         if meal_type:
             conditions.append(MealRecord.meal_type == meal_type)
@@ -311,19 +312,21 @@ class NutritionService:
                 logger.warning(f"Meal {meal_id} not found for user {user_id}")
                 return False
 
-            # 删除照片文件
-            if meal.photo_path:
-                self.file_storage.delete_meal_photos(meal.photo_path, meal.thumbnail_path)
-
             # 获取餐次日期（用于后续更新daily summary）
             meal_date = meal.meal_time.date()
+            photo_path = meal.photo_path
+            thumbnail_path = meal.thumbnail_path
 
             # 删除数据库记录（FoodItems会级联删除）
             await db.delete(meal)
+            await self.update_daily_summary(db, user_id, meal_date, commit=False)
             await db.commit()
 
-            # 更新每日营养汇总
-            await self.update_daily_summary(db, user_id, meal_date)
+            if photo_path:
+                try:
+                    self.file_storage.delete_meal_photos(photo_path, thumbnail_path)
+                except Exception as exc:
+                    logger.warning(f"Meal {meal_id} 数据已删除，但清理图片失败: {str(exc)}")
 
             logger.info(f"Deleted meal {meal_id}")
             return True
@@ -337,7 +340,9 @@ class NutritionService:
         self,
         db: AsyncSession,
         user_id: uuid.UUID,
-        target_date: date
+        target_date: date,
+        *,
+        commit: bool = True,
     ) -> NutritionDailySummary:
         """
         计算并更新每日营养汇总
@@ -351,44 +356,79 @@ class NutritionService:
             更新后的每日汇总记录
         """
         try:
-            # 查询当日所有餐次
-            result = await db.execute(
-                select(MealRecord).where(
+            await db.flush()
+            start_datetime = start_of_day_hk(target_date)
+            next_day = start_of_day_hk(target_date + timedelta(days=1))
+
+            stats = await db.execute(
+                select(
+                    func.count(MealRecord.id).label("meals_count"),
+                    func.coalesce(func.sum(MealRecord.total_calories), 0).label("total_calories"),
+                    func.coalesce(func.sum(MealRecord.total_protein), 0).label("total_protein"),
+                    func.coalesce(func.sum(MealRecord.total_carbs), 0).label("total_carbs"),
+                    func.coalesce(func.sum(MealRecord.total_fat), 0).label("total_fat"),
+                    func.coalesce(func.sum(MealRecord.total_fiber), 0).label("total_fiber"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (MealRecord.meal_type == MealType.BREAKFAST, MealRecord.total_calories),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ).label("breakfast_calories"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (MealRecord.meal_type == MealType.LUNCH, MealRecord.total_calories),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ).label("lunch_calories"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (MealRecord.meal_type == MealType.DINNER, MealRecord.total_calories),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ).label("dinner_calories"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (MealRecord.meal_type == MealType.SNACK, MealRecord.total_calories),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ).label("snack_calories"),
+                )
+                .where(
                     and_(
                         MealRecord.user_id == user_id,
-                        func.date(MealRecord.meal_time) == target_date
+                        MealRecord.meal_time >= start_datetime,
+                        MealRecord.meal_time < next_day,
                     )
                 )
             )
-            meals = result.scalars().all()
+            row = stats.one()
 
-            # 计算总营养（转换为float避免Decimal混用问题）
-            total_calories = sum(float(m.total_calories or 0) for m in meals)
-            total_protein = sum(float(m.total_protein or 0) for m in meals)
-            total_carbs = sum(float(m.total_carbs or 0) for m in meals)
-            total_fat = sum(float(m.total_fat or 0) for m in meals)
-            total_fiber = sum(float(m.total_fiber or 0) for m in meals)
+            total_calories = float(row.total_calories or 0)
+            total_protein = float(row.total_protein or 0)
+            total_carbs = float(row.total_carbs or 0)
+            total_fat = float(row.total_fat or 0)
+            total_fiber = float(row.total_fiber or 0)
+            breakfast_calories = float(row.breakfast_calories or 0)
+            lunch_calories = float(row.lunch_calories or 0)
+            dinner_calories = float(row.dinner_calories or 0)
+            snack_calories = float(row.snack_calories or 0)
 
-            # 按餐次类型统计热量
-            breakfast_calories = sum(
-                float(m.total_calories or 0) for m in meals if m.meal_type == MealType.BREAKFAST
-            )
-            lunch_calories = sum(
-                float(m.total_calories or 0) for m in meals if m.meal_type == MealType.LUNCH
-            )
-            dinner_calories = sum(
-                float(m.total_calories or 0) for m in meals if m.meal_type == MealType.DINNER
-            )
-            snack_calories = sum(
-                float(m.total_calories or 0) for m in meals if m.meal_type == MealType.SNACK
-            )
-
-            # 计算营养警示标记
             flags = self._calculate_nutrition_flags(
                 total_calories, total_protein, total_carbs, total_fat
             )
 
-            # 查找或创建NutritionDailySummary
             summary_result = await db.execute(
                 select(NutritionDailySummary).where(
                     and_(
@@ -399,6 +439,8 @@ class NutritionService:
             )
             summary = summary_result.scalar_one_or_none()
 
+            meals_count = int(row.meals_count or 0)
+
             if summary:
                 # 更新现有记录
                 summary.total_calories = total_calories
@@ -406,7 +448,7 @@ class NutritionService:
                 summary.total_carbs = total_carbs
                 summary.total_fat = total_fat
                 summary.total_fiber = total_fiber
-                summary.meals_count = len(meals)
+                summary.meals_count = meals_count
                 summary.breakfast_calories = breakfast_calories
                 summary.lunch_calories = lunch_calories
                 summary.dinner_calories = dinner_calories
@@ -422,7 +464,7 @@ class NutritionService:
                     total_carbs=total_carbs,
                     total_fat=total_fat,
                     total_fiber=total_fiber,
-                    meals_count=len(meals),
+                    meals_count=meals_count,
                     breakfast_calories=breakfast_calories,
                     lunch_calories=lunch_calories,
                     dinner_calories=dinner_calories,
@@ -431,67 +473,20 @@ class NutritionService:
                 )
                 db.add(summary)
 
-            await db.commit()
-            await db.refresh(summary)
+            if commit:
+                await db.commit()
+                await db.refresh(summary)
+            else:
+                await db.flush()
 
             logger.info(f"Updated daily summary for {target_date}: {total_calories}kcal")
             return summary
 
         except Exception as e:
             logger.error(f"Failed to update daily summary: {str(e)}", exc_info=True)
-            await db.rollback()
+            if commit:
+                await db.rollback()
             raise
-
-    def _calculate_nutrition_flags(
-        self,
-        total_calories: float,
-        total_protein: float,
-        total_carbs: float,
-        total_fat: float
-    ) -> Dict[str, Any]:
-        """
-        计算营养警示标记
-
-        Args:
-            total_calories: 总热量
-            total_protein: 总蛋白质
-            total_carbs: 总碳水
-            total_fat: 总脂肪
-
-        Returns:
-            警示标记字典
-        """
-        flags = {}
-
-        # 热量警示（基于2000kcal/天标准）
-        if total_calories > 2500:
-            flags["calorie_high"] = True
-        elif total_calories < 1200:
-            flags["calorie_low"] = True
-
-        # 蛋白质警示（建议1.0-1.2g/kg，假设70kg体重）
-        if total_protein < 50:
-            flags["protein_low"] = True
-        elif total_protein > 150:
-            flags["protein_high"] = True
-
-        # 碳水警示（占总热量50-60%）
-        if total_calories > 0:
-            carbs_ratio = (total_carbs * 4) / total_calories
-            if carbs_ratio > 0.65:
-                flags["carbs_high"] = True
-            elif carbs_ratio < 0.40:
-                flags["carbs_low"] = True
-
-        # 脂肪警示（占总热量20-30%）
-        if total_calories > 0:
-            fat_ratio = (total_fat * 9) / total_calories
-            if fat_ratio > 0.35:
-                flags["fat_high"] = True
-            elif fat_ratio < 0.15:
-                flags["fat_low"] = True
-
-        return flags
 
     async def get_daily_summary(
         self,
@@ -539,10 +534,7 @@ class NutritionService:
 
         # 构建图片绝对路径
         photo_path = meal.photo_path
-        if photo_path.startswith("/uploads"):
-            abs_photo_path = str(BACKEND_ROOT / photo_path.lstrip("/"))
-        else:
-            abs_photo_path = photo_path
+        abs_photo_path = str(self.file_storage.get_absolute_path(photo_path))
 
         # 验证图片存在
         import os
@@ -599,10 +591,9 @@ class NutritionService:
             )
             db.add(food_item)
 
-        await db.commit()
-
         # 更新每日营养汇总
-        await self.update_daily_summary(db, user_id, meal.meal_time.date())
+        await self.update_daily_summary(db, user_id, meal.meal_time.date(), commit=False)
+        await db.commit()
 
         # 重新查询以加载 food_items
         result = await db.execute(
@@ -633,7 +624,7 @@ class NutritionService:
             7天的每日汇总列表
         """
         if not end_date:
-            end_date = date.today()
+            end_date = today_hk()
 
         start_date = end_date - timedelta(days=6)
 

@@ -10,7 +10,7 @@ from sqlalchemy import select, func, and_
 
 from app.models.polar import PolarExercise
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
-from app.utils.datetime_helper import get_week_start
+from app.utils.datetime_helper import get_week_start, today_hk
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -22,30 +22,30 @@ class TrainingMetricsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def calculate_trimp(self, exercise: PolarExercise) -> float:
+    def calculate_trimp(self, exercise: PolarExercise) -> float:
         """
         计算TRIMP训练负荷
-        
+
         Args:
             exercise: 训练记录
-            
+
         Returns:
             TRIMP值
         """
         # 如果Polar提供了cardio_load，优先使用
         if exercise.cardio_load:
             return float(exercise.cardio_load)
-        
+
         # 否则自己计算TRIMP
         zone_weights = [1.0, 1.25, 1.5, 1.75, 2.0]
         zones = [
-            exercise.zone1_sec,
-            exercise.zone2_sec,
-            exercise.zone3_sec,
-            exercise.zone4_sec,
-            exercise.zone5_sec,
+            int(exercise.zone1_sec),
+            int(exercise.zone2_sec),
+            int(exercise.zone3_sec),
+            int(exercise.zone4_sec),
+            int(exercise.zone5_sec),
         ]
-        
+
         trimp = sum(z * w for z, w in zip(zones, zone_weights)) / 60
         return round(trimp, 2)
 
@@ -54,43 +54,65 @@ class TrainingMetricsService:
     ) -> Optional[DailyTrainingSummary]:
         """
         计算日训练总结
-        
+
         Args:
             user_id: 用户ID
             target_date: 目标日期
-            
+
         Returns:
             日总结对象
         """
-        # 查询当日所有训练
+        # 查询目标日期汇总数据（数据库端聚合）
+        from app.utils.datetime_helper import start_of_day_hk
+
+        start_time = start_of_day_hk(target_date)
+        end_time = start_of_day_hk(target_date + timedelta(days=1))
+
         result = await self.db.execute(
-            select(PolarExercise)
+            select(
+                func.count(PolarExercise.id).label("sessions_count"),
+                func.coalesce(func.sum(PolarExercise.duration_sec), 0).label("total_duration_sec"),
+                func.coalesce(func.sum(PolarExercise.zone2_sec), 0).label("total_zone2_sec"),
+                func.coalesce(
+                    func.sum(PolarExercise.zone4_sec + PolarExercise.zone5_sec), 0
+                ).label("total_hi_sec"),
+                func.coalesce(func.sum(PolarExercise.calories), 0).label("total_calories"),
+                func.avg(PolarExercise.avg_hr).label("avg_hr"),
+                func.coalesce(func.sum(PolarExercise.zone1_sec), 0).label("zone1_sec"),
+                func.coalesce(func.sum(PolarExercise.zone2_sec), 0).label("zone2_agg_sec"),
+                func.coalesce(func.sum(PolarExercise.zone3_sec), 0).label("zone3_sec"),
+                func.coalesce(func.sum(PolarExercise.zone4_sec), 0).label("zone4_sec"),
+                func.coalesce(func.sum(PolarExercise.zone5_sec), 0).label("zone5_sec"),
+            )
             .where(
                 and_(
                     PolarExercise.user_id == user_id,
-                    func.date(PolarExercise.start_time) == target_date,
+                    PolarExercise.start_time >= start_time,
+                    PolarExercise.start_time < end_time,
                 )
             )
-            .order_by(PolarExercise.start_time)
         )
-        exercises = result.scalars().all()
+        row = result.one()
 
-        if not exercises:
+        sessions_count = int(row.sessions_count or 0)
+        if sessions_count == 0:
             logger.info(f"用户{user_id}在{target_date}无训练记录")
             return None
 
-        # 聚合计算
-        total_duration_sec = sum(e.duration_sec for e in exercises)
-        total_zone2_sec = sum(e.zone2_sec for e in exercises)
-        total_hi_sec = sum(e.zone4_sec + e.zone5_sec for e in exercises)
-        total_calories = sum(e.calories or 0 for e in exercises)
-        
-        # 计算平均心率
-        avg_hrs = [e.avg_hr for e in exercises if e.avg_hr]
-        avg_hr = int(sum(avg_hrs) / len(avg_hrs)) if avg_hrs else None
+        total_duration_sec = int(row.total_duration_sec)
+        total_zone2_sec = int(row.total_zone2_sec)
+        total_hi_sec = int(row.total_hi_sec)
+        total_calories = int(row.total_calories)
+        avg_hr = int(row.avg_hr) if row.avg_hr is not None else None
 
-        # 计算总TRIMP
-        trimp = sum([await self.calculate_trimp(e) for e in exercises])
+        trimp = (
+            float(row.zone1_sec) * 1.0
+            + float(row.zone2_agg_sec) * 1.25
+            + float(row.zone3_sec) * 1.5
+            + float(row.zone4_sec) * 1.75
+            + float(row.zone5_sec) * 2.0
+        ) / 60
+        trimp = round(trimp, 2)
 
         # 评估风险标记
         flags = await self._assess_daily_flags(
@@ -117,7 +139,7 @@ class TrainingMetricsService:
             summary.zone2_min = total_zone2_sec // 60
             summary.hi_min = total_hi_sec // 60
             summary.trimp = trimp
-            summary.sessions_count = len(exercises)
+            summary.sessions_count = sessions_count
             summary.total_calories = total_calories if total_calories > 0 else None
             summary.avg_hr = avg_hr
             summary.flags = flags
@@ -130,7 +152,7 @@ class TrainingMetricsService:
                 zone2_min=total_zone2_sec // 60,
                 hi_min=total_hi_sec // 60,
                 trimp=trimp,
-                sessions_count=len(exercises),
+                sessions_count=sessions_count,
                 total_calories=total_calories if total_calories > 0 else None,
                 avg_hr=avg_hr,
                 flags=flags,
@@ -156,22 +178,27 @@ class TrainingMetricsService:
     ) -> Optional[WeeklyTrainingSummary]:
         """
         计算周训练总结
-        
+
         Args:
             user_id: 用户ID
             week_start_date: 周起始日期（默认为本周一）
-            
+
         Returns:
             周总结对象
         """
         if week_start_date is None:
-            week_start_date = get_week_start(date.today())
+            week_start_date = get_week_start(today_hk())
 
         week_end_date = week_start_date + timedelta(days=6)
 
-        # 查询该周的日总结
         result = await self.db.execute(
-            select(DailyTrainingSummary)
+            select(
+                func.coalesce(func.sum(DailyTrainingSummary.total_duration_min), 0).label("total_duration_min"),
+                func.coalesce(func.sum(DailyTrainingSummary.zone2_min), 0).label("zone2_min"),
+                func.coalesce(func.sum(DailyTrainingSummary.hi_min), 0).label("hi_min"),
+                func.coalesce(func.sum(DailyTrainingSummary.trimp), 0).label("weekly_trimp"),
+                func.count(DailyTrainingSummary.id).label("training_days"),
+            )
             .where(
                 and_(
                     DailyTrainingSummary.user_id == user_id,
@@ -181,19 +208,17 @@ class TrainingMetricsService:
             )
             .order_by(DailyTrainingSummary.date)
         )
-        daily_summaries = result.scalars().all()
+        row = result.one()
 
-        if not daily_summaries:
+        training_days = int(row.training_days or 0)
+        if training_days == 0:
             logger.info(f"用户{user_id}在周{week_start_date}无训练记录")
             return None
 
-        # 聚合计算
-        total_duration_min = sum(d.total_duration_min for d in daily_summaries)
-        zone2_min = sum(d.zone2_min for d in daily_summaries)
-        hi_min = sum(d.hi_min for d in daily_summaries)
-        weekly_trimp = sum(d.trimp for d in daily_summaries)
-
-        training_days = len(daily_summaries)
+        total_duration_min = int(row.total_duration_min)
+        zone2_min = int(row.zone2_min)
+        hi_min = int(row.hi_min)
+        weekly_trimp = float(row.weekly_trimp)
         rest_days = 7 - training_days
 
         # 查询是否已存在
@@ -270,7 +295,7 @@ class TrainingMetricsService:
         start_date = end_date - timedelta(days=days - 1)
 
         result = await self.db.execute(
-            select(DailyTrainingSummary)
+            select(DailyTrainingSummary.date)
             .where(
                 and_(
                     DailyTrainingSummary.user_id == user_id,
@@ -279,16 +304,18 @@ class TrainingMetricsService:
                     DailyTrainingSummary.hi_min > 5,  # 高强度超过5分钟
                 )
             )
-            .order_by(DailyTrainingSummary.date)
         )
-        summaries = result.scalars().all()
+        active_dates = {row[0] for row in result.all()}
 
-        # 检查是否连续
-        if len(summaries) < days:
-            return len(summaries)
+        consecutive = 0
+        current_date = end_date
+        while current_date >= start_date:
+            if current_date not in active_dates:
+                break
+            consecutive += 1
+            current_date -= timedelta(days=1)
 
-        # 简单检查：如果数量等于天数，认为是连续的
-        return len(summaries)
+        return consecutive
 
     async def _trigger_ai_update(self, user_id: uuid.UUID, target_date: date):
         """

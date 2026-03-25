@@ -1,6 +1,7 @@
 """
 API依赖项
 """
+import hmac
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
@@ -40,7 +41,8 @@ async def verify_mcp_api_key(
             detail="缺少API Key",
         )
 
-    if credentials.credentials != settings.MCP_API_KEY:
+    # 使用常数时间比较防止时序攻击
+    if not hmac.compare_digest(credentials.credentials, settings.MCP_API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的API Key",
@@ -101,3 +103,49 @@ async def get_current_user(
         )
 
     return user
+
+
+async def resolve_default_user(db: AsyncSession) -> User:
+    """解析单用户模式下的默认用户，避免在多用户时返回任意账号。"""
+    configured_user_id = settings.DEFAULT_USER_ID.strip()
+
+    if configured_user_id:
+        try:
+            user_id = uuid.UUID(configured_user_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="DEFAULT_USER_ID 配置无效",
+            ) from exc
+
+        result = await db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="DEFAULT_USER_ID 对应用户不存在",
+            )
+        return user
+
+    result = await db.execute(
+        select(User)
+        .order_by(User.created_at.asc(), User.id.asc())
+        .limit(2)
+    )
+    users = result.scalars().all()
+
+    if not users:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="系统中没有用户",
+        )
+
+    if len(users) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="检测到多个用户，请配置 DEFAULT_USER_ID",
+        )
+
+    return users[0]

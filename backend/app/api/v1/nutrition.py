@@ -2,7 +2,7 @@
 营养模块API端点
 """
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional
 import uuid
 
@@ -21,6 +21,7 @@ from app.schemas.nutrition import (
     DeleteResponse,
     MealTypeEnum
 )
+from app.utils.datetime_helper import now_hk, today_hk, HK_TZ
 
 logger = logging.getLogger(__name__)
 
@@ -58,17 +59,30 @@ async def upload_and_analyze_meal(
                 detail="只支持图片文件"
             )
 
+        # 验证文件大小（最大 10MB）
+        max_size = 10 * 1024 * 1024  # 10MB
+        content = await image.read()
+        if len(content) > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="文件过大，最大支持 10MB"
+            )
+        # 重置文件指针以便后续读取
+        await image.seek(0)
+
         # 解析用餐时间
         if meal_time:
             try:
-                parsed_meal_time = datetime.strptime(meal_time, "%Y-%m-%d %H:%M")
+                parsed_meal_time = HK_TZ.localize(
+                    datetime.strptime(meal_time, "%Y-%m-%d %H:%M")
+                )
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="meal_time格式错误，应为：YYYY-MM-DD HH:MM"
                 )
         else:
-            parsed_meal_time = datetime.now()
+            parsed_meal_time = now_hk()
 
         # 读取图片内容
         image_content = await image.read()
@@ -331,10 +345,8 @@ async def get_weekly_trend(
         7天营养趋势数据
     """
     try:
-        from datetime import timedelta
-
         if not end_date:
-            end_date = date.today()
+            end_date = today_hk()
 
         start_date = end_date - timedelta(days=6)
 

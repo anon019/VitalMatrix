@@ -36,6 +36,15 @@ class OuraClient:
         """关闭HTTP客户端"""
         await self.http_client.aclose()
 
+    async def __aenter__(self):
+        """上下文管理器入口"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """上下文管理器出口，自动关闭连接"""
+        await self.close()
+        return False
+
     def get_authorization_url(self, state: str) -> str:
         """
         获取授权URL
@@ -455,6 +464,35 @@ class OuraClient:
             logger.error(f"获取Oura VO2 Max数据失败: {str(e)}")
             return []
 
+    async def get_sleep_time(
+        self, access_token: str, start_date: date, end_date: date
+    ) -> List[Dict[str, Any]]:
+        """
+        获取最佳入睡时间推荐
+
+        Args:
+            access_token: 访问令牌
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            入睡时间推荐列表
+        """
+        try:
+            params = {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            }
+            response = await self._make_request(
+                "GET", "/usercollection/sleep_time", access_token, params=params
+            )
+            data = response.get("data", [])
+            logger.info(f"成功获取{len(data)}条Oura入睡时间数据")
+            return data
+        except OuraAPIError as e:
+            logger.error(f"获取Oura入睡时间数据失败: {str(e)}")
+            return []
+
     async def get_heartrate(
         self, access_token: str, start_datetime: datetime, end_datetime: datetime
     ) -> List[Dict[str, Any]]:
@@ -508,6 +546,7 @@ class OuraClient:
             "cardiovascular_age": [],
             "resilience": [],
             "vo2_max": [],
+            "sleep_time": [],
         }
 
         # 并行获取所有数据
@@ -523,11 +562,12 @@ class OuraClient:
             self.get_daily_cardiovascular_age(access_token, start_date, end_date),
             self.get_daily_resilience(access_token, start_date, end_date),
             self.get_vo2_max(access_token, start_date, end_date),
+            self.get_sleep_time(access_token, start_date, end_date),
         ]
 
         data = await asyncio.gather(*tasks, return_exceptions=True)
 
-        keys = ["sleep", "sleep_details", "readiness", "activity", "stress", "spo2", "cardiovascular_age", "resilience", "vo2_max"]
+        keys = ["sleep", "sleep_details", "readiness", "activity", "stress", "spo2", "cardiovascular_age", "resilience", "vo2_max", "sleep_time"]
         for i, key in enumerate(keys):
             if not isinstance(data[i], Exception):
                 results[key] = data[i]

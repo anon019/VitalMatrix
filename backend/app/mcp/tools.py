@@ -129,6 +129,9 @@ async def get_health_overview() -> Dict[str, Any]:
                 "score": sleep.sleep_score if sleep else None,
                 "total_min": sleep.total_sleep_duration if sleep else None,
                 "efficiency": sleep.efficiency if sleep else None,
+                "lowest_heart_rate": sleep.lowest_heart_rate if sleep else None,
+                "avg_heart_rate": sleep.average_heart_rate if sleep else None,
+                "avg_hrv": float(sleep.average_hrv) if sleep and sleep.average_hrv else None,
             }
 
             readiness_data = {
@@ -136,6 +139,8 @@ async def get_health_overview() -> Dict[str, Any]:
                 "score": readiness.score if readiness else None,
                 "hrv_balance": readiness.hrv_balance if readiness else None,
                 "recovery_index": readiness.recovery_index if readiness else None,
+                "resting_heart_rate_score": readiness.resting_heart_rate if readiness else None,
+                "sleep_balance": readiness.sleep_balance if readiness else None,
             }
 
             activity_data = {
@@ -147,8 +152,8 @@ async def get_health_overview() -> Dict[str, Any]:
 
             stress_data = {
                 "has_data": stress is not None,
-                "stress_high": stress.stress_high if stress else None,
-                "recovery_high": stress.recovery_high if stress else None,
+                "stress_high_min": round(stress.stress_high / 60) if stress and stress.stress_high else None,
+                "recovery_high_min": round(stress.recovery_high / 60) if stress and stress.recovery_high else None,
                 "day_summary": stress.day_summary if stress else None,
             }
 
@@ -352,19 +357,21 @@ async def get_sleep_analysis(days: int = 7) -> Dict[str, Any]:
                 records.append({
                     "date": sr.day.isoformat(),
                     "score": sr.sleep_score,
-                    "total_sleep_min": sr.total_sleep_duration,
-                    "rem_min": sr.rem_sleep_duration,
-                    "deep_min": sr.deep_sleep_duration,
-                    "light_min": sr.light_sleep_duration,
-                    "awake_min": sr.awake_time,
+                    "total_sleep_min": round(sr.total_sleep_duration / 60) if sr.total_sleep_duration else None,
+                    "rem_min": round(sr.rem_sleep_duration / 60) if sr.rem_sleep_duration else None,
+                    "deep_min": round(sr.deep_sleep_duration / 60) if sr.deep_sleep_duration else None,
+                    "light_min": round(sr.light_sleep_duration / 60) if sr.light_sleep_duration else None,
+                    "awake_min": round(sr.awake_time / 60) if sr.awake_time else None,
                     "efficiency": sr.efficiency,
-                    "avg_hrv": float(sr.average_hrv) if sr.average_hrv else None
+                    "avg_hrv": float(sr.average_hrv) if sr.average_hrv else None,
+                    "lowest_heart_rate": sr.lowest_heart_rate,
+                    "avg_heart_rate": sr.average_heart_rate,
                 })
 
                 if sr.sleep_score:
                     scores.append(sr.sleep_score)
                 if sr.total_sleep_duration:
-                    durations.append(sr.total_sleep_duration)
+                    durations.append(round(sr.total_sleep_duration / 60))
 
             return {
                 "period_days": days,
@@ -416,7 +423,7 @@ async def get_readiness_score(days: int = 7) -> Dict[str, Any]:
                     "score": rr.score,
                     "temperature_deviation": float(rr.temperature_deviation) if rr.temperature_deviation else None,
                     "activity_balance": rr.activity_balance,
-                    "body_temperature": rr.body_temperature,
+                    "body_temperature": None,  # 模型中无此字段
                     "hrv_balance": rr.hrv_balance,
                     "previous_day_activity": rr.previous_day_activity,
                     "previous_night": rr.previous_night,

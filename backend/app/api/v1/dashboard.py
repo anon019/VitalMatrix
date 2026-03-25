@@ -7,7 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import and_, case, func, select
 
 from app.database.session import get_db
 from app.api.dependencies import get_current_user
@@ -22,7 +22,6 @@ from app.schemas.training import DailySummaryResponse, WeeklySummaryResponse
 from app.schemas.ai import RecommendationResponse
 from app.services.ai_service import AIService
 from app.utils.datetime_helper import today_hk, get_week_start
-from sqlalchemy import func
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -140,38 +139,36 @@ async def get_dashboard_today(
     # 4. 获取今日Oura数据（实时更新，显示在上方）
     oura_today = None
 
-    # 今日准备度
-    readiness_today_result = await db.execute(
+    # 今日/昨日Oura readiness/activity/stress 一次性批量取回，内存按日期归并
+    readiness_result = await db.execute(
         select(OuraDailyReadiness).where(
-            and_(
-                OuraDailyReadiness.user_id == current_user.id,
-                OuraDailyReadiness.day == today
-            )
+            OuraDailyReadiness.user_id == current_user.id,
+            OuraDailyReadiness.day.in_((today, yesterday)),
         )
     )
-    readiness_today = readiness_today_result.scalar_one_or_none()
+    readiness_by_day = {row.day: row for row in readiness_result.scalars().all()}
+    readiness_today = readiness_by_day.get(today)
+    readiness_yesterday = readiness_by_day.get(yesterday)
 
-    # 今日活动
-    activity_today_result = await db.execute(
+    activity_result = await db.execute(
         select(OuraDailyActivity).where(
-            and_(
-                OuraDailyActivity.user_id == current_user.id,
-                OuraDailyActivity.day == today
-            )
+            OuraDailyActivity.user_id == current_user.id,
+            OuraDailyActivity.day.in_((today, yesterday)),
         )
     )
-    activity_today = activity_today_result.scalar_one_or_none()
+    activity_by_day = {row.day: row for row in activity_result.scalars().all()}
+    activity_today = activity_by_day.get(today)
+    activity_yesterday = activity_by_day.get(yesterday)
 
-    # 今日压力
-    stress_today_result = await db.execute(
+    stress_result = await db.execute(
         select(OuraDailyStress).where(
-            and_(
-                OuraDailyStress.user_id == current_user.id,
-                OuraDailyStress.day == today
-            )
+            OuraDailyStress.user_id == current_user.id,
+            OuraDailyStress.day.in_((today, yesterday)),
         )
     )
-    stress_today = stress_today_result.scalar_one_or_none()
+    stress_by_day = {row.day: row for row in stress_result.scalars().all()}
+    stress_today = stress_by_day.get(today)
+    stress_yesterday = stress_by_day.get(yesterday)
 
     # 构建今日Oura摘要
     if any([readiness_today, activity_today, stress_today]):
@@ -194,109 +191,52 @@ async def get_dashboard_today(
 
     # 获取每日综合睡眠评分（优先使用 OuraDailySleep，与 Oura App 显示一致）
     # OuraDailySleep 存储的是 Oura 计算的每日综合评分，即使没有主睡眠也会有评分
-    daily_sleep_score = None
-
-    # 查询今天的每日睡眠评分（昨晚睡眠归属于今天）
     daily_sleep_result = await db.execute(
-        select(OuraDailySleep).where(
-            and_(
-                OuraDailySleep.user_id == current_user.id,
-                OuraDailySleep.day == today
-            )
+        select(OuraDailySleep)
+        .where(
+            OuraDailySleep.user_id == current_user.id,
+            OuraDailySleep.day.in_((today, yesterday)),
         )
+        .order_by((OuraDailySleep.day == today).desc(), OuraDailySleep.day.desc())
+        .limit(1)
     )
     daily_sleep = daily_sleep_result.scalar_one_or_none()
-    if daily_sleep:
-        daily_sleep_score = daily_sleep.score
-
-    # 如果今天没有，回退到昨天的每日睡眠评分
-    if daily_sleep_score is None:
-        daily_sleep_result = await db.execute(
-            select(OuraDailySleep).where(
-                and_(
-                    OuraDailySleep.user_id == current_user.id,
-                    OuraDailySleep.day == yesterday
-                )
-            )
-        )
-        daily_sleep = daily_sleep_result.scalar_one_or_none()
-        if daily_sleep:
-            daily_sleep_score = daily_sleep.score
+    daily_sleep_score = daily_sleep.score if daily_sleep else None
 
     # 获取睡眠详情（用于显示时长、深睡等详细指标）
     # Oura 的日期逻辑：睡眠记录归属于醒来那天
     # 优先级：1. 今天的 long_sleep  2. 今天最长的睡眠  3. 昨天的 long_sleep
-    sleep = None
-
-    # 1. 先找今天的主睡眠（long_sleep）
     sleep_result = await db.execute(
-        select(OuraSleep).where(
-            and_(
-                OuraSleep.user_id == current_user.id,
-                OuraSleep.day == today,
-                OuraSleep.sleep_type == "long_sleep"
-            )
-        ).order_by(OuraSleep.total_sleep_duration.desc())
+        select(OuraSleep)
+        .where(
+            OuraSleep.user_id == current_user.id,
+            (OuraSleep.day == today)
+            | (and_(OuraSleep.day == yesterday, OuraSleep.sleep_type == "long_sleep"))
+        ).order_by(
+            case(
+                (
+                    and_(OuraSleep.day == today, OuraSleep.sleep_type == "long_sleep"),
+                    3,
+                ),
+                (
+                    OuraSleep.day == today,
+                    2,
+                ),
+                (
+                    and_(OuraSleep.day == yesterday, OuraSleep.sleep_type == "long_sleep"),
+                    1,
+                ),
+                else_=0,
+            ).desc(),
+            OuraSleep.total_sleep_duration.desc()
+        )
     )
     sleep = sleep_result.scalars().first()
 
-    # 2. 如果今天没有 long_sleep，找今天最长的睡眠
-    if not sleep:
-        sleep_result = await db.execute(
-            select(OuraSleep).where(
-                and_(
-                    OuraSleep.user_id == current_user.id,
-                    OuraSleep.day == today
-                )
-            ).order_by(OuraSleep.total_sleep_duration.desc())
-        )
-        sleep = sleep_result.scalars().first()
-
-    # 3. 如果今天完全没有睡眠数据，回退到昨天的 long_sleep
-    if not sleep:
-        sleep_result = await db.execute(
-            select(OuraSleep).where(
-                and_(
-                    OuraSleep.user_id == current_user.id,
-                    OuraSleep.day == yesterday,
-                    OuraSleep.sleep_type == "long_sleep"
-                )
-            ).order_by(OuraSleep.total_sleep_duration.desc())
-        )
-        sleep = sleep_result.scalars().first()
-
-    # 昨日准备度
-    readiness_result = await db.execute(
-        select(OuraDailyReadiness).where(
-            and_(
-                OuraDailyReadiness.user_id == current_user.id,
-                OuraDailyReadiness.day == yesterday
-            )
-        )
-    )
-    readiness = readiness_result.scalar_one_or_none()
-
-    # 昨日活动
-    activity_result = await db.execute(
-        select(OuraDailyActivity).where(
-            and_(
-                OuraDailyActivity.user_id == current_user.id,
-                OuraDailyActivity.day == yesterday
-            )
-        )
-    )
-    activity = activity_result.scalar_one_or_none()
-
-    # 昨日压力
-    stress_result = await db.execute(
-        select(OuraDailyStress).where(
-            and_(
-                OuraDailyStress.user_id == current_user.id,
-                OuraDailyStress.day == yesterday
-            )
-        )
-    )
-    stress = stress_result.scalar_one_or_none()
+    # 昨日各项指标（来自前面的批量查询）
+    readiness = readiness_yesterday
+    activity = activity_yesterday
+    stress = stress_yesterday
 
     # 构建昨日Oura摘要
     if any([sleep, daily_sleep, readiness, activity, stress]):

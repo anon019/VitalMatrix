@@ -81,10 +81,14 @@ app = FastAPI(
     debug=settings.DEBUG,
 )
 
-# 配置CORS
+# 配置CORS（即使 DEBUG 模式也限制来源，防止误配置导致安全问题）
+cors_origins = settings.ALLOWED_ORIGINS.copy()
+if settings.DEBUG:
+    # DEBUG 模式下添加本地开发地址
+    cors_origins.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS if not settings.DEBUG else ["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,6 +99,28 @@ import os
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+# 全局异常处理器（生产环境隐藏内部错误详情）
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常处理：生产环境不暴露内部错误详情"""
+    if settings.DEBUG:
+        # DEBUG 模式显示详细错误
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"内部错误: {str(exc)}"}
+        )
+    else:
+        # 生产环境只返回通用错误信息
+        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "服务器内部错误，请稍后重试"}
+        )
 
 
 # 健康检查端点

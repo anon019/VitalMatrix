@@ -1,5 +1,5 @@
 """
-Gemini AI 营养分析服务 - 支持 Google REST API 和 OpenRouter
+Gemini AI 营养分析服务 - 支持 google-genai SDK (Google) 和 OpenRouter (httpx)
 """
 import os
 import json
@@ -11,19 +11,22 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 import httpx
 
+from google.genai import types
+
+from app.ai.providers.gemini_client import get_client
+
 logger = logging.getLogger(__name__)
 
 # 重试配置
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # 秒
 
-# API 端点
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# OpenRouter API 端点（仅 OpenRouter 使用）
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class GeminiNutritionService:
-    """Gemini营养分析服务类 - 支持 Google REST API 和 OpenRouter"""
+    """Gemini营养分析服务类 - 支持 google-genai SDK (Google) 和 OpenRouter (httpx)"""
 
     def __init__(self):
         """初始化Gemini服务"""
@@ -44,6 +47,8 @@ class GeminiNutritionService:
         if env_path.exists():
             load_dotenv(env_path, override=True)
 
+        old_provider = getattr(self, 'api_provider', None)
+
         # API 提供商选择：google 或 openrouter
         self.api_provider = os.getenv("VISION_API_PROVIDER", "google").lower()
 
@@ -53,12 +58,18 @@ class GeminiNutritionService:
             if not self.api_key:
                 raise ValueError("OPENROUTER_API_KEY environment variable not set")
             self.model_name = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3-pro-preview")
+            # OpenRouter 使用 httpx 客户端（复用已有连接）
+            if not hasattr(self, '_http_client') or self._http_client is None:
+                self._http_client = httpx.AsyncClient(timeout=180.0)
         else:
-            # Google 原生 API 配置
-            self.api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            if not self.api_key:
-                raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY environment variable not set")
+            # Google 原生 API 配置（使用 google-genai SDK，模块级缓存）
             self.model_name = os.getenv("GEMINI_VISION_MODEL", "gemini-2.0-flash-exp")
+            self._genai_client = get_client()
+
+            # 从 openrouter 切换到 google 时，标记旧 httpx 客户端待关闭
+            if old_provider == "openrouter" and hasattr(self, '_http_client') and self._http_client:
+                self._pending_close_http_client = self._http_client
+                self._http_client = None
 
         logger.info(f"Config reloaded: provider={self.api_provider}, model={self.model_name}")
 
@@ -143,69 +154,67 @@ class GeminiNutritionService:
         }
         return mime_types.get(ext, "image/jpeg")
 
-    async def _call_google_api(self, prompt: str, image_data: str, mime_type: str) -> str:
+    async def _call_google_api(
+        self,
+        prompt: str,
+        image_data: str,
+        mime_type: str,
+        enable_search: bool = False
+    ) -> str:
         """
-        调用 Google Gemini REST API
+        调用 Google Gemini API（使用 google-genai SDK）
 
         Args:
             prompt: 完整提示词
             image_data: Base64 编码的图片数据
             mime_type: 图片 MIME 类型
+            enable_search: 是否启用 Google Search grounding
 
         Returns:
             API 响应文本
         """
-        url = GEMINI_API_URL.format(model=self.model_name)
+        # 将 base64 图片数据解码为字节
+        image_bytes = base64.standard_b64decode(image_data)
 
-        # 构建 generationConfig
-        generation_config = {"maxOutputTokens": 8192}
+        # 构建多模态内容
+        contents = [
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            prompt,
+        ]
+
+        # 构建生成配置
+        config_kwargs = {
+            "max_output_tokens": 8192,
+        }
 
         # Gemini 3 模型支持 thinkingConfig
         if "gemini-3" in self.model_name:
-            generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
-
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {"inline_data": {"mime_type": mime_type, "data": image_data}}
-                ]
-            }],
-            "generationConfig": generation_config
-        }
-
-        logger.info(f"Calling Google Gemini REST API: {self.model_name}")
-
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                url,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": self.api_key
-                }
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=1024
             )
 
-            if response.status_code == 503:
-                logger.warning("Gemini API 503: Model overloaded")
-                raise ValueError("Gemini API 503: 模型过载，请稍后重试")
+        # 启用 Google Search grounding
+        if enable_search:
+            config_kwargs["tools"] = [
+                types.Tool(google_search=types.GoogleSearch())
+            ]
+            logger.info("Google Search grounding enabled for recipe recommendations")
 
-            if response.status_code != 200:
-                error_detail = response.text
-                logger.error(f"Gemini API error: {response.status_code} - {error_detail}")
-                raise ValueError(f"Gemini API error: {response.status_code} - {error_detail[:500]}")
+        config = types.GenerateContentConfig(**config_kwargs)
 
-            result_data = response.json()
+        logger.info(f"Calling Google Gemini SDK: {self.model_name}")
 
-        # 解析 Google API 响应
-        if "candidates" not in result_data or not result_data["candidates"]:
-            raise ValueError("API returned no candidates")
+        response = await self._genai_client.aio.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=config,
+        )
 
-        parts = result_data["candidates"][0].get("content", {}).get("parts", [])
-        if not parts:
-            raise ValueError("API returned empty parts")
+        text = response.text
+        if not text:
+            raise ValueError("API 返回空内容")
 
-        return parts[0].get("text", "")
+        return text
 
     async def _call_openrouter_api(self, prompt: str, image_data: str, mime_type: str) -> str:
         """
@@ -239,28 +248,27 @@ class GeminiNutritionService:
 
         logger.info(f"Calling OpenRouter API: {self.model_name}")
 
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                OPENROUTER_API_URL,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}",
-                    "HTTP-Referer": os.environ.get("APP_DOMAIN", "https://your-domain.com"),
-                    "X-Title": "Health Assistant"
-                }
-            )
+        response = await self._http_client.post(
+            OPENROUTER_API_URL,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "HTTP-Referer": "https://health.jackverse.cn",
+                "X-Title": "Health Assistant"
+            }
+        )
 
-            if response.status_code == 503:
-                logger.warning("OpenRouter API 503: Service unavailable")
-                raise ValueError("OpenRouter API 503: 服务暂时不可用")
+        if response.status_code == 503:
+            logger.warning("OpenRouter API 503: Service unavailable")
+            raise ValueError("OpenRouter API 503: 服务暂时不可用")
 
-            if response.status_code != 200:
-                error_detail = response.text
-                logger.error(f"OpenRouter API error: {response.status_code} - {error_detail}")
-                raise ValueError(f"OpenRouter API error: {response.status_code} - {error_detail[:500]}")
+        if response.status_code != 200:
+            error_detail = response.text
+            logger.error(f"OpenRouter API error: {response.status_code} - {error_detail}")
+            raise ValueError(f"OpenRouter API error: {response.status_code} - {error_detail[:500]}")
 
-            result_data = response.json()
+        result_data = response.json()
 
         # 解析 OpenRouter (OpenAI 格式) 响应
         if "choices" not in result_data or not result_data["choices"]:
@@ -273,16 +281,18 @@ class GeminiNutritionService:
         image_path: str,
         meal_type: str,
         meal_time: str,
-        user_context: Optional[Dict[str, Any]] = None
+        user_context: Optional[Dict[str, Any]] = None,
+        enable_recipe_search: bool = True
     ) -> Dict[str, Any]:
         """
-        分析餐食照片 - 使用 Google Gemini REST API
+        分析餐食照片 - 使用 Google Gemini SDK 或 OpenRouter
 
         Args:
             image_path: 图片文件路径
             meal_type: 餐次类型 (breakfast/lunch/dinner/snack)
             meal_time: 用餐时间（格式："2025-11-22 12:30"）
             user_context: 用户上下文信息（可选）
+            enable_recipe_search: 是否启用联网搜索获取真实食谱（默认开启）
 
         Returns:
             结构化的营养分析结果（JSON）
@@ -294,6 +304,7 @@ class GeminiNutritionService:
         try:
             # 热加载配置（每次调用时重新读取 .env 文件和 prompt 配置）
             self.reload_config()
+            await self._cleanup_pending_clients()  # 清理 provider 切换遗留的客户端
             self.config = self._load_prompt_config()  # 重新加载 prompt 配置
 
             # 验证图片文件存在
@@ -317,10 +328,14 @@ class GeminiNutritionService:
             mime_type = self._get_mime_type(image_path)
 
             # 根据 API 提供商调用不同的 API
+            # 注意：Google Search grounding 仅在使用 Google 原生 API 时可用
             if self.api_provider == "openrouter":
                 response_text = await self._call_openrouter_api(full_prompt, image_data, mime_type)
             else:
-                response_text = await self._call_google_api(full_prompt, image_data, mime_type)
+                response_text = await self._call_google_api(
+                    full_prompt, image_data, mime_type,
+                    enable_search=enable_recipe_search
+                )
 
             # 验证响应文本
             if not response_text:
@@ -345,9 +360,6 @@ class GeminiNutritionService:
                 # 抛出异常而不是返回错误对象，让调用方可以重试
                 raise ValueError(f"AI响应JSON解析失败: {str(e)}")
 
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error calling Gemini API: {str(e)}", exc_info=True)
-            raise ValueError(f"Gemini API HTTP error: {str(e)}")
         except Exception as e:
             logger.error(f"Nutrition analysis failed: {str(e)}", exc_info=True)
             raise
@@ -358,7 +370,8 @@ class GeminiNutritionService:
         meal_type: str,
         meal_time: str,
         user_context: Optional[Dict[str, Any]] = None,
-        max_retries: int = MAX_RETRIES
+        max_retries: int = MAX_RETRIES,
+        enable_recipe_search: bool = True
     ) -> Dict[str, Any]:
         """
         带重试机制的餐食照片分析
@@ -369,6 +382,7 @@ class GeminiNutritionService:
             meal_time: 用餐时间
             user_context: 用户上下文
             max_retries: 最大重试次数
+            enable_recipe_search: 是否启用联网搜索获取真实食谱
 
         Returns:
             结构化的营养分析结果
@@ -385,7 +399,8 @@ class GeminiNutritionService:
                     image_path=image_path,
                     meal_type=meal_type,
                     meal_time=meal_time,
-                    user_context=user_context
+                    user_context=user_context,
+                    enable_recipe_search=enable_recipe_search
                 )
                 return result
             except ValueError as e:
@@ -480,6 +495,24 @@ class GeminiNutritionService:
                 return False
 
         return True
+
+    async def _cleanup_pending_clients(self):
+        """关闭因 provider 切换而遗留的旧客户端"""
+        if hasattr(self, '_pending_close_http_client') and self._pending_close_http_client:
+            try:
+                await self._pending_close_http_client.aclose()
+                logger.info("已关闭旧的 httpx 客户端（provider 切换）")
+            except Exception as e:
+                logger.warning(f"关闭旧 httpx 客户端失败: {e}")
+            finally:
+                self._pending_close_http_client = None
+
+    async def close(self):
+        """关闭所有 HTTP 客户端连接"""
+        if hasattr(self, '_http_client') and self._http_client:
+            await self._http_client.aclose()
+        await self._cleanup_pending_clients()
+        logger.info("GeminiNutritionService 客户端已关闭")
 
 
 # 全局单例实例（可选）

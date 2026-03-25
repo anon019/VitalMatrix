@@ -1,25 +1,17 @@
 #!/bin/bash
 # Health Backend 启动前检查脚本
 # 确保所有必要的依赖和配置都就绪
-#
-# 使用前请设置环境变量:
-#   HEALTH_BACKEND_DIR - 后端项目目录路径
 
 set -e
 
-# 获取脚本所在目录并推导项目根目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="${HEALTH_BACKEND_DIR:-$(dirname "$SCRIPT_DIR")}"
-
 LOG_FILE="/var/log/health_backend_precheck.log"
-ENV_FILE="${BACKEND_DIR}/.env"
+ENV_FILE="/root/health/backend/.env"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
 log "========== 启动前检查开始 =========="
-log "Backend 目录: $BACKEND_DIR"
 
 # 1. 检查 .env 文件存在
 if [ ! -f "$ENV_FILE" ]; then
@@ -32,9 +24,9 @@ log "✓ .env 文件存在"
 REQUIRED_VARS=(
     "DATABASE_URL"
     "JWT_SECRET_KEY"
-    "GOOGLE_API_KEY"
     "QWEN_API_KEY"
 )
+# 注意：GOOGLE_API_KEY 已移至共享文件 /root/.config/api-keys.env，通过 systemd EnvironmentFile 加载
 
 for var in "${REQUIRED_VARS[@]}"; do
     if ! grep -q "^${var}=" "$ENV_FILE"; then
@@ -62,7 +54,7 @@ else
 fi
 
 # 4. 检查 Python 虚拟环境
-VENV_PYTHON="${BACKEND_DIR}/venv/bin/python"
+VENV_PYTHON="/root/health/backend/venv/bin/python"
 if [ ! -x "$VENV_PYTHON" ]; then
     log "错误: Python 虚拟环境不存在或不可执行"
     exit 1
@@ -70,7 +62,7 @@ fi
 log "✓ Python 虚拟环境正常"
 
 # 5. 快速验证 Python 导入（可选，耗时约2秒）
-cd "$BACKEND_DIR"
+cd /root/health/backend
 if $VENV_PYTHON -c "from app.main import app" 2>/dev/null; then
     log "✓ Python 应用导入成功"
 else

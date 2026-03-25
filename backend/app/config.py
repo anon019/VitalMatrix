@@ -34,10 +34,11 @@ class Settings(BaseSettings):
     # Oura配置
     OURA_CLIENT_ID: str = ""
     OURA_CLIENT_SECRET: str = ""
-    OURA_REDIRECT_URI: str = ""  # 从环境变量读取
+    OURA_REDIRECT_URI: str = "https://health.jackverse.cn/api/v1/oura/callback"
 
     # AI配置
-    AI_PROVIDER: str = "qwen"  # qwen | deepseek | openai | claude
+    AI_PROVIDER: str = "gemini"  # gemini | qwen | deepseek | openai | claude
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     # 通义千问 Qwen
     QWEN_API_KEY: str = ""
@@ -77,13 +78,15 @@ class Settings(BaseSettings):
     TZ: str = "Asia/Hong_Kong"
     NO_PROXY: str = "localhost,127.0.0.1,::1,169.254.0.0/16,.tencentyun.com,*.tencentyun.com"
 
-    # CORS配置 (从环境变量 ALLOWED_ORIGINS 读取，JSON 格式)
+    # CORS配置
     ALLOWED_ORIGINS: list = [
         "https://servicewechat.com",  # 微信小程序
+        "https://health.jackverse.cn",
     ]
 
     # Web 前端访问密码（空字符串表示不需要密码）
     WEB_ACCESS_PASSWORD: str = ""
+    DEFAULT_USER_ID: str = ""
 
     # 日志配置
     LOG_LEVEL: str = "INFO"

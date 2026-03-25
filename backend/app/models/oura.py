@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
 from app.database.base import Base
+from app.utils.crypto import EncryptedText
 
 
 class OuraAuth(Base):
@@ -25,9 +26,9 @@ class OuraAuth(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
 
-    # OAuth令牌
-    access_token: Mapped[Optional[str]] = mapped_column(Text, comment="访问令牌")
-    refresh_token: Mapped[Optional[str]] = mapped_column(Text, comment="刷新令牌")
+    # OAuth令牌（加密存储）
+    access_token: Mapped[Optional[str]] = mapped_column(EncryptedText, comment="访问令牌(加密)")
+    refresh_token: Mapped[Optional[str]] = mapped_column(EncryptedText, comment="刷新令牌(加密)")
     token_expires_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), comment="令牌过期时间"
     )
@@ -688,6 +689,77 @@ class OuraVO2Max(Base):
 
     def __repr__(self):
         return f"<OuraVO2Max {self.day} vo2_max={self.vo2_max}>"
+
+
+class OuraSleepTime(Base):
+    """Oura最佳入睡时间推荐"""
+
+    __tablename__ = "oura_sleep_time"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Oura原始标识
+    oura_id: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False, comment="Oura唯一ID"
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False, comment="日期")
+
+    # 最佳入睡时间窗口（秒偏移，相对午夜）
+    optimal_bedtime_start: Mapped[Optional[int]] = mapped_column(
+        Integer, comment="最佳入睡开始时间(秒偏移，负值=午夜前)"
+    )
+    optimal_bedtime_end: Mapped[Optional[int]] = mapped_column(
+        Integer, comment="最佳入睡结束时间(秒偏移，负值=午夜前)"
+    )
+    day_tz: Mapped[Optional[int]] = mapped_column(
+        Integer, comment="时区偏移(秒)"
+    )
+
+    # 推荐与状态
+    recommendation: Mapped[Optional[str]] = mapped_column(
+        String(100), comment="推荐类型(improve_efficiency/follow_optimal_bedtime等)"
+    )
+    status: Mapped[Optional[str]] = mapped_column(
+        String(50), comment="状态(found/not_enough_data等)"
+    )
+
+    # 原始JSON数据
+    raw_json: Mapped[Optional[dict]] = mapped_column(JSONB, comment="完整原始数据")
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+
+    # 关联关系
+    user: Mapped["User"] = relationship("User", back_populates="oura_sleep_time_records")
+
+    __table_args__ = (Index("idx_oura_sleep_time_user_day", "user_id", "day"),)
+
+    def __repr__(self):
+        return f"<OuraSleepTime {self.day} status={self.status}>"
+
+    @property
+    def optimal_bedtime_start_str(self) -> Optional[str]:
+        """将秒偏移转为可读时间 (如 -3600 -> '23:00')"""
+        return self._offset_to_time_str(self.optimal_bedtime_start)
+
+    @property
+    def optimal_bedtime_end_str(self) -> Optional[str]:
+        """将秒偏移转为可读时间"""
+        return self._offset_to_time_str(self.optimal_bedtime_end)
+
+    @staticmethod
+    def _offset_to_time_str(offset_seconds: Optional[int]) -> Optional[str]:
+        """秒偏移（相对午夜）转 HH:MM 字符串"""
+        if offset_seconds is None:
+            return None
+        total = offset_seconds % 86400  # 归一化到 0-86399
+        hours = total // 3600
+        minutes = (total % 3600) // 60
+        return f"{hours:02d}:{minutes:02d}"
 
 
 # 注意: OuraDailyHeartRate 模型已移除

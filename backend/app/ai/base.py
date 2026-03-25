@@ -25,6 +25,27 @@ class UserContext(BaseModel):
     age: Optional[int] = None  # 年龄
 
 
+class NutritionDayRecord(BaseModel):
+    """单日营养摘要"""
+    date: str
+    total_calories: Optional[float] = None
+    total_protein: Optional[float] = None  # g
+    total_carbs: Optional[float] = None  # g
+    total_fat: Optional[float] = None  # g
+    total_fiber: Optional[float] = None  # g
+    meals_count: int = 0
+    breakfast_calories: Optional[float] = None
+    lunch_calories: Optional[float] = None
+    dinner_calories: Optional[float] = None
+    snack_calories: Optional[float] = None
+    flags: Optional[Dict[str, bool]] = None
+
+
+class NutritionData(BaseModel):
+    """近7天营养数据"""
+    days: List[NutritionDayRecord] = []
+
+
 class OuraData(BaseModel):
     """Oura数据（睡眠、准备度、压力）"""
     # 睡眠数据
@@ -75,6 +96,12 @@ class TrainingData(BaseModel):
 
     # Oura数据（可选）
     oura_data: Optional[OuraData] = None
+
+    # 营养数据（可选）
+    nutrition_data: Optional['NutritionData'] = None
+
+    # 趋势摘要（纯文本，直接拼入prompt）
+    trend_summary: Optional[str] = None
 
 
 class Recommendation(BaseModel):

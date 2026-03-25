@@ -1,34 +1,29 @@
 """
 文件存储服务 - 处理营养照片的上传、存储和清理
 """
-import os
 import shutil
-import uuid
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Tuple, Optional
 from PIL import Image
 import aiofiles
+from app.utils.datetime_helper import now_hk
 
 logger = logging.getLogger(__name__)
-
-# 获取 backend 根目录
-BACKEND_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "nutrition"
 
 
 class FileStorageService:
     """文件存储服务类"""
 
-    def __init__(self, base_dir: str = None):
+    def __init__(self, base_dir: str = "/root/health/backend/uploads/nutrition"):
         """
         初始化文件存储服务
 
         Args:
             base_dir: 存储根目录
         """
-        self.base_dir = Path(base_dir) if base_dir else DEFAULT_UPLOAD_DIR
+        self.base_dir = Path(base_dir)
         self.thumbnail_size = (200, 200)  # 缩略图尺寸
 
         # 创建存储目录
@@ -149,7 +144,19 @@ class FileStorageService:
         Returns:
             绝对路径
         """
-        return self.base_dir / relative_path
+        if not relative_path:
+            return self.base_dir
+
+        path = relative_path
+        if path.startswith("/uploads/nutrition/"):
+            path = path[len("/uploads/nutrition/"):]
+        path = path.lstrip("/")
+
+        candidate = Path(path)
+        if candidate.is_absolute():
+            return candidate
+
+        return self.base_dir / candidate
 
     def delete_meal_photos(self, original_path: str, thumbnail_path: Optional[str] = None):
         """
@@ -186,7 +193,7 @@ class FileStorageService:
         Returns:
             删除的文件数量
         """
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = now_hk() - timedelta(days=days)
         deleted_count = 0
 
         try:
@@ -205,7 +212,7 @@ class FileStorageService:
                         dir_date = datetime.strptime(date_dir.name, "%Y%m%d")
 
                         # 如果超过保留期限，删除整个目录
-                        if dir_date < cutoff_date:
+                        if dir_date.date() < cutoff_date.date():
                             shutil.rmtree(date_dir)
                             deleted_count += 1
                             logger.info(f"Deleted old directory: {date_dir}")

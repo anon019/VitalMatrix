@@ -5,14 +5,13 @@ import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import List
 import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.integrations.base import DataSourceProvider, AuthResult, TrainingSession, SleepSession
 from app.integrations.polar.client import PolarClient
 from app.models.polar import PolarAuth
 from app.database.session import AsyncSessionLocal
-from app.config import settings
+from app.utils.datetime_helper import now_hk, today_hk
 
 logger = logging.getLogger(__name__)
 
@@ -335,9 +334,11 @@ class PolarProvider(DataSourceProvider):
         """
         try:
             access_token = await self._get_access_token(user_id)
-            # 尝试获取体能信息（轻量级请求）
-            physical_info = await self.client.get_physical_info(access_token)
-            return physical_info is not None
+            # 使用exercises端点检查连接（physical-information端点已返回404不可靠）
+            today = today_hk()
+            exercises = await self.client.get_exercises(access_token, today, today)
+            # get_exercises返回列表（可能为空），只要不抛异常就说明连接正常
+            return exercises is not None
         except Exception as e:
             logger.error(f"Polar连接检查失败: {str(e)}")
             return False
@@ -353,42 +354,36 @@ class PolarProvider(DataSourceProvider):
             最大心率（bpm）
         """
         try:
-            # 获取用户信息
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
-                    select(PolarAuth).where(PolarAuth.access_token == access_token)
+                    select(PolarAuth)
+                    .where(PolarAuth.access_token == access_token)
+                    .limit(1)
                 )
                 polar_auth = result.scalar_one_or_none()
 
-                if not polar_auth:
-                    # 默认最大心率
-                    return 187
+            if not polar_auth:
+                return 187
 
-                # 通过API获取用户信息
-                import httpx
-                user_url = f"{settings.POLAR_BASE_URL}/users/{polar_auth.polar_user_id}"
-                async with httpx.AsyncClient(timeout=30.0, trust_env=False) as http_client:
-                    response = await http_client.get(
-                        user_url,
-                        headers={"Authorization": f"Bearer {access_token}"}
-                    )
+            user_data = await self.client.get_user_info(
+                access_token=access_token,
+                polar_user_id=str(polar_auth.polar_user_id),
+            )
 
-                    if response.status_code == 200:
-                        user_data = response.json()
-                        birthdate = user_data.get('birthdate')
+            if not user_data:
+                return 187
 
-                        if birthdate:
-                            # 计算最大心率: 220 - 年龄
-                            birth_year = int(birthdate.split('-')[0])
-                            age = datetime.now().year - birth_year
-                            max_hr = 220 - age
-                            logger.info(f"根据生日计算最大心率: {birthdate} -> {max_hr} bpm")
-                            return max_hr
+            birthdate = user_data.get("birthdate")
+            if birthdate:
+                birth_year = int(birthdate.split("-")[0])
+                age = now_hk().year - birth_year
+                max_hr = 220 - age
+                logger.info(f"根据生日计算最大心率: {birthdate} -> {max_hr} bpm")
+                return max_hr
 
         except Exception as e:
             logger.warning(f"获取用户最大心率失败: {str(e)}")
 
-        # 默认值
         return 187
 
     def _parse_duration(self, duration_str: str) -> int:

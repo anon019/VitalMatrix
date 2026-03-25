@@ -25,7 +25,9 @@ class QwenProvider(AIProvider):
 
     def __init__(self):
         # 通义千问API配置
-        self.api_key = getattr(settings, 'QWEN_API_KEY', settings.DEEPSEEK_API_KEY)
+        self.api_key = settings.QWEN_API_KEY
+        if not self.api_key:
+            raise ValueError("缺少QWEN_API_KEY，请在环境变量中配置")
         self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         self.model_name = "qwen3-max-preview"  # 升级到qwen3
 
@@ -238,6 +240,15 @@ class QwenProvider(AIProvider):
 
         risk_section = "## 风险提示\n" + "\n".join(risk_flags) if risk_flags else "## 风险提示\n无明显风险"
 
+        # 构建营养数据部分
+        nutrition_section = self._build_nutrition_section(training_data.nutrition_data)
+
+        # 构建趋势摘要部分
+        if training_data.trend_summary:
+            trend_section = f"## 近期趋势变化\n{training_data.trend_summary}"
+        else:
+            trend_section = "## 近期趋势变化\n数据不足，暂无趋势分析"
+
         # 从配置文件读取任务模板
         task_template = self.prompt_loader.task_template
 
@@ -255,7 +266,11 @@ class QwenProvider(AIProvider):
 
 {oura_section}
 
+{nutrition_section}
+
 {risk_section}
+
+{trend_section}
 
 {task_template.format(date=date)}"""
 
@@ -293,6 +308,61 @@ class QwenProvider(AIProvider):
             return "暂无个人信息"
 
         return "\n".join(profile_lines)
+
+    def _build_nutrition_section(self, nutrition_data) -> str:
+        """构建营养数据部分的文本"""
+        if not nutrition_data or not nutrition_data.days:
+            return "## 近7天营养数据\n暂无饮食记录（用户未上传饮食照片，不代表未进食）"
+
+        days_count = len(nutrition_data.days)
+        sections = [f"## 近7天营养数据（共记录{days_count}天，未记录的天数表示用户未上传，非未进食）"]
+
+        for day in nutrition_data.days:
+            parts = [f"{day.date}"]
+            if day.total_calories:
+                parts.append(f"{day.total_calories:.0f}kcal")
+            if day.total_protein:
+                parts.append(f"蛋白质{day.total_protein:.0f}g")
+            if day.total_carbs:
+                parts.append(f"碳水{day.total_carbs:.0f}g")
+            if day.total_fat:
+                parts.append(f"脂肪{day.total_fat:.0f}g")
+            parts.append(f"{day.meals_count}餐")
+
+            # 营养flags
+            if day.flags:
+                flag_labels = {
+                    "calorie_high": "热量偏高",
+                    "calorie_low": "热量不足",
+                    "protein_low": "蛋白质不足",
+                    "protein_high": "蛋白质过高",
+                    "carbs_high": "碳水偏高",
+                    "carbs_low": "碳水偏低",
+                    "fat_high": "脂肪偏高",
+                    "fat_low": "脂肪偏低",
+                }
+                active_flags = [flag_labels[k] for k, v in day.flags.items() if v and k in flag_labels]
+                if active_flags:
+                    parts.append(f"⚠️{'、'.join(active_flags)}")
+
+            sections.append(f"- {', '.join(parts)}")
+
+        # 昨日详细：各餐热量
+        yesterday = nutrition_data.days[-1] if nutrition_data.days else None
+        if yesterday and yesterday.total_calories:
+            meal_parts = []
+            if yesterday.breakfast_calories:
+                meal_parts.append(f"早餐{yesterday.breakfast_calories:.0f}")
+            if yesterday.lunch_calories:
+                meal_parts.append(f"午餐{yesterday.lunch_calories:.0f}")
+            if yesterday.dinner_calories:
+                meal_parts.append(f"晚餐{yesterday.dinner_calories:.0f}")
+            if yesterday.snack_calories:
+                meal_parts.append(f"加餐{yesterday.snack_calories:.0f}")
+            if meal_parts:
+                sections.append(f"- 昨日各餐热量(kcal): {', '.join(meal_parts)}")
+
+        return "\n".join(sections)
 
     def _build_oura_data_section(self, oura_data) -> str:
         """构建 Oura 数据部分的文本"""

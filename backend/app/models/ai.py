@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import String, Integer, Text, TIMESTAMP, ForeignKey, Date, UniqueConstraint
+from sqlalchemy import String, Integer, Text, TIMESTAMP, ForeignKey, Date, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
@@ -50,6 +50,10 @@ class AIRecommendation(Base):
 
     # 关联关系
     user: Mapped["User"] = relationship("User", back_populates="ai_recommendations")
+
+    __table_args__ = (
+        Index("idx_ai_recommendation_user_date_created", "user_id", "date", "created_at"),
+    )
 
     # 注意：不设置唯一约束，允许同一天多条记录，方便历史回溯
 

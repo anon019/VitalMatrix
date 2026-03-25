@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any
 import httpx
+import asyncio
 from app.config import settings
 from app.integrations.polar.constants import (
     POLAR_AUTH_URL,
@@ -34,10 +35,20 @@ class PolarClient:
         self.redirect_uri = settings.POLAR_REDIRECT_URI
         # trust_env=False: 忽略代理环境变量，直连Polar API
         self.http_client = httpx.AsyncClient(timeout=30.0, trust_env=False)
+        self.max_concurrent_requests = 8
 
     async def close(self):
         """关闭HTTP客户端"""
         await self.http_client.aclose()
+
+    async def __aenter__(self):
+        """上下文管理器入口"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """上下文管理器出口，自动关闭连接"""
+        await self.close()
+        return False
 
     def get_authorization_url(self, state: str) -> str:
         """
@@ -214,8 +225,10 @@ class PolarClient:
             logger.info(f"获取Polar训练列表: {exercises_url}")
 
             # 获取训练列表（返回的是简要信息的数组）
-            # 添加 zones=true 参数以获取心率区间数据
-            exercises_summary = await self._make_request("GET", f"{exercises_url}?zones=true", access_token)
+            # 同时返回zones=true以获取心率区间数据
+            exercises_summary = await self._make_request(
+                "GET", exercises_url, access_token, params={"zones": "true"}
+            )
 
             if not exercises_summary or not isinstance(exercises_summary, list):
                 logger.info("未获取到训练记录")
@@ -223,51 +236,61 @@ class PolarClient:
 
             logger.info(f"找到{len(exercises_summary)}条训练记录")
 
-            exercises = []
+            async def _fetch_exercise_detail(summary: Dict[str, Any]):
+                exercise_id = summary.get("id")
+                if not exercise_id:
+                    return None
 
-            # 遍历每条训练，获取完整详情
-            for summary in exercises_summary:
+                # 日期过滤（基于 start_time）
+                if start_date or end_date:
+                    start_time_str = summary.get("start_time")
+                    if start_time_str:
+                        try:
+                            if "Z" in start_time_str or "+" in start_time_str:
+                                exercise_date = datetime.fromisoformat(
+                                    start_time_str.replace("Z", "+00:00")
+                                ).date()
+                            else:
+                                exercise_date = datetime.fromisoformat(start_time_str).date()
+
+                            if start_date and exercise_date < start_date:
+                                logger.debug(f"跳过训练（早于开始日期）: {exercise_id}")
+                                return None
+                            if end_date and exercise_date > end_date:
+                                logger.debug(f"跳过训练（晚于结束日期）: {exercise_id}")
+                                return None
+                        except Exception as e:
+                            logger.warning(f"解析训练日期失败: {start_time_str} - {str(e)}")
+
+                detail_url = f"{exercises_url}/{exercise_id}"
                 try:
-                    exercise_id = summary.get("id")
-                    if not exercise_id:
-                        continue
-
-                    # 日期过滤（基于 start_time）
-                    if start_date or end_date:
-                        start_time_str = summary.get("start_time")
-                        if start_time_str:
-                            # 注意：这里的格式可能不带时区，需要处理
-                            try:
-                                # 尝试解析不同格式
-                                if "Z" in start_time_str or "+" in start_time_str:
-                                    exercise_date = datetime.fromisoformat(start_time_str.replace("Z", "+00:00")).date()
-                                else:
-                                    exercise_date = datetime.fromisoformat(start_time_str).date()
-
-                                if start_date and exercise_date < start_date:
-                                    logger.debug(f"跳过训练（早于开始日期）: {exercise_id}")
-                                    continue
-                                if end_date and exercise_date > end_date:
-                                    logger.debug(f"跳过训练（晚于结束日期）: {exercise_id}")
-                                    continue
-                            except Exception as e:
-                                logger.warning(f"解析训练日期失败: {start_time_str} - {str(e)}")
-
-                    # 获取完整的训练详情
-                    # 添加 zones=true 参数以获取心率区间数据
-                    detail_url = f"{exercises_url}/{exercise_id}?zones=true"
-                    exercise_detail = await self._make_request("GET", detail_url, access_token)
-
-                    if exercise_detail:
-                        exercises.append(exercise_detail)
-                        logger.debug(f"成功获取训练详情: {exercise_id}")
-
+                    # 为每条详情请求也带上 zones=true
+                    return await self._make_request(
+                        "GET", detail_url, access_token, params={"zones": "true"}
+                    )
                 except PolarAPIError as e:
-                    logger.warning(f"获取训练详情失败: {summary.get('id')} - {str(e)}")
+                    logger.warning(f"获取训练详情失败: {exercise_id} - {str(e)}")
+                    return None
+
+            semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+
+            async def _bounded_fetch(summary: Dict[str, Any]):
+                async with semaphore:
+                    return await _fetch_exercise_detail(summary)
+
+            results = await asyncio.gather(
+                *[_bounded_fetch(summary) for summary in exercises_summary],
+                return_exceptions=True,
+            )
+
+            exercises = []
+            for exercise in results:
+                if isinstance(exercise, Exception):
+                    logger.error(f"获取训练详情异常: {str(exercise)}")
                     continue
-                except Exception as e:
-                    logger.error(f"处理训练记录异常: {str(e)}")
-                    continue
+                if exercise:
+                    exercises.append(exercise)
+                    logger.debug(f"成功获取训练详情: {exercise.get('id')}")
 
             logger.info(f"成功获取{len(exercises)}条Polar训练记录（含详情）")
             return exercises
@@ -324,6 +347,20 @@ class PolarClient:
         except PolarAPIError as e:
             logger.error(f"获取Polar日常活动数据失败: {str(e)}")
             return []
+
+    async def get_user_info(
+        self, access_token: str, polar_user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        获取Polar用户信息
+        """
+        try:
+            user_url = f"{settings.POLAR_BASE_URL}/users/{polar_user_id}"
+            return await self._make_request("GET", user_url, access_token)
+        except PolarAPIError as e:
+            logger.error(f"获取Polar用户信息失败: {str(e)}")
+            return None
+
 
     async def get_exercise_zones_from_tcx(
         self, access_token: str, exercise_id: str, max_hr: int
@@ -477,45 +514,54 @@ class PolarClient:
             nights = nights_data.get("nights", [])
             logger.info(f"找到{len(nights)}条睡眠记录")
 
-            sleep_records = []
+            async def _fetch_night_detail(night_summary: Dict[str, Any]):
+                polar_user = night_summary.get("polar-user")
+                night_date_str = night_summary.get("date")
+                if not polar_user or not night_date_str:
+                    return None
 
-            # 遍历每条睡眠记录，获取详情
-            for night_summary in nights:
+                night_id = f"{polar_user}/{night_date_str}"
+
+                if start_date or end_date:
+                    try:
+                        night_date = date.fromisoformat(night_date_str)
+                        if start_date and night_date < start_date:
+                            logger.debug(f"跳过睡眠（早于开始日期）: {night_id}")
+                            return None
+                        if end_date and night_date > end_date:
+                            logger.debug(f"跳过睡眠（晚于结束日期）: {night_id}")
+                            return None
+                    except Exception as e:
+                        logger.warning(f"解析睡眠日期失败: {night_date_str} - {str(e)}")
+
+                detail_url = f"{nights_url}/{night_id}"
                 try:
-                    night_id = night_summary.get("polar-user") + "/" + night_summary.get("date")
-                    if not night_id:
-                        continue
-
-                    # 日期过滤
-                    if start_date or end_date:
-                        night_date_str = night_summary.get("date")
-                        if night_date_str:
-                            try:
-                                night_date = date.fromisoformat(night_date_str)
-                                if start_date and night_date < start_date:
-                                    logger.debug(f"跳过睡眠（早于开始日期）: {night_id}")
-                                    continue
-                                if end_date and night_date > end_date:
-                                    logger.debug(f"跳过睡眠（晚于结束日期）: {night_id}")
-                                    continue
-                            except Exception as e:
-                                logger.warning(f"解析睡眠日期失败: {night_date_str} - {str(e)}")
-
-                    # 获取睡眠详情
-                    # 使用polar-user和date组合作为ID
-                    detail_url = f"{nights_url}/{night_id}"
-                    sleep_detail = await self._make_request("GET", detail_url, access_token)
-
-                    if sleep_detail:
-                        sleep_records.append(sleep_detail)
-                        logger.debug(f"成功获取睡眠详情: {night_id}")
-
+                    return await self._make_request("GET", detail_url, access_token)
                 except PolarAPIError as e:
-                    logger.warning(f"获取睡眠详情失败: {night_summary.get('date')} - {str(e)}")
+                    logger.warning(f"获取睡眠详情失败: {night_date_str} - {str(e)}")
+                    return None
+
+            semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+
+            async def _bounded_fetch(summary: Dict[str, Any]):
+                async with semaphore:
+                    return await _fetch_night_detail(summary)
+
+            results = await asyncio.gather(
+                *[_bounded_fetch(night_summary) for night_summary in nights],
+                return_exceptions=True,
+            )
+
+            sleep_records = []
+            for item in results:
+                if isinstance(item, Exception):
+                    logger.error(f"获取睡眠详情异常: {str(item)}")
                     continue
-                except Exception as e:
-                    logger.error(f"处理睡眠记录异常: {str(e)}")
-                    continue
+                if item:
+                    sleep_records.append(item)
+                    logger.debug(
+                        f"成功获取睡眠详情: {item.get('date') or item.get('polar-user')}"
+                    )
 
             logger.info(f"成功获取{len(sleep_records)}条Polar睡眠记录（含详情）")
             return sleep_records
@@ -559,43 +605,62 @@ class PolarClient:
 
             recharge_records = []
 
-            # 遍历每条记录，获取详情
-            for recharge_summary in recharges:
+            semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+
+            # 遍历每条记录，获取详情（支持并发）
+            async def _fetch_recharge_detail(recharge_summary: Dict[str, Any]):
                 try:
                     # 使用polar-user和date组合作为ID
-                    recharge_id = recharge_summary.get("polar-user") + "/" + recharge_summary.get("date")
-                    if not recharge_id:
-                        continue
+                    polar_user = recharge_summary.get("polar-user")
+                    date_str = recharge_summary.get("date")
+                    if not polar_user or not date_str:
+                        return None
+
+                    recharge_id = f"{polar_user}/{date_str}"
 
                     # 日期过滤
                     if start_date or end_date:
-                        recharge_date_str = recharge_summary.get("date")
-                        if recharge_date_str:
-                            try:
-                                recharge_date = date.fromisoformat(recharge_date_str)
-                                if start_date and recharge_date < start_date:
-                                    logger.debug(f"跳过夜间恢复（早于开始日期）: {recharge_id}")
-                                    continue
-                                if end_date and recharge_date > end_date:
-                                    logger.debug(f"跳过夜间恢复（晚于结束日期）: {recharge_id}")
-                                    continue
-                            except Exception as e:
-                                logger.warning(f"解析夜间恢复日期失败: {recharge_date_str} - {str(e)}")
+                        try:
+                            recharge_date = date.fromisoformat(date_str)
+                            if start_date and recharge_date < start_date:
+                                logger.debug(f"跳过夜间恢复（早于开始日期）: {recharge_id}")
+                                return None
+                            if end_date and recharge_date > end_date:
+                                logger.debug(f"跳过夜间恢复（晚于结束日期）: {recharge_id}")
+                                return None
+                        except Exception as e:
+                            logger.warning(f"解析夜间恢复日期失败: {date_str} - {str(e)}")
+                            return None
 
                     # 获取夜间恢复详情
                     detail_url = f"{recharge_url}/{recharge_id}"
-                    recharge_detail = await self._make_request("GET", detail_url, access_token)
-
-                    if recharge_detail:
-                        recharge_records.append(recharge_detail)
-                        logger.debug(f"成功获取夜间恢复详情: {recharge_id}")
+                    return await self._make_request("GET", detail_url, access_token)
 
                 except PolarAPIError as e:
                     logger.warning(f"获取夜间恢复详情失败: {recharge_summary.get('date')} - {str(e)}")
-                    continue
+                    return None
                 except Exception as e:
                     logger.error(f"处理夜间恢复记录异常: {str(e)}")
+                    return None
+
+            async def _bounded_fetch(summary: Dict[str, Any]):
+                async with semaphore:
+                    return await _fetch_recharge_detail(summary)
+
+            results = await asyncio.gather(
+                *[_bounded_fetch(recharge_summary) for recharge_summary in recharges],
+                return_exceptions=True,
+            )
+
+            for item in results:
+                if isinstance(item, Exception):
+                    logger.error(f"获取夜间恢复详情异常: {str(item)}")
                     continue
+                if item:
+                    recharge_records.append(item)
+                    logger.debug(
+                        f"成功获取夜间恢复详情: {item.get('date') or item.get('polar-user')}"
+                    )
 
             logger.info(f"成功获取{len(recharge_records)}条Polar夜间恢复记录（含详情）")
             return recharge_records

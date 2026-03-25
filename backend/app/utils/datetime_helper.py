@@ -18,6 +18,16 @@ def today_hk() -> date:
     return now_hk().date()
 
 
+def start_of_day_hk(current_date: date) -> datetime:
+    """获取某日香港时区零点时间"""
+    return HK_TZ.localize(datetime.combine(current_date, datetime.min.time()))
+
+
+def end_of_day_hk(current_date: date) -> datetime:
+    """获取某日香港时区23:59:59时间"""
+    return start_of_day_hk(current_date) + timedelta(days=1) - timedelta(seconds=1)
+
+
 def get_week_start(dt: date) -> date:
     """获取周起始日期（周一）"""
     return dt - timedelta(days=dt.weekday())

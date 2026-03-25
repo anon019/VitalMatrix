@@ -3,6 +3,7 @@ FastMCP Server Configuration
 
 配置 MCP 服务器，支持 SSE transport + API Key 认证
 """
+import hmac
 import logging
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -24,15 +25,15 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         # 获取 Authorization header
         auth_header = request.headers.get("Authorization", "")
 
-        # 验证 Bearer token
+        # 验证 Bearer token（使用常数时间比较防止时序攻击）
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]  # 去掉 "Bearer " 前缀
-            if token == settings.MCP_API_KEY:
+            if hmac.compare_digest(token, settings.MCP_API_KEY):
                 return await call_next(request)
 
         # 也支持 X-API-Key header（兼容某些客户端）
         api_key = request.headers.get("X-API-Key", "")
-        if api_key == settings.MCP_API_KEY:
+        if hmac.compare_digest(api_key, settings.MCP_API_KEY):
             return await call_next(request)
 
         # 如果没有配置 API Key，允许访问（向后兼容）

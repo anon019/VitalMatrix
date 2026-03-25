@@ -3,11 +3,11 @@
 """
 import logging
 from datetime import date, timedelta
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, desc
+from sqlalchemy import select, and_, func
 
 from app.database.session import get_db
 from app.api.dependencies import get_current_user
@@ -15,7 +15,6 @@ from app.models.user import User
 from app.models.polar import PolarExercise
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.oura import OuraSleep, OuraDailyReadiness, OuraDailyActivity, OuraDailyStress
-from app.models.ai import AIRecommendation
 from app.schemas.training import (
     ExerciseResponse,
     DailySummaryResponse,
@@ -25,7 +24,7 @@ from app.schemas.training import (
 from app.schemas.ai import RecommendationResponse
 from app.services.ai_service import AIService
 from app.services.training_metrics import TrainingMetricsService
-from app.utils.datetime_helper import today_hk, get_week_start
+from app.utils.datetime_helper import today_hk, get_week_start, start_of_day_hk
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -108,9 +107,9 @@ async def get_training_history(
     conditions = [PolarExercise.user_id == current_user.id]
 
     if start_date:
-        conditions.append(func.date(PolarExercise.start_time) >= start_date)
+        conditions.append(PolarExercise.start_time >= start_of_day_hk(start_date))
     if end_date:
-        conditions.append(func.date(PolarExercise.start_time) <= end_date)
+        conditions.append(PolarExercise.start_time < start_of_day_hk(end_date + timedelta(days=1)))
 
     # 查询总数
     count_result = await db.execute(

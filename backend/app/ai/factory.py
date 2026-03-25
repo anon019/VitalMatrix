@@ -6,6 +6,7 @@ from typing import Dict, Type
 from app.ai.base import AIProvider
 from app.ai.providers.deepseek import DeepSeekProvider
 from app.ai.providers.qwen import QwenProvider
+from app.ai.providers.gemini import GeminiProvider
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ class AIProviderFactory:
     _providers: Dict[str, Type[AIProvider]] = {
         "deepseek": DeepSeekProvider,
         "qwen": QwenProvider,
+        "gemini": GeminiProvider,
         # 未来可扩展
         # "openai": OpenAIProvider,
         # "claude": ClaudeProvider,

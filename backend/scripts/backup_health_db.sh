@@ -1,26 +1,17 @@
 #!/bin/bash
 # Health Database Backup Script
 # 每日自动备份 PostgreSQL 数据库到本地，并上传到 Google Drive
-#
-# 使用前请设置环境变量:
-#   BACKUP_DIR - 备份目录路径 (默认: ./backups)
-#   LOG_DIR - 日志目录路径 (默认: ./backups)
 
 set -e
 
-# 配置 (可通过环境变量覆盖)
-BACKUP_DIR="${BACKUP_DIR:-./backups/health_db}"
-LOG_DIR="${LOG_DIR:-./backups}"
+# 配置
+BACKUP_DIR="/root/backups/health_db"
 DB_NAME="health_db"
 DATE=$(date +%Y-%m-%d)
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/health_db_${DATE}.sql"
-LOG_FILE="${LOG_DIR}/backup.log"
+LOG_FILE="/root/backups/backup.log"
 KEEP_DAYS=30  # 本地保留天数
-
-# 确保目录存在
-mkdir -p "$BACKUP_DIR"
-mkdir -p "$LOG_DIR"
 
 # 日志函数
 log() {

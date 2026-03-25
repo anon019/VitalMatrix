@@ -6,17 +6,16 @@ from datetime import date, timedelta
 from typing import Optional, List
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import and_, desc, select
 
 from app.ai.factory import AIProviderFactory
-from app.ai.base import UserContext, TrainingData, OuraData
+from app.ai.base import UserContext, TrainingData, OuraData, NutritionData, NutritionDayRecord
+from app.models.nutrition import NutritionDailySummary
 from app.models.user import User
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.ai import AIRecommendation
 from app.models.oura import OuraSleep, OuraDailyReadiness, OuraDailyActivity, OuraDailyStress
 from app.utils.datetime_helper import today_hk, get_week_start
-from app.config import settings
-
 logger = logging.getLogger(__name__)
 
 
@@ -51,7 +50,11 @@ class AIService:
         try:
             # 去重逻辑：检查今天是否已有建议（用于兜底任务避免重复）
             if not force_update:
-                existing = await self.get_recommendation(user_id, target_date)
+                existing = await self.get_recommendation(
+                    user_id=user_id,
+                    target_date=target_date,
+                    allow_fallback=False,
+                )
                 if existing:
                     logger.info(f"今日AI建议已存在，跳过生成: user_id={user_id}, date={target_date}")
                     return existing
@@ -72,13 +75,14 @@ class AIService:
                 date=target_date.isoformat(),
             )
 
-            # 4. 保存到数据库（每次生成新记录）
+            # 4. 保存到数据库（同日覆盖）
             ai_record = await self._create_recommendation(
                 user_id=user_id,
                 date=target_date,
                 provider=ai_provider.name,
                 model=ai_provider.model,
                 recommendation=recommendation,
+                force_update=force_update,
             )
 
             logger.info(
@@ -95,7 +99,9 @@ class AIService:
     async def get_recommendation(
         self,
         user_id: uuid.UUID,
-        target_date: date = None
+        target_date: date = None,
+        *,
+        allow_fallback: bool = True
     ) -> Optional[AIRecommendation]:
         """
         获取AI建议
@@ -113,33 +119,23 @@ class AIService:
         if target_date is None:
             target_date = today_hk()
 
-        from sqlalchemy import desc
-
-        # 先尝试获取目标日期的建议
-        result = await self.db.execute(
+        # 一次查询完成优先级排序：优先返回目标日期，若不存在则回退到最新记录
+        query = (
             select(AIRecommendation)
-            .where(
-                and_(
-                    AIRecommendation.user_id == user_id,
-                    AIRecommendation.date == target_date,
-                )
+            .where(AIRecommendation.user_id == user_id)
+            .order_by(
+                (AIRecommendation.date == target_date).desc(),
+                desc(AIRecommendation.created_at),
             )
-            .order_by(desc(AIRecommendation.created_at))
             .limit(1)
         )
-        recommendation = result.scalar_one_or_none()
 
-        # 如果目标日期没有，返回最新一条（不限日期）
-        if recommendation is None:
-            result = await self.db.execute(
-                select(AIRecommendation)
-                .where(AIRecommendation.user_id == user_id)
-                .order_by(desc(AIRecommendation.created_at))
-                .limit(1)
-            )
-            recommendation = result.scalar_one_or_none()
+        # 关闭回退时，只取目标日期的最新一条
+        if not allow_fallback:
+            query = query.where(AIRecommendation.date == target_date)
 
-        return recommendation
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
 
     async def regenerate_recommendation(
         self,
@@ -148,7 +144,7 @@ class AIService:
         provider_name: str = None
     ) -> AIRecommendation:
         """
-        重新生成AI建议（删除旧记录）
+        重新生成AI建议（按同日覆盖）
 
         Args:
             user_id: 用户ID
@@ -158,23 +154,10 @@ class AIService:
         Returns:
             新的AI建议记录
         """
-        # 删除旧记录
-        result = await self.db.execute(
-            select(AIRecommendation).where(
-                and_(
-                    AIRecommendation.user_id == user_id,
-                    AIRecommendation.date == target_date,
-                )
-            )
+        # 先生成成功，再在保存阶段覆盖同日最新记录，避免生成失败时丢失旧建议
+        return await self.generate_daily_recommendation(
+            user_id, target_date, provider_name, force_update=True
         )
-        old_record = result.scalar_one_or_none()
-        if old_record:
-            await self.db.delete(old_record)
-            await self.db.commit()
-            logger.info(f"删除旧AI建议: user_id={user_id}, date={target_date}")
-
-        # 生成新建议
-        return await self.generate_daily_recommendation(user_id, target_date, provider_name)
 
     async def chat(
         self,
@@ -303,6 +286,12 @@ class AIService:
         # 获取 Oura 数据
         oura_data = await self._get_oura_data(user_id, target_date)
 
+        # 获取营养数据
+        nutrition_data = await self._get_nutrition_data(user_id, target_date)
+
+        # 获取趋势摘要
+        trend_summary = await self._get_trend_summary(user_id, target_date)
+
         return TrainingData(
             zone2_min=zone2_min,
             hi_min=hi_min,
@@ -318,6 +307,8 @@ class AIService:
             rest_days=rest_days,
             flags=flags,
             oura_data=oura_data,
+            nutrition_data=nutrition_data,
+            trend_summary=trend_summary,
         )
 
     async def _get_oura_data(self, user_id: uuid.UUID, target_date: date) -> Optional[OuraData]:
@@ -449,6 +440,169 @@ class AIService:
             active_calories=activity.active_calories if activity else None,
         )
 
+    async def _get_nutrition_data(self, user_id: uuid.UUID, target_date: date) -> Optional[NutritionData]:
+        """获取近7天营养数据"""
+        start_date = target_date - timedelta(days=7)
+
+        result = await self.db.execute(
+            select(NutritionDailySummary)
+            .where(and_(
+                NutritionDailySummary.user_id == user_id,
+                NutritionDailySummary.date > start_date,
+                NutritionDailySummary.date <= target_date,
+            ))
+            .order_by(NutritionDailySummary.date)
+        )
+        summaries = result.scalars().all()
+
+        if not summaries:
+            return None
+
+        days = []
+        for s in summaries:
+            days.append(NutritionDayRecord(
+                date=s.date.isoformat(),
+                total_calories=float(s.total_calories) if s.total_calories else None,
+                total_protein=float(s.total_protein) if s.total_protein else None,
+                total_carbs=float(s.total_carbs) if s.total_carbs else None,
+                total_fat=float(s.total_fat) if s.total_fat else None,
+                total_fiber=float(s.total_fiber) if s.total_fiber else None,
+                meals_count=s.meals_count or 0,
+                breakfast_calories=float(s.breakfast_calories) if s.breakfast_calories else None,
+                lunch_calories=float(s.lunch_calories) if s.lunch_calories else None,
+                dinner_calories=float(s.dinner_calories) if s.dinner_calories else None,
+                snack_calories=float(s.snack_calories) if s.snack_calories else None,
+                flags=s.flags,
+            ))
+
+        return NutritionData(days=days)
+
+    async def _get_trend_summary(self, user_id: uuid.UUID, target_date: date) -> Optional[str]:
+        """计算近14天关键指标趋势摘要（纯文本）"""
+        day_14_ago = target_date - timedelta(days=14)
+        day_7_ago = target_date - timedelta(days=7)
+
+        lines = []
+
+        # --- 健康趋势 (from OuraSleep long_sleep) ---
+        oura_result = await self.db.execute(
+            select(
+                OuraSleep.day,
+                OuraSleep.average_hrv,
+                OuraSleep.lowest_heart_rate,
+                OuraSleep.sleep_score,
+            ).where(and_(
+                OuraSleep.user_id == user_id,
+                OuraSleep.day > day_14_ago,
+                OuraSleep.day <= target_date,
+                OuraSleep.sleep_type == 'long_sleep',
+            )).order_by(OuraSleep.day)
+        )
+        oura_rows = oura_result.all()
+
+        hrv_rows = [
+            (row.day, row.average_hrv)
+            for row in oura_rows
+            if row.average_hrv is not None
+        ]
+        if len(hrv_rows) >= 4:
+            recent = [value for day, value in hrv_rows if day > day_7_ago]
+            earlier = [value for day, value in hrv_rows if day <= day_7_ago]
+            if recent and earlier:
+                recent_avg = sum(recent) / len(recent)
+                earlier_avg = sum(earlier) / len(earlier)
+                if earlier_avg > 0:
+                    change_pct = ((recent_avg - earlier_avg) / earlier_avg) * 100
+                    direction = "上升" if change_pct > 0 else "下降"
+                    lines.append(
+                        f"HRV趋势: 近7天均值{recent_avg:.0f}ms vs 前7天{earlier_avg:.0f}ms ({direction}{abs(change_pct):.0f}%)"
+                    )
+
+        rhr_rows = [
+            (row.day, row.lowest_heart_rate)
+            for row in oura_rows
+            if row.lowest_heart_rate is not None
+        ]
+        if len(rhr_rows) >= 4:
+            recent = [value for day, value in rhr_rows if day > day_7_ago]
+            earlier = [value for day, value in rhr_rows if day <= day_7_ago]
+            if recent and earlier:
+                recent_avg = sum(recent) / len(recent)
+                earlier_avg = sum(earlier) / len(earlier)
+                if earlier_avg > 0:
+                    change_pct = ((recent_avg - earlier_avg) / earlier_avg) * 100
+                    direction = "上升" if change_pct > 0 else "下降"
+                    lines.append(
+                        f"静息心率趋势: 近7天均值{recent_avg:.0f}bpm vs 前7天{earlier_avg:.0f}bpm ({direction}{abs(change_pct):.0f}%)"
+                    )
+
+        sleep_rows = [
+            (row.day, row.sleep_score)
+            for row in oura_rows
+            if row.sleep_score is not None
+        ]
+        if len(sleep_rows) >= 4:
+            recent = [value for day, value in sleep_rows if day > day_7_ago]
+            earlier = [value for day, value in sleep_rows if day <= day_7_ago]
+            if recent and earlier:
+                recent_avg = sum(recent) / len(recent)
+                earlier_avg = sum(earlier) / len(earlier)
+                change = recent_avg - earlier_avg
+                direction = "上升" if change > 0 else "下降"
+                lines.append(
+                    f"睡眠评分趋势: 近7天均值{recent_avg:.0f} vs 前7天{earlier_avg:.0f} ({direction}{abs(change):.0f}分)"
+                )
+
+        # --- 训练负荷趋势 (TRIMP) ---
+        trimp_result = await self.db.execute(
+            select(DailyTrainingSummary.date, DailyTrainingSummary.trimp)
+            .where(and_(
+                DailyTrainingSummary.user_id == user_id,
+                DailyTrainingSummary.date > day_14_ago,
+                DailyTrainingSummary.date <= target_date,
+            )).order_by(DailyTrainingSummary.date)
+        )
+        trimp_rows = trimp_result.all()
+
+        if trimp_rows:
+            recent = [float(r.trimp) for r in trimp_rows if r.date > day_7_ago]
+            earlier = [float(r.trimp) for r in trimp_rows if r.date <= day_7_ago]
+            recent_sum = sum(recent)
+            earlier_sum = sum(earlier)
+            if earlier_sum > 0:
+                change_pct = ((recent_sum - earlier_sum) / earlier_sum) * 100
+                direction = "增加" if change_pct > 0 else "减少"
+                lines.append(f"训练负荷趋势: 近7天TRIMP总量{recent_sum:.0f} vs 前7天{earlier_sum:.0f} ({direction}{abs(change_pct):.0f}%)")
+            elif recent_sum > 0:
+                lines.append(f"训练负荷趋势: 近7天TRIMP总量{recent_sum:.0f} (前7天无训练)")
+
+        # --- 营养趋势 ---
+        nutrition_result = await self.db.execute(
+            select(
+                NutritionDailySummary.date,
+                NutritionDailySummary.total_calories,
+                NutritionDailySummary.total_protein,
+            ).where(and_(
+                NutritionDailySummary.user_id == user_id,
+                NutritionDailySummary.date > day_7_ago,
+                NutritionDailySummary.date <= target_date,
+            )).order_by(NutritionDailySummary.date)
+        )
+        nutrition_rows = nutrition_result.all()
+
+        if nutrition_rows:
+            cals = [float(r.total_calories) for r in nutrition_rows if r.total_calories]
+            proteins = [float(r.total_protein) for r in nutrition_rows if r.total_protein]
+            if cals:
+                avg_cal = sum(cals) / len(cals)
+                lines.append(f"营养趋势: 近{len(cals)}天平均热量{avg_cal:.0f}kcal" +
+                            (f", 平均蛋白质{sum(proteins)/len(proteins):.0f}g" if proteins else ""))
+
+        if not lines:
+            return None
+
+        return "\n".join(lines)
+
     async def _create_recommendation(
         self,
         user_id: uuid.UUID,
@@ -456,24 +610,58 @@ class AIService:
         provider: str,
         model: str,
         recommendation,
+        force_update: bool = False,
     ) -> AIRecommendation:
-        """创建新的AI建议记录（每次都创建新记录，保留历史）"""
+        """创建或覆盖当天AI建议记录"""
         from app.utils.datetime_helper import now_hk
 
-        ai_record = AIRecommendation(
-            user_id=user_id,
-            date=date,
-            provider=provider,
-            model=model,
-            summary=recommendation.summary,
-            yesterday_review=recommendation.yesterday_review,
-            today_recommendation=recommendation.today_recommendation,
-            health_education=recommendation.health_education,
-            prompt_tokens=recommendation.prompt_tokens,
-            completion_tokens=recommendation.completion_tokens,
-            created_at=now_hk(),
-        )
-        self.db.add(ai_record)
+        existing = None
+        duplicate_records = []
+        if force_update:
+            existing_result = await self.db.execute(
+                select(AIRecommendation)
+                .where(
+                    and_(
+                        AIRecommendation.user_id == user_id,
+                        AIRecommendation.date == date,
+                    )
+                )
+                .order_by(desc(AIRecommendation.created_at))
+            )
+            same_day_records = existing_result.scalars().all()
+            if same_day_records:
+                existing = same_day_records[0]
+                duplicate_records = same_day_records[1:]
+
+        if existing:
+            existing.provider = provider
+            existing.model = model
+            existing.summary = recommendation.summary
+            existing.yesterday_review = recommendation.yesterday_review
+            existing.today_recommendation = recommendation.today_recommendation
+            existing.health_education = recommendation.health_education
+            existing.prompt_tokens = recommendation.prompt_tokens
+            existing.completion_tokens = recommendation.completion_tokens
+            existing.created_at = now_hk()
+            ai_record = existing
+        else:
+            ai_record = AIRecommendation(
+                user_id=user_id,
+                date=date,
+                provider=provider,
+                model=model,
+                summary=recommendation.summary,
+                yesterday_review=recommendation.yesterday_review,
+                today_recommendation=recommendation.today_recommendation,
+                health_education=recommendation.health_education,
+                prompt_tokens=recommendation.prompt_tokens,
+                completion_tokens=recommendation.completion_tokens,
+                created_at=now_hk(),
+            )
+            self.db.add(ai_record)
+
+        for duplicate in duplicate_records:
+            await self.db.delete(duplicate)
 
         await self.db.commit()
         await self.db.refresh(ai_record)

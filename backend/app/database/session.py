@@ -14,9 +14,10 @@ engine_kwargs = {
 if settings.DEBUG:
     engine_kwargs["poolclass"] = NullPool
 else:
+    # 服务器内存有限（2GB），降低连接池大小
     engine_kwargs["pool_pre_ping"] = True
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
+    engine_kwargs["pool_size"] = 3
+    engine_kwargs["max_overflow"] = 5
 
 engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 
@@ -35,7 +36,6 @@ async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise

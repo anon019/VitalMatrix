@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Tuple
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import asyncio
 
 from app.integrations.polar.provider import PolarProvider
 from app.integrations.polar.client import PolarClient
@@ -17,6 +18,7 @@ from app.services.training_metrics import TrainingMetricsService
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+MAX_CONCURRENT_USER_TASKS = 8
 
 
 class PolarSyncService:
@@ -63,23 +65,37 @@ class PolarSyncService:
                 logger.info(f"未获取到新的训练数据: user_id={user_id}")
                 return (0, 0)
 
-            # 保存到数据库（幂等性处理）
+            # 一次性查询已存在的训练记录
+            session_ids = [session.external_id for session in training_sessions if session.external_id]
+            if not session_ids:
+                return (0, 0)
+
+            existing_result = await self.db.execute(
+                select(PolarExercise).where(PolarExercise.exercise_id.in_(session_ids))
+            )
+            existing_map = {row.exercise_id: row for row in existing_result.scalars().all()}
+
             new_count = 0
-            total_new_duration_min = 0  # 新增训练总时长（分钟）
+            total_new_duration_min = 0.0
+            dates_to_update = set()
+            changed = False
+            exercises_to_add = []
+
             for session in training_sessions:
-                # 检查是否已存在
-                result = await self.db.execute(
-                    select(PolarExercise).where(
-                        PolarExercise.exercise_id == session.external_id
-                    )
-                )
-                existing = result.scalar_one_or_none()
+                if not session.external_id:
+                    logger.warning("训练记录缺少external_id，跳过")
+                    continue
+
+                existing = existing_map.get(session.external_id)
 
                 if existing and not force:
                     logger.debug(f"训练记录已存在，跳过: {session.external_id}")
                     continue
 
-                if existing and force:
+                dates_to_update.add(session.start_time.date())
+                changed = True
+
+                if existing:
                     # 强制更新
                     existing.start_time = session.start_time
                     existing.end_time = session.end_time
@@ -106,7 +122,7 @@ class PolarSyncService:
                     existing.calories = session.calories
                     existing.distance_meters = session.distance_meters
                     existing.raw_json = session.raw_data
-                    logger.info(f"更新训练记录: {session.external_id}")
+                    logger.debug(f"更新训练记录: {session.external_id}")
                 else:
                     # 新建记录
                     exercise = PolarExercise(
@@ -139,10 +155,19 @@ class PolarSyncService:
                         raw_json=session.raw_data,
                         created_at=today_hk(),
                     )
-                    self.db.add(exercise)
+                    exercises_to_add.append(exercise)
                     new_count += 1
-                    total_new_duration_min += session.duration_sec / 60  # 累加新增时长（转为分钟）
-                    logger.info(f"新增训练记录: {session.external_id}, 时长: {session.duration_sec/60:.1f}分钟")
+                    total_new_duration_min += session.duration_sec / 60
+                    logger.info(
+                        f"新增训练记录: {session.external_id}, 时长: {session.duration_sec/60:.1f}分钟"
+                    )
+
+            if not changed:
+                logger.info(f"Polar数据无需更新: user_id={user_id}, range={start_date} to {end_date}")
+                return (0, 0)
+
+            if exercises_to_add:
+                self.db.add_all(exercises_to_add)
 
             await self.db.commit()
 
@@ -151,9 +176,8 @@ class PolarSyncService:
                 f"total={len(training_sessions)}, new={new_count}, new_duration={total_new_duration_min:.1f}分钟"
             )
 
-            # 同步后自动计算日总结和周汇总
-            if new_count > 0:
-                await self._update_summaries(user_id, training_sessions)
+            # 同步后自动计算受影响日期和周汇总
+            await self._update_summaries(user_id, dates_to_update)
 
             return (new_count, int(total_new_duration_min))
 
@@ -162,26 +186,24 @@ class PolarSyncService:
             await self.db.rollback()
             raise
 
-    async def _update_summaries(self, user_id: uuid.UUID, training_sessions):
-        """同步后更新日总结和周汇总"""
+    async def _update_summaries(self, user_id: uuid.UUID, affected_dates: set[date]):
+        """同步后更新受影响的日总结和周汇总"""
         try:
             metrics_service = TrainingMetricsService(self.db)
 
-            # 获取所有涉及的日期
-            dates_to_update = set()
-            for session in training_sessions:
-                session_date = session.start_time.date()
-                dates_to_update.add(session_date)
+            if not affected_dates:
+                return
 
-            # 计算每个日期的日总结
-            for target_date in dates_to_update:
+            # 计算每个涉及日期的日总结
+            for target_date in sorted(affected_dates):
                 await metrics_service.calculate_daily_summary(user_id, target_date)
                 logger.info(f"自动计算日总结: user={user_id}, date={target_date}")
 
-            # 计算本周汇总
-            week_start = get_week_start(today_hk())
-            await metrics_service.calculate_weekly_summary(user_id, week_start)
-            logger.info(f"自动计算周汇总: user={user_id}, week={week_start}")
+            # 计算受影响周的周汇总（兼容跨周同步）
+            week_starts = {get_week_start(target_date) for target_date in affected_dates}
+            for week_start in sorted(week_starts):
+                await metrics_service.calculate_weekly_summary(user_id, week_start)
+                logger.info(f"自动计算周汇总: user={user_id}, week={week_start}")
 
         except Exception as e:
             logger.error(f"自动计算汇总失败: user_id={user_id} - {str(e)}")
@@ -208,14 +230,33 @@ class PolarSyncService:
 
             logger.info(f"开始批量同步Polar数据: users={len(users)}, days={days}")
 
-            sync_stats = {}
-            for user in users:
+            sync_stats: Dict[str, int] = {}
+
+            async def _sync_user(user):
                 try:
-                    new_count = await self.sync_user_exercises(user.id, days=days)
-                    sync_stats[str(user.id)] = new_count
-                except Exception as e:
-                    logger.error(f"用户数据同步失败: user_id={user.id} - {str(e)}")
-                    sync_stats[str(user.id)] = -1  # 标记为失败
+                    new_count, _ = await self.sync_user_exercises(user.id, days=days)
+                    return new_count
+                except Exception:
+                    logger.error(f"用户数据同步失败: user_id={user.id}", exc_info=True)
+                    return -1
+
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_USER_TASKS)
+
+            async def _runner(user):
+                async with semaphore:
+                    return await _sync_user(user)
+
+            results = await asyncio.gather(
+                *[_runner(user) for user in users],
+                return_exceptions=True,
+            )
+
+            for user, result in zip(users, results):
+                if isinstance(result, Exception):
+                    logger.error(f"用户数据同步失败: user_id={user.id} - {str(result)}")
+                    sync_stats[str(user.id)] = -1
+                else:
+                    sync_stats[str(user.id)] = result
 
             logger.info(f"批量同步完成: stats={sync_stats}")
             return sync_stats
@@ -313,30 +354,21 @@ class PolarSyncService:
             sleep_records = await self.polar_client.get_sleep_data(
                 access_token, start_date, end_date
             )
+            if not sleep_records:
+                return 0
 
-            new_count = 0
-
+            polar_id_map = {}
             for sleep_data in sleep_records:
+                polar_user = sleep_data.get("polar-user")
+                sleep_date_str = sleep_data.get("date")
+                if not polar_user or not sleep_date_str:
+                    continue
+
+                polar_id = f"{polar_user}/{sleep_date_str}"
+                if polar_id in polar_id_map:
+                    continue
+
                 try:
-                    # 使用polar-user和date组合作为唯一ID
-                    polar_user = sleep_data.get("polar-user")
-                    sleep_date_str = sleep_data.get("date")
-
-                    if not polar_user or not sleep_date_str:
-                        continue
-
-                    polar_id = f"{polar_user}/{sleep_date_str}"
-
-                    # 检查是否已存在
-                    result = await self.db.execute(
-                        select(PolarSleep).where(PolarSleep.polar_id == polar_id)
-                    )
-                    existing = result.scalar_one_or_none()
-
-                    if existing and not force:
-                        continue
-
-                    # 解析日期时间
                     sleep_date = date.fromisoformat(sleep_date_str)
                     sleep_start_time_str = sleep_data.get("sleep_start_time")
                     sleep_end_time_str = sleep_data.get("sleep_end_time")
@@ -355,54 +387,75 @@ class PolarSyncService:
                     else:
                         continue
 
-                    # 提取睡眠阶段时长(秒)
-                    deep_sleep = sleep_data.get("deep_sleep")
-                    light_sleep = sleep_data.get("light_sleep")
-                    rem_sleep = sleep_data.get("rem_sleep")
-                    interruption = sleep_data.get("total_interruption_duration")
-
-                    # 提取睡眠质量指标
-                    sleep_score = sleep_data.get("sleep_score")
-                    continuity = sleep_data.get("continuity")
-                    continuity_class = sleep_data.get("continuity_class")
-
-                    if existing and force:
-                        # 更新现有记录
-                        existing.sleep_date = sleep_date
-                        existing.sleep_start_time = sleep_start_time
-                        existing.sleep_end_time = sleep_end_time
-                        existing.deep_sleep_duration = deep_sleep
-                        existing.light_sleep_duration = light_sleep
-                        existing.rem_sleep_duration = rem_sleep
-                        existing.total_interruption_duration = interruption
-                        existing.sleep_score = sleep_score
-                        existing.continuity = continuity
-                        existing.continuity_class = continuity_class
-                        existing.raw_json = sleep_data
-                    else:
-                        # 创建新记录
-                        polar_sleep = PolarSleep(
-                            user_id=user_id,
-                            polar_id=polar_id,
-                            sleep_date=sleep_date,
-                            sleep_start_time=sleep_start_time,
-                            sleep_end_time=sleep_end_time,
-                            deep_sleep_duration=deep_sleep,
-                            light_sleep_duration=light_sleep,
-                            rem_sleep_duration=rem_sleep,
-                            total_interruption_duration=interruption,
-                            sleep_score=sleep_score,
-                            continuity=continuity,
-                            continuity_class=continuity_class,
-                            raw_json=sleep_data,
-                            created_at=now_hk(),
-                        )
-                        self.db.add(polar_sleep)
-                        new_count += 1
-
+                    polar_id_map[polar_id] = {
+                        "sleep_date": sleep_date,
+                        "sleep_start_time": sleep_start_time,
+                        "sleep_end_time": sleep_end_time,
+                        "deep_sleep_duration": sleep_data.get("deep_sleep"),
+                        "light_sleep_duration": sleep_data.get("light_sleep"),
+                        "rem_sleep_duration": sleep_data.get("rem_sleep"),
+                        "total_interruption_duration": sleep_data.get("total_interruption_duration"),
+                        "sleep_score": sleep_data.get("sleep_score"),
+                        "continuity": sleep_data.get("continuity"),
+                        "continuity_class": sleep_data.get("continuity_class"),
+                        "raw_json": sleep_data,
+                    }
                 except Exception as e:
                     logger.error(f"处理Polar睡眠记录失败: {str(e)}")
                     continue
+
+            if not polar_id_map:
+                return 0
+
+            result = await self.db.execute(
+                select(PolarSleep).where(PolarSleep.polar_id.in_(polar_id_map.keys()))
+            )
+            existing_map = {row.polar_id: row for row in result.scalars().all()}
+
+            new_count = 0
+            items_to_add = []
+
+            for polar_id, payload in polar_id_map.items():
+                existing = existing_map.get(polar_id)
+                if existing and not force:
+                    continue
+
+                if existing:
+                    # 强制更新
+                    existing.sleep_date = payload["sleep_date"]
+                    existing.sleep_start_time = payload["sleep_start_time"]
+                    existing.sleep_end_time = payload["sleep_end_time"]
+                    existing.deep_sleep_duration = payload["deep_sleep_duration"]
+                    existing.light_sleep_duration = payload["light_sleep_duration"]
+                    existing.rem_sleep_duration = payload["rem_sleep_duration"]
+                    existing.total_interruption_duration = payload["total_interruption_duration"]
+                    existing.sleep_score = payload["sleep_score"]
+                    existing.continuity = payload["continuity"]
+                    existing.continuity_class = payload["continuity_class"]
+                    existing.raw_json = payload["raw_json"]
+                else:
+                    items_to_add.append(
+                        PolarSleep(
+                            user_id=user_id,
+                            polar_id=polar_id,
+                            sleep_date=payload["sleep_date"],
+                            sleep_start_time=payload["sleep_start_time"],
+                            sleep_end_time=payload["sleep_end_time"],
+                            deep_sleep_duration=payload["deep_sleep_duration"],
+                            light_sleep_duration=payload["light_sleep_duration"],
+                            rem_sleep_duration=payload["rem_sleep_duration"],
+                            total_interruption_duration=payload["total_interruption_duration"],
+                            sleep_score=payload["sleep_score"],
+                            continuity=payload["continuity"],
+                            continuity_class=payload["continuity_class"],
+                            raw_json=payload["raw_json"],
+                            created_at=now_hk(),
+                        )
+                    )
+                    new_count += 1
+
+            if items_to_add:
+                self.db.add_all(items_to_add)
 
             await self.db.commit()
             logger.info(f"同步Polar睡眠数据完成: user_id={user_id}, new={new_count}")
@@ -444,89 +497,96 @@ class PolarSyncService:
             recharge_records = await self.polar_client.get_nightly_recharge_data(
                 access_token, start_date, end_date
             )
+            if not recharge_records:
+                return 0
 
-            new_count = 0
-
+            polar_id_map = {}
             for recharge_data in recharge_records:
+                polar_user = recharge_data.get("polar-user")
+                recharge_date_str = recharge_data.get("date")
+                if not polar_user or not recharge_date_str:
+                    continue
+
+                polar_id = f"{polar_user}/{recharge_date_str}"
+                if polar_id in polar_id_map:
+                    continue
+
                 try:
-                    # 使用polar-user和date组合作为唯一ID
-                    polar_user = recharge_data.get("polar-user")
-                    recharge_date_str = recharge_data.get("date")
-
-                    if not polar_user or not recharge_date_str:
-                        continue
-
-                    polar_id = f"{polar_user}/{recharge_date_str}"
-
-                    # 检查是否已存在
-                    result = await self.db.execute(
-                        select(PolarNightlyRecharge).where(
-                            PolarNightlyRecharge.polar_id == polar_id
-                        )
-                    )
-                    existing = result.scalar_one_or_none()
-
-                    if existing and not force:
-                        continue
-
-                    # 解析日期
                     recharge_date = date.fromisoformat(recharge_date_str)
-
-                    # 提取ANS恢复指标
-                    ans_charge = recharge_data.get("ans_charge")
-                    ans_charge_status = recharge_data.get("ans_charge_status")
-                    hrv_avg = recharge_data.get("hrv_avg")
-                    breathing_rate_avg = recharge_data.get("breathing_rate_avg")
-                    heart_rate_avg = recharge_data.get("heart_rate_avg")
-                    rmssd = recharge_data.get("rmssd")
-
-                    # 提取睡眠恢复指标
-                    sleep_charge = recharge_data.get("sleep_charge")
-                    sleep_charge_status = recharge_data.get("sleep_charge_status")
-                    sleep_score = recharge_data.get("sleep_score")
-
-                    # Nightly Recharge总分
-                    nightly_recharge_status = recharge_data.get("nightly_recharge_status")
-
-                    if existing and force:
-                        # 更新现有记录
-                        existing.date = recharge_date
-                        existing.ans_charge = ans_charge
-                        existing.ans_charge_status = ans_charge_status
-                        existing.hrv_avg = hrv_avg
-                        existing.breathing_rate_avg = breathing_rate_avg
-                        existing.heart_rate_avg = heart_rate_avg
-                        existing.rmssd = rmssd
-                        existing.sleep_charge = sleep_charge
-                        existing.sleep_charge_status = sleep_charge_status
-                        existing.sleep_score = sleep_score
-                        existing.nightly_recharge_status = nightly_recharge_status
-                        existing.raw_json = recharge_data
-                    else:
-                        # 创建新记录
-                        polar_recharge = PolarNightlyRecharge(
-                            user_id=user_id,
-                            polar_id=polar_id,
-                            date=recharge_date,
-                            ans_charge=ans_charge,
-                            ans_charge_status=ans_charge_status,
-                            hrv_avg=hrv_avg,
-                            breathing_rate_avg=breathing_rate_avg,
-                            heart_rate_avg=heart_rate_avg,
-                            rmssd=rmssd,
-                            sleep_charge=sleep_charge,
-                            sleep_charge_status=sleep_charge_status,
-                            sleep_score=sleep_score,
-                            nightly_recharge_status=nightly_recharge_status,
-                            raw_json=recharge_data,
-                            created_at=now_hk(),
-                        )
-                        self.db.add(polar_recharge)
-                        new_count += 1
-
+                    polar_id_map[polar_id] = {
+                        "date": recharge_date,
+                        "ans_charge": recharge_data.get("ans_charge"),
+                        "ans_charge_status": recharge_data.get("ans_charge_status"),
+                        "hrv_avg": recharge_data.get("hrv_avg"),
+                        "breathing_rate_avg": recharge_data.get("breathing_rate_avg"),
+                        "heart_rate_avg": recharge_data.get("heart_rate_avg"),
+                        "rmssd": recharge_data.get("rmssd"),
+                        "sleep_charge": recharge_data.get("sleep_charge"),
+                        "sleep_charge_status": recharge_data.get("sleep_charge_status"),
+                        "sleep_score": recharge_data.get("sleep_score"),
+                        "nightly_recharge_status": recharge_data.get("nightly_recharge_status"),
+                        "raw_json": recharge_data,
+                    }
                 except Exception as e:
                     logger.error(f"处理Polar夜间恢复记录失败: {str(e)}")
                     continue
+
+            if not polar_id_map:
+                return 0
+
+            result = await self.db.execute(
+                select(PolarNightlyRecharge).where(
+                    PolarNightlyRecharge.polar_id.in_(polar_id_map.keys())
+                )
+            )
+            existing_map = {row.polar_id: row for row in result.scalars().all()}
+
+            new_count = 0
+            items_to_add = []
+
+            for polar_id, payload in polar_id_map.items():
+                existing = existing_map.get(polar_id)
+                if existing and not force:
+                    continue
+
+                if existing:
+                    # 强制更新
+                    existing.date = payload["date"]
+                    existing.ans_charge = payload["ans_charge"]
+                    existing.ans_charge_status = payload["ans_charge_status"]
+                    existing.hrv_avg = payload["hrv_avg"]
+                    existing.breathing_rate_avg = payload["breathing_rate_avg"]
+                    existing.heart_rate_avg = payload["heart_rate_avg"]
+                    existing.rmssd = payload["rmssd"]
+                    existing.sleep_charge = payload["sleep_charge"]
+                    existing.sleep_charge_status = payload["sleep_charge_status"]
+                    existing.sleep_score = payload["sleep_score"]
+                    existing.nightly_recharge_status = payload["nightly_recharge_status"]
+                    existing.raw_json = payload["raw_json"]
+                else:
+                    items_to_add.append(
+                        PolarNightlyRecharge(
+                            user_id=user_id,
+                            polar_id=polar_id,
+                            date=payload["date"],
+                            ans_charge=payload["ans_charge"],
+                            ans_charge_status=payload["ans_charge_status"],
+                            hrv_avg=payload["hrv_avg"],
+                            breathing_rate_avg=payload["breathing_rate_avg"],
+                            heart_rate_avg=payload["heart_rate_avg"],
+                            rmssd=payload["rmssd"],
+                            sleep_charge=payload["sleep_charge"],
+                            sleep_charge_status=payload["sleep_charge_status"],
+                            sleep_score=payload["sleep_score"],
+                            nightly_recharge_status=payload["nightly_recharge_status"],
+                            raw_json=payload["raw_json"],
+                            created_at=now_hk(),
+                        )
+                    )
+                    new_count += 1
+
+            if items_to_add:
+                self.db.add_all(items_to_add)
 
             await self.db.commit()
             logger.info(f"同步Polar夜间恢复数据完成: user_id={user_id}, new={new_count}")
@@ -536,3 +596,4 @@ class PolarSyncService:
             logger.error(f"同步Polar夜间恢复数据失败: user_id={user_id} - {str(e)}")
             await self.db.rollback()
             return 0
+

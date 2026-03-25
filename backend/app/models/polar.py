@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
 from app.database.base import Base
+from app.utils.crypto import EncryptedText
 
 
 class PolarAuth(Base):
@@ -26,9 +27,9 @@ class PolarAuth(Base):
     )
     polar_user_id: Mapped[Optional[str]] = mapped_column(String(100), comment="Polar用户ID")
 
-    # OAuth令牌
-    access_token: Mapped[Optional[str]] = mapped_column(Text, comment="访问令牌")
-    refresh_token: Mapped[Optional[str]] = mapped_column(Text, comment="刷新令牌")
+    # OAuth令牌（加密存储）
+    access_token: Mapped[Optional[str]] = mapped_column(EncryptedText, comment="访问令牌(加密)")
+    refresh_token: Mapped[Optional[str]] = mapped_column(EncryptedText, comment="刷新令牌(加密)")
     token_expires_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), comment="令牌过期时间"
     )

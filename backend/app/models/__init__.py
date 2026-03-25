@@ -6,7 +6,8 @@ from app.models.polar import PolarAuth, PolarExercise
 from app.models.oura import (
     OuraAuth, OuraSleep, OuraDailyReadiness,
     OuraDailyActivity, OuraDailyStress, OuraDailySpo2,
-    OuraDailySleep, OuraCardiovascularAge, OuraResilience, OuraVO2Max
+    OuraDailySleep, OuraCardiovascularAge, OuraResilience, OuraVO2Max,
+    OuraSleepTime
 )
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.ai import AIRecommendation
@@ -28,7 +29,8 @@ __all__ = [
     "OuraDailySleep",
     "OuraCardiovascularAge",
     "OuraResilience",
-    "OuraVo2Max",
+    "OuraVO2Max",
+    "OuraSleepTime",
     # 训练汇总
     "DailyTrainingSummary",
     "WeeklyTrainingSummary",

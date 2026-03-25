@@ -104,6 +104,9 @@ class User(Base):
     oura_vo2_max_records: Mapped[List["OuraVO2Max"]] = relationship(
         "OuraVO2Max", back_populates="user"
     )
+    oura_sleep_time_records: Mapped[List["OuraSleepTime"]] = relationship(
+        "OuraSleepTime", back_populates="user"
+    )
 
     # 关联关系 - 训练汇总
     daily_summaries: Mapped[List["DailyTrainingSummary"]] = relationship(

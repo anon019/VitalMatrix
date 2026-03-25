@@ -5,11 +5,12 @@
 """
 import logging
 from datetime import date, timedelta
-from typing import Optional
+from typing import Dict, Optional
 import uuid
+
 import numpy as np
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
 from app.models.oura import OuraSleep
 from app.utils.datetime_helper import today_hk
@@ -22,6 +23,44 @@ class SleepMetricsService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def _is_better_sleep_record(
+        candidate: OuraSleep, current: OuraSleep
+    ) -> bool:
+        """是否应该用 candidate 覆盖 current（按规则优先 long_sleep，再按时长）。"""
+        candidate_is_long = candidate.sleep_type == "long_sleep"
+        current_is_long = current.sleep_type == "long_sleep"
+
+        if candidate_is_long != current_is_long:
+            return candidate_is_long
+
+        candidate_duration = candidate.total_sleep_duration or 0
+        current_duration = current.total_sleep_duration or 0
+
+        return candidate_duration > current_duration
+
+    @staticmethod
+    def _dedupe_daily_records(records: list[OuraSleep]) -> list[OuraSleep]:
+        """按日期去重：每天仅保留 1 条记录，优先 long_sleep、最长时长。"""
+        selected: Dict[date, OuraSleep] = {}
+
+        for record in records:
+            if record.day is None:
+                continue
+
+            existing = selected.get(record.day)
+            if existing is None or SleepMetricsService._is_better_sleep_record(
+                record,
+                existing,
+            ):
+                selected[record.day] = record
+
+        return sorted(
+            selected.values(),
+            key=lambda item: item.day,
+            reverse=True,
+        )
 
     async def calculate_sleep_debt(
         self, user_id: uuid.UUID, target_date: Optional[date] = None
@@ -68,9 +107,14 @@ class SleepMetricsService:
                 OuraSleep.day <= target_date,
                 OuraSleep.total_sleep_duration.isnot(None),
             )
-            .order_by(OuraSleep.day.desc())
+            .order_by(
+                OuraSleep.day.desc(),
+                (OuraSleep.sleep_type == "long_sleep").desc(),
+                OuraSleep.total_sleep_duration.desc(),
+            )
         )
-        sleep_records = result.scalars().all()
+        raw_sleep_records = result.scalars().all()
+        sleep_records = self._dedupe_daily_records(raw_sleep_records)
 
         if len(sleep_records) < 5:
             logger.warning(
@@ -89,12 +133,10 @@ class SleepMetricsService:
         # 3. 计算加权睡眠债务
         weighted_debt = 0.0
         total_weight = 0.0
-        daily_debts = []
 
         for i, record in enumerate(sleep_records):
             actual_minutes = record.total_sleep_duration / 60
             daily_debt = baseline_minutes - actual_minutes
-            daily_debts.append(daily_debt)
 
             # 权重：最近的天数权重更高（线性递减：1.0 → 0.5）
             # 第0天（今天）权重1.0，第13天权重0.5
@@ -184,7 +226,7 @@ class SleepMetricsService:
         start_date = target_date - timedelta(days=89)
 
         result = await self.db.execute(
-            select(OuraSleep.total_sleep_duration)
+            select(OuraSleep)
             .where(
                 OuraSleep.user_id == user_id,
                 OuraSleep.day >= start_date,
@@ -193,8 +235,14 @@ class SleepMetricsService:
                 OuraSleep.total_sleep_duration >= 180 * 60,  # >= 3小时
                 OuraSleep.total_sleep_duration <= 720 * 60,  # <= 12小时
             )
+            .order_by(
+                OuraSleep.day.desc(),
+                (OuraSleep.sleep_type == "long_sleep").desc(),
+                OuraSleep.total_sleep_duration.desc(),
+            )
         )
-        durations = [row[0] / 60 for row in result.all()]  # 转换为分钟
+        unique_records = self._dedupe_daily_records(result.scalars().all())
+        durations = [record.total_sleep_duration / 60 for record in unique_records]  # 转换为分钟
 
         if len(durations) < 30:  # 至少需要30天数据
             logger.warning(
@@ -250,13 +298,18 @@ class SleepMetricsService:
         if not target_date:
             target_date = today_hk()
 
-        # 获取当日睡眠数据
+        # 获取当日睡眠数据（优先 long_sleep，其次按时长）
         result = await self.db.execute(
             select(OuraSleep)
             .where(
                 OuraSleep.user_id == user_id,
                 OuraSleep.day == target_date,
             )
+            .order_by(
+                (OuraSleep.sleep_type == "long_sleep").desc(),
+                OuraSleep.total_sleep_duration.desc(),
+            )
+            .limit(1)
         )
         sleep = result.scalar_one_or_none()
 
