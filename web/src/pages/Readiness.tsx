@@ -18,14 +18,21 @@ export default function Readiness() {
   const [customRange, setCustomRange] = useState<DateRange | undefined>()
   const [data, setData] = useState<TrendsOverview | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const dates = timeRange === 'custom' && customRange
       ? customRange
       : getDateRange(timeRange === 'custom' ? '7d' : timeRange)
 
+    setLoading(true)
+    setError(null)
     trends.getOverview(dates.startDate, dates.endDate)
       .then(setData)
+      .catch((err) => {
+        console.error('Failed to fetch readiness data:', err)
+        setError('加载恢复数据失败，请稍后重试')
+      })
       .finally(() => setLoading(false))
   }, [timeRange, customRange])
 
@@ -58,6 +65,14 @@ export default function Readiness() {
 
   if (loading) {
     return <PageSkeleton />
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[200px]">
+        <p className="text-red-500">{error}</p>
+      </div>
+    )
   }
 
   return (

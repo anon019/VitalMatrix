@@ -20,14 +20,21 @@ export default function Training() {
   const [customRange, setCustomRange] = useState<DateRange | undefined>()
   const [data, setData] = useState<TrendsOverview | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const dates = timeRange === 'custom' && customRange
       ? customRange
       : getDateRange(timeRange === 'custom' ? '7d' : timeRange)
 
+    setLoading(true)
+    setError(null)
     trends.getOverview(dates.startDate, dates.endDate)
       .then(setData)
+      .catch((err) => {
+        console.error('Failed to fetch training data:', err)
+        setError('加载训练数据失败，请稍后重试')
+      })
       .finally(() => setLoading(false))
   }, [timeRange, customRange])
 
@@ -63,6 +70,14 @@ export default function Training() {
     return <PageSkeleton />
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[200px]">
+        <p className="text-red-500">{error}</p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -75,13 +90,13 @@ export default function Training() {
           title="Zone2 总时长"
           value={formatDuration(totalZone2)}
           color={COLORS.zone2}
-          subtitle="目标: 200-300分钟/周"
+          subtitle="目标: 250分钟/周"
         />
         <StatCard
           title="Zone4-5 总时长"
           value={formatDuration(totalZone45)}
           color={COLORS.zone45}
-          subtitle="建议: <30分钟/周"
+          subtitle="目标: 5分钟/周"
         />
         <StatCard
           title="总训练时长"
