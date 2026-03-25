@@ -322,7 +322,9 @@ Page({
     try {
       await deleteMeal(this.data.mealId)
       console.log('Meal deleted successfully')
-      clearCache('/api/v1/nutrition')
+      clearCache('/api/v1/meals')
+      clearCache('/api/v1/daily')
+      clearCache('/api/v1/weekly')
       wx.setStorageSync('nutritionNeedsRefresh', true)
 
       wx.hideLoading()

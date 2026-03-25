@@ -10,7 +10,7 @@ App({
   },
 
   onLaunch() {
-    console.log('Health Assistant 启动')
+    console.log('VitalMatrix 启动')
 
     // 尝试从本地存储恢复登录状态
     this.restoreLoginState()

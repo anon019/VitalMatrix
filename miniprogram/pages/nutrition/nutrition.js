@@ -47,7 +47,9 @@ Page({
 
     if (needsRefresh) {
       wx.removeStorageSync('nutritionNeedsRefresh')
-      clearCache('/api/v1/nutrition')
+      clearCache('/api/v1/meals')
+      clearCache('/api/v1/daily')
+      clearCache('/api/v1/weekly')
       this.loadData({ silent: true })
       return
     }
@@ -63,7 +65,9 @@ Page({
   onPullDownRefresh() {
     console.log('Pull down refresh')
     // 下拉刷新时清除营养相关缓存
-    clearCache('/api/v1/nutrition')
+    clearCache('/api/v1/meals')
+      clearCache('/api/v1/daily')
+      clearCache('/api/v1/weekly')
 
     this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
@@ -538,7 +542,9 @@ Page({
         })
 
         // 刷新数据
-        clearCache('/api/v1/nutrition')
+        clearCache('/api/v1/meals')
+      clearCache('/api/v1/daily')
+      clearCache('/api/v1/weekly')
         that.loadData({ silent: true })
 
         // 跳转到详情页查看完整分析结果

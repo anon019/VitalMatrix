@@ -58,7 +58,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 
 # 创建 FastMCP 实例
 mcp = FastMCP(
-    name="Health Assistant",
+    name=settings.APP_NAME,
     instructions="""
     你是一个健康数据助手，可以访问用户的训练、睡眠、活动、压力和饮食数据。
 

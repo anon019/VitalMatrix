@@ -5,6 +5,9 @@
 
 ---
 
+> 注意：本文件是阶段性能力分析材料，不是当前 `main` 分支的接口真相来源。
+> 当前 API 以 `backend/app/api/v1/` 与根目录 `README.md` 为准。
+
 ## 📊 总体评估
 
 | 平台 | 已实现端点 | 可用端点 | 完整度 | 重要缺失 |
@@ -330,7 +333,7 @@
 - `POST /api/v1/oura/sync` - 手动同步
 
 **Polar数据**:
-- `GET /api/v1/training/summary?days=7` - 训练总结
+- `GET /api/v1/training/weekly` - 训练总结
 - `GET /api/v1/training/history` - 训练历史
 - `GET /api/v1/polar/status` - 连接状态
 - `POST /api/v1/polar/sync` - 手动同步
@@ -342,14 +345,13 @@
 **Dashboard汇总**:
 - `GET /api/v1/dashboard/today` - 今日仪表盘（聚合所有数据）
 
-### ❌ 未暴露的API端点（建议添加）
+### ⚠️ 仍建议补充或继续增强的API能力
 
-1. `GET /api/v1/oura/heart-rate?date={date}` - 连续心率
-2. `GET /api/v1/oura/cardiovascular-age?days=30` - 心血管年龄
-3. `GET /api/v1/oura/resilience?days=30` - 韧性数据
-4. `GET /api/v1/oura/vo2-max` - VO2 Max历史
-5. `GET /api/v1/polar/nightly-recharge?days=7` - 夜间恢复
-6. `GET /api/v1/polar/cardio-load?days=30` - 训练负荷历史
+当前 Oura 相关能力（如心率详情、心血管年龄、韧性、VO2 Max）在现有版本中已经暴露。
+仍建议后续补充或增强的主要是 Polar 恢复侧能力：
+
+1. `GET /api/v1/polar/nightly-recharge?days=7` - 夜间恢复
+2. `GET /api/v1/polar/cardio-load?days=30` - 训练负荷历史
 
 ---
 
@@ -450,7 +452,7 @@
 
 ---
 
-**报告生成**: Health Assistant v0.3
+**报告生成**: VitalMatrix v0.3
 **分析基准**: Oura API v2 + Polar AccessLink API v3
 **文档参考**:
 - https://cloud.ouraring.com/v2/docs

@@ -1,9 +1,9 @@
 {
-  "description": "Health Assistant 小程序项目配置 - 请复制为 project.config.json 并填入你的 AppID",
+  "description": "VitalMatrix 小程序项目配置 - 请复制为 project.config.json 并填入你的 AppID",
   "appid": "YOUR_WECHAT_APPID",
   "compileType": "miniprogram",
   "libVersion": "3.11.1",
-  "projectname": "Health Assistant",
+  "projectname": "VitalMatrix",
   "setting": {
     "urlCheck": false,
     "es6": true,

@@ -217,7 +217,7 @@
 
       <view class="info-item">
         <text class="info-label">应用名称</text>
-        <text class="info-value">Health Assistant</text>
+        <text class="info-value">VitalMatrix</text>
       </view>
 
       <view class="divider"></view>

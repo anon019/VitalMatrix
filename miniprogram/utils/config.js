@@ -42,6 +42,6 @@ module.exports = {
   USER_INFO_KEY: 'userInfo',
 
   // 应用信息
-  APP_NAME: 'Health Assistant',
+  APP_NAME: 'VitalMatrix',
   APP_VERSION: '0.2.1'
 }

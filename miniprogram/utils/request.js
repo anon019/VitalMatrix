@@ -19,9 +19,9 @@ const CACHE_CONFIG = {
   '/api/v1/training/weekly': 10 * 60 * 1000,        // 10分钟
   '/api/v1/training/history': 10 * 60 * 1000,       // 10分钟
   '/api/v1/ai/recommendation': 10 * 60 * 1000,      // 10分钟
-  '/api/v1/nutrition/meals': 30 * 60 * 1000,        // 30分钟
-  '/api/v1/nutrition/daily': 30 * 60 * 1000,        // 30分钟
-  '/api/v1/nutrition/weekly': 10 * 60 * 1000,       // 10分钟
+  '/api/v1/meals': 30 * 60 * 1000,                  // 30分钟
+  '/api/v1/daily': 30 * 60 * 1000,                  // 30分钟
+  '/api/v1/weekly': 10 * 60 * 1000,                // 10分钟
   'default': 10 * 60 * 1000                         // 默认10分钟
 }
 
@@ -47,7 +47,7 @@ function getCacheTTL(url) {
   if (CACHE_CONFIG[url]) {
     return CACHE_CONFIG[url]
   }
-  // 前缀匹配（处理带参数的URL如 /api/v1/nutrition/daily/2025-01-01）
+  // 前缀匹配（处理带参数的URL如 /api/v1/daily/2025-01-01）
   for (const key in CACHE_CONFIG) {
     if (url.startsWith(key)) {
       return CACHE_CONFIG[key]
@@ -524,7 +524,7 @@ function uploadMeal(filePath, mealType) {
     const token = wx.getStorageSync(config.TOKEN_KEY)
 
     wx.uploadFile({
-      url: `${config.API_BASE_URL}/api/v1/nutrition/upload`,
+      url: `${config.API_BASE_URL}/api/v1/upload`,
       filePath: filePath,
       name: 'image',
       formData: {
@@ -580,14 +580,14 @@ function uploadMeal(filePath, mealType) {
  * 获取饮食记录列表
  */
 function getMeals(params = {}) {
-  return get('/api/v1/nutrition/meals', params)
+  return get('/api/v1/meals', params)
 }
 
 /**
  * 获取单条饮食记录详情
  */
 function getMealDetail(mealId) {
-  return get(`/api/v1/nutrition/meals/${mealId}`)
+  return get(`/api/v1/meals/${mealId}`)
 }
 
 /**
@@ -595,7 +595,7 @@ function getMealDetail(mealId) {
  */
 function deleteMeal(mealId) {
   return request({
-    url: `/api/v1/nutrition/meals/${mealId}`,
+    url: `/api/v1/meals/${mealId}`,
     method: 'DELETE'
   })
 }
@@ -604,14 +604,14 @@ function deleteMeal(mealId) {
  * 重新分析饮食记录
  */
 function reanalyzeMeal(mealId) {
-  return post(`/api/v1/nutrition/meals/${mealId}/reanalyze`)
+  return post(`/api/v1/meals/${mealId}/reanalyze`)
 }
 
 /**
  * 获取每日营养总结
  */
 function getNutritionDaily(date) {
-  return get(`/api/v1/nutrition/daily/${date}`)
+  return get(`/api/v1/daily/${date}`)
 }
 
 // 别名，兼容旧代码
@@ -621,7 +621,7 @@ const getNutritionDailySummary = getNutritionDaily
  * 获取每周营养趋势
  */
 function getNutritionWeekly() {
-  return get('/api/v1/nutrition/weekly')
+  return get('/api/v1/weekly')
 }
 
 module.exports = {

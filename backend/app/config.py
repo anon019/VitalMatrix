@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """应用配置"""
 
     # 应用配置
-    APP_NAME: str = "Health Assistant"
+    APP_NAME: str = "VitalMatrix"
     APP_VERSION: str = "0.2.0"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
