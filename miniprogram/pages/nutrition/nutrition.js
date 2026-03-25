@@ -1,6 +1,7 @@
 // pages/nutrition/nutrition.js
-const { uploadMeal, getMeals, getMealDetail, getNutritionDailySummary, deleteMeal } = require('../../utils/request.js')
+const { uploadMeal, getMeals, getNutritionDailySummary, clearCache } = require('../../utils/request.js')
 const config = require('../../utils/config.js')
+const { formatLocalDate } = require('../../utils/date.js')
 
 Page({
   data: {
@@ -27,6 +28,7 @@ Page({
    */
   onLoad(options) {
     console.log('Nutrition page loaded')
+    this._hasShownOnce = false
     this.initPage()
   },
 
@@ -34,9 +36,24 @@ Page({
    * 生命周期函数--监听页面显示
    */
   onShow() {
-    // 从详情页返回时刷新列表
-    if (this.data.meals.length > 0) {
-      this.loadData()
+    if (!this._hasShownOnce) {
+      this._hasShownOnce = true
+      return
+    }
+
+    const needsRefresh = wx.getStorageSync('nutritionNeedsRefresh')
+    const lastRefresh = wx.getStorageSync('nutritionLastRefresh')
+    const now = Date.now()
+
+    if (needsRefresh) {
+      wx.removeStorageSync('nutritionNeedsRefresh')
+      clearCache('/api/v1/nutrition')
+      this.loadData({ silent: true })
+      return
+    }
+
+    if (!lastRefresh || now - lastRefresh > 10 * 60 * 1000) {
+      this.loadData({ silent: true })
     }
   },
 
@@ -46,10 +63,9 @@ Page({
   onPullDownRefresh() {
     console.log('Pull down refresh')
     // 下拉刷新时清除营养相关缓存
-    const { clearCache } = require('../../utils/request.js')
     clearCache('/api/v1/nutrition')
 
-    this.loadData().then(() => {
+    this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
     }).catch(() => {
       wx.stopPullDownRefresh()
@@ -75,7 +91,7 @@ Page({
     // 根据当前时间自动选择餐次
     this.autoSelectMealType()
 
-    await this.loadData()
+    await this.loadData({ silent: true })
   },
 
   /**
@@ -96,25 +112,48 @@ Page({
   /**
    * 加载数据
    */
-  async loadData() {
-    this.setData({ loading: true })
+  loadData(options = {}) {
+    if (this._loadPromise) {
+      return this._loadPromise
+    }
+
+    const loadPromise = this.performLoadData(options).finally(() => {
+      if (this._loadPromise === loadPromise) {
+        this._loadPromise = null
+      }
+    })
+
+    this._loadPromise = loadPromise
+    return loadPromise
+  },
+
+  async performLoadData(options = {}) {
+    const { silent = false } = options
+    const shouldShowLoading = !this._hasLoadedOnce || !silent
+
+    if (shouldShowLoading) {
+      this.setData({ loading: true })
+    }
 
     try {
       await Promise.all([
         this.loadTodaySummary(),
         this.loadRecentMeals()
       ])
-
-      // 前端计算今日餐数（确保准确）
-      this.updateTodayMealCount()
+      this._hasLoadedOnce = true
+      wx.setStorageSync('nutritionLastRefresh', Date.now())
     } catch (err) {
       console.error('Load data error:', err)
-      wx.showToast({
-        title: '加载失败',
-        icon: 'none'
-      })
+      if (!silent || !this._hasLoadedOnce) {
+        wx.showToast({
+          title: '加载失败',
+          icon: 'none'
+        })
+      }
     } finally {
-      this.setData({ loading: false })
+      if (shouldShowLoading) {
+        this.setData({ loading: false })
+      }
     }
   },
 
@@ -148,9 +187,15 @@ Page({
       const carbsProgress = Math.min(100, (totalCarbs / carbsTarget) * 100)
       const fatProgress = Math.min(100, (totalFat / fatTarget) * 100)
 
+      const mealCount = summary.meals_count != null
+        ? summary.meals_count
+        : (summary.meal_count != null ? summary.meal_count : 0)
+
       this.setData({
         todaySummary: {
           ...summary,
+          meals_count: mealCount,
+          meal_count: mealCount,
           total_calories: totalCalories,
           total_protein: totalProtein.toFixed(1),
           total_carbs: totalCarbs.toFixed(1),
@@ -493,7 +538,8 @@ Page({
         })
 
         // 刷新数据
-        that.loadData()
+        clearCache('/api/v1/nutrition')
+        that.loadData({ silent: true })
 
         // 跳转到详情页查看完整分析结果
         setTimeout(() => {
@@ -552,39 +598,9 @@ Page({
 
 
   /**
-   * 更新今日餐数统计
-   */
-  updateTodayMealCount() {
-    if (!this.data.todaySummary) {
-      return
-    }
-
-    const today = this.formatDate(new Date())
-
-    // 统计今天的餐数
-    const todayMeals = this.data.meals.filter(meal => {
-      if (!meal.meal_time) return false
-      const mealDate = this.formatDate(new Date(meal.meal_time))
-      return mealDate === today
-    })
-
-    const mealCount = todayMeals.length
-
-    console.log('[Summary] Today meals count:', mealCount)
-
-    // 更新 todaySummary 中的 meals_count
-    this.setData({
-      'todaySummary.meals_count': mealCount
-    })
-  },
-
-  /**
    * 格式化日期为 YYYY-MM-DD
    */
   formatDate(date) {
-    const year = date.getFullYear()
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const day = date.getDate().toString().padStart(2, '0')
-    return `${year}-${month}-${day}`
+    return formatLocalDate(date)
   }
 })

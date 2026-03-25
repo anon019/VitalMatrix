@@ -70,7 +70,7 @@
 | **数据库** | PostgreSQL + SQLAlchemy + Alembic |
 | **缓存** | Redis |
 | **Web 前端** | React + Vite + TailwindCSS + Recharts |
-| **小程序** | 微信原生 + ECharts |
+| **小程序** | 微信原生小程序 + 原生 Canvas |
 | **AI 服务** | DeepSeek / Qwen（文本）、Gemini Vision（图像） |
 | **定时任务** | APScheduler |
 | **部署** | Nginx + systemd + Let's Encrypt |
@@ -95,12 +95,14 @@ VitalMatrix/
 │       ├── pages/           # 页面组件
 │       └── components/      # UI 组件
 ├── miniprogram/             # 微信小程序
-│   └── pages/
-│       ├── index/           # 首页
-│       ├── trends/          # 趋势
-│       ├── ai/              # AI 建议
-│       ├── nutrition/       # 营养
-│       └── settings/        # 设置
+│   ├── pages/
+│   │   ├── index/           # 首页
+│   │   ├── trends/          # 趋势
+│   │   ├── ai/              # AI 建议
+│   │   ├── nutrition/       # 营养
+│   │   └── settings/        # 设置
+│   ├── CHANGELOG.md         # 小程序版本记录
+│   └── README.md            # 小程序本地开发说明
 ├── mcp-server/              # Claude Code MCP 集成
 └── deploy/                  # 部署配置
 ```
@@ -153,6 +155,30 @@ cd web
 npm install
 npm run dev
 ```
+
+### 6. 微信小程序
+
+```bash
+cd miniprogram
+# 使用微信开发者工具打开当前目录
+```
+
+- 仓库中的 `miniprogram/project.config.json` 保持占位 AppID，用于安全共享
+- 本地开发请参考 `miniprogram/project.config.json.example` 或直接在开发者工具中配置自己的 AppID
+- 小程序当前同步版本为 `0.2.1`，详细变更见 `miniprogram/CHANGELOG.md`
+
+---
+
+## 📱 小程序说明
+
+- 当前小程序版本：`0.2.1`
+- 已包含最近一轮性能与体验优化：
+  - 页面首屏加载去重
+  - 登录失效后的自动重登保护
+  - 本地时区日期修正
+  - 趋势页心率恢复数据延后加载
+  - 饮食页汇总与缓存刷新修复
+- 小程序详细开发说明见 `miniprogram/README.md`
 
 ---
 

@@ -9,7 +9,7 @@
   </view>
 
   <!-- 加载状态 -->
-  <view wx:if="{{loading}}" class="loading-container">
+  <view hidden="{{!loading}}" class="loading-container">
     <view class="loading-bowl">
       <view class="bowl-body"></view>
       <view class="steam steam-1"></view>
@@ -19,7 +19,7 @@
     <text class="loading-text">正在准备...</text>
   </view>
 
-  <view wx:else class="content">
+  <view hidden="{{loading}}" class="content">
     <!-- 页面标题区 -->
     <view class="page-header">
       <view class="header-main">
@@ -157,7 +157,7 @@
 
           <!-- 餐食图片 -->
           <view class="meal-image-wrap">
-            <image class="meal-image" src="{{item.thumbnail_path}}" mode="aspectFill" />
+            <image class="meal-image" src="{{item.thumbnail_path}}" mode="aspectFill" lazy-load="true" />
             <view class="meal-type-tag">{{item.meal_type_label}}</view>
           </view>
 

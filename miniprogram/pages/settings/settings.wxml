@@ -125,7 +125,7 @@
           <view class="status-text">
             <text class="status-title">未授权</text>
             <text class="status-subtitle text-muted text-small">
-              请前往 Polar Flow 完成授权
+              小程序内暂不支持直接授权
             </text>
           </view>
         </view>
@@ -133,7 +133,7 @@
         <view class="divider"></view>
 
         <view class="btn-primary" bindtap="authorizePolar">
-          <text>🔗 授权 Polar</text>
+          <text>ℹ️ 查看授权说明</text>
         </view>
       </view>
     </view>
@@ -224,7 +224,7 @@
 
       <view class="info-item">
         <text class="info-label">版本号</text>
-        <text class="info-value">v0.2.0</text>
+        <text class="info-value">v0.2.1</text>
       </view>
 
       <view class="divider"></view>

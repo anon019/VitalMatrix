@@ -863,6 +863,18 @@ page {
   font-size: 26rpx;
   font-weight: 600;
   color: var(--color-text-primary);
+  flex: 1;
+}
+
+.dish-meta {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.dish-time {
+  font-size: 20rpx;
+  color: var(--color-text-muted);
 }
 
 .dish-cal {
@@ -926,6 +938,78 @@ page {
   color: var(--color-text-muted);
   line-height: 1.5;
   font-style: italic;
+}
+
+/* 主食推荐 */
+.staple-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 20rpx;
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border-top: 1rpx dashed #E5E7EB;
+}
+
+.staple-icon {
+  font-size: 24rpx;
+}
+
+.staple-label {
+  font-size: 22rpx;
+  color: #92400E;
+  font-weight: 500;
+}
+
+.staple-text {
+  font-size: 22rpx;
+  color: #78350F;
+  margin-left: 8rpx;
+}
+
+/* 下一餐简单建议 (next_meal_tips) */
+.next-meal-tips {
+  margin-top: 20rpx;
+}
+
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.tip-item {
+  padding: 16rpx 20rpx;
+  background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+  border-radius: var(--radius-lg);
+  border-left: 6rpx solid #22C55E;
+}
+
+.tip-header {
+  margin-bottom: 8rpx;
+}
+
+.tip-meal {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #166534;
+}
+
+.tip-suggestion {
+  display: block;
+  font-size: 24rpx;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  margin-bottom: 8rpx;
+}
+
+.tip-benefit {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  padding: 10rpx 12rpx;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: var(--radius-sm);
+  margin-top: 8rpx;
 }
 
 /* 旧版下一餐菜单兼容 */

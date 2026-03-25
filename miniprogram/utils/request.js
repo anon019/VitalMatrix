@@ -3,6 +3,7 @@
  * 包含智能缓存层：请求去重 + 内存缓存 + 按接口配置过期时间
  */
 const config = require('./config.js')
+const { formatLocalDate } = require('./date.js')
 
 // ========== 缓存配置 ==========
 const CACHE_CONFIG = {
@@ -14,24 +15,27 @@ const CACHE_CONFIG = {
   '/api/v1/oura/stress': 10 * 60 * 1000,            // 10分钟
   '/api/v1/oura/spo2': 10 * 60 * 1000,              // 10分钟
   '/api/v1/oura/heartrate-detail': 10 * 60 * 1000,  // 10分钟
-  '/api/v1/training/today': 5 * 60 * 1000,          // 5分钟
+  '/api/v1/training/today': 30 * 60 * 1000,         // 30分钟
   '/api/v1/training/weekly': 10 * 60 * 1000,        // 10分钟
   '/api/v1/training/history': 10 * 60 * 1000,       // 10分钟
   '/api/v1/ai/recommendation': 10 * 60 * 1000,      // 10分钟
-  '/api/v1/nutrition/meals': 5 * 60 * 1000,         // 5分钟
-  '/api/v1/nutrition/daily': 5 * 60 * 1000,         // 5分钟
+  '/api/v1/nutrition/meals': 30 * 60 * 1000,        // 30分钟
+  '/api/v1/nutrition/daily': 30 * 60 * 1000,        // 30分钟
   '/api/v1/nutrition/weekly': 10 * 60 * 1000,       // 10分钟
-  'default': 5 * 60 * 1000                          // 默认5分钟
+  'default': 10 * 60 * 1000                         // 默认10分钟
 }
 
 // 内存缓存存储
 const requestCache = {}
+const toastTimestamps = {}
+let reloginTimer = null
 
 /**
  * 生成缓存Key
  */
 function generateCacheKey(method, url, data) {
-  const params = Object.keys(data).length > 0 ? `?${JSON.stringify(data)}` : ''
+  const keys = Object.keys(data).sort()
+  const params = keys.length > 0 ? `?${keys.map(k => `${k}=${data[k]}`).join('&')}` : ''
   return `${method}:${url}${params}`
 }
 
@@ -90,6 +94,55 @@ function clearCache(url) {
   })
 }
 
+function showThrottledToast(key, title, duration = 2000) {
+  const now = Date.now()
+  const throttleWindow = duration + 300
+
+  if (toastTimestamps[key] && now - toastTimestamps[key] < throttleWindow) {
+    return
+  }
+
+  toastTimestamps[key] = now
+  wx.showToast({
+    title,
+    icon: 'none',
+    duration
+  })
+}
+
+function scheduleAutoLogin() {
+  if (reloginTimer) {
+    return
+  }
+
+  reloginTimer = setTimeout(() => {
+    reloginTimer = null
+
+    const app = getApp()
+    if (app && app.autoLogin) {
+      app.autoLogin()
+    }
+  }, 1500)
+}
+
+function handleUnauthorized() {
+  const app = getApp()
+  const isRelogging = !!(app && app.globalData && app.globalData.isLoggingIn)
+
+  if (!isRelogging) {
+    if (app && app.clearLoginState) {
+      app.clearLoginState()
+    } else {
+      wx.removeStorageSync(config.TOKEN_KEY)
+      wx.removeStorageSync(config.USER_INFO_KEY)
+    }
+
+    scheduleAutoLogin()
+  }
+
+  showThrottledToast('auth-expired', '登录已失效')
+}
+
 /**
  * 发起HTTP请求
  * @param {Object} options 请求配置
@@ -140,28 +193,11 @@ function request(options) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data)
         } else if (res.statusCode === 401) {
-          // 认证失败，清除登录状态
-          wx.removeStorageSync(config.TOKEN_KEY)
-          wx.removeStorageSync(config.USER_INFO_KEY)
-
           reject({
             code: 401,
-            message: '登录已失效，请重新登录'
+            message: '登录已失效，正在重新登录'
           })
-
-          // 提示用户重新登录
-          wx.showToast({
-            title: '登录已失效',
-            icon: 'none'
-          })
-
-          // 触发重新登录
-          setTimeout(() => {
-            const app = getApp()
-            if (app && app.autoLogin) {
-              app.autoLogin()
-            }
-          }, 1500)
+          handleUnauthorized()
         } else {
           reject({
             code: res.statusCode,
@@ -176,11 +212,7 @@ function request(options) {
           code: -1,
           message: '网络请求失败，请检查网络连接'
         })
-
-        wx.showToast({
-          title: '网络请求失败',
-          icon: 'none'
-        })
+        showThrottledToast('network-error', '网络请求失败')
       }
     })
   })
@@ -422,7 +454,7 @@ async function getOuraHeartrateDetails(days = 7) {
   for (let i = 0; i < days; i++) {
     const date = new Date(today)
     date.setDate(date.getDate() - i)
-    const dayStr = date.toISOString().split('T')[0]
+    const dayStr = formatLocalDate(date)
 
     // 并行请求所有日期
     requests.push(
@@ -493,6 +525,9 @@ function uploadMeal(filePath, mealType) {
           } catch (e) {
             reject({ code: -1, message: '解析响应失败' })
           }
+        } else if (res.statusCode === 401) {
+          handleUnauthorized()
+          reject({ code: 401, message: '登录已失效，正在重新登录' })
         } else {
           let errorMsg = '上传失败'
           try {
