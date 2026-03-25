@@ -285,10 +285,28 @@ function post(url, data = {}, needAuth = true) {
 }
 
 /**
+ * PUT请求
+ */
+function put(url, data = {}, needAuth = true) {
+  return request({
+    url,
+    method: 'PUT',
+    data,
+    needAuth
+  })
+}
+
+/**
  * 简易登录（单用户模式）
  */
 function login() {
-  return post('/api/v1/auth/simple-login', {}, false)
+  const data = {}
+
+  if (config.SIMPLE_LOGIN_PASSWORD) {
+    data.password = config.SIMPLE_LOGIN_PASSWORD
+  }
+
+  return post('/api/v1/auth/simple-login', data, false)
 }
 
 /**
@@ -353,7 +371,7 @@ function regenerateRecommendation(date, provider = null) {
  * 获取用户信息
  */
 function getUserInfo() {
-  return get('/api/v1/user/info')
+  return get('/api/v1/user/profile')
 }
 
 /**
@@ -361,7 +379,7 @@ function getUserInfo() {
  * @param {Object} data 用户数据
  */
 function updateUserInfo(data) {
-  return post('/api/v1/user/update', data)
+  return put('/api/v1/user/profile', data)
 }
 
 /**

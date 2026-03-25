@@ -58,7 +58,7 @@ Page({
    * 下拉刷新
    */
   onPullDownRefresh() {
-    clearCache('/api/v1/user/info')
+    clearCache('/api/v1/user/profile')
     clearCache('/api/v1/polar/status')
     this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
@@ -263,7 +263,7 @@ Page({
       await updateUserInfo({ hr_max: newHrMax })
 
       console.log('最大心率更新成功:', newHrMax)
-      clearCache('/api/v1/user/info')
+      clearCache('/api/v1/user/profile')
 
       // 重新计算Zone区间
       const zoneRanges = this.calculateZoneRanges(newHrMax)

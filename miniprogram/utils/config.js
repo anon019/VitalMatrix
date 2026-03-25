@@ -2,28 +2,37 @@
  * 应用配置
  */
 
-// API基础地址
-// 根据环境自动切换（开发环境使用本地，生产环境使用域名）
-const getApiBaseUrl = () => {
-  // 获取当前账号信息
-  const accountInfo = wx.getAccountInfoSync()
-  const envVersion = accountInfo.miniProgram.envVersion
+// 公开仓库默认占位地址，请按你的部署域名修改
+const DEFAULT_API_BASE_URL = 'https://your-domain.example.com'
 
-  if (envVersion === 'develop') {
-    // 开发版：使用远程服务器（本地调试时也可改为 http://localhost:8000）
-    return 'https://health.jackverse.cn'
-  } else if (envVersion === 'trial') {
-    // 体验版：使用测试服务器
-    return 'https://health.jackverse.cn'
-  } else {
-    // 正式版：使用生产服务器
-    return 'https://health.jackverse.cn'
+// 如果服务端配置了 WEB_ACCESS_PASSWORD，可在本地填写同一密码
+// 不要把真实密码提交到仓库
+const SIMPLE_LOGIN_PASSWORD = ''
+
+// API基础地址
+const getApiBaseUrl = () => {
+  try {
+    const accountInfo = wx.getAccountInfoSync()
+    const envVersion = accountInfo.miniProgram.envVersion
+
+    if (envVersion === 'develop') {
+      return DEFAULT_API_BASE_URL
+    } else if (envVersion === 'trial') {
+      return DEFAULT_API_BASE_URL
+    } else {
+      return DEFAULT_API_BASE_URL
+    }
+  } catch (error) {
+    return DEFAULT_API_BASE_URL
   }
 }
 
 module.exports = {
   // API基础地址
   API_BASE_URL: getApiBaseUrl(),
+
+  // 简易登录密码（可选）
+  SIMPLE_LOGIN_PASSWORD,
 
   // API超时时间（毫秒）
   REQUEST_TIMEOUT: 10000,

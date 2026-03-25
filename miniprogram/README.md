@@ -19,9 +19,11 @@ This directory contains the WeChat mini program for VitalMatrix, including:
 ## Local Development
 
 1. Open `miniprogram/` in WeChat DevTools.
-2. Keep `project.config.json` as the shared placeholder config.
-3. Use your own AppID locally via DevTools or `project.config.json.example`.
-4. Do not commit `project.private.config.json` or any local-only IDE config.
+2. Copy `project.config.json.example` to a local `project.config.json`.
+3. Fill your own AppID locally via DevTools or the copied config file.
+4. Update `utils/config.js` with your deployment domain.
+5. If the backend enables `WEB_ACCESS_PASSWORD`, also set `SIMPLE_LOGIN_PASSWORD` in `utils/config.js`.
+6. Do not commit `project.config.json`, `project.private.config.json`, or any local-only IDE config.
 
 ## Recent Updates In 0.2.1
 
