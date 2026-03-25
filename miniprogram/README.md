@@ -24,6 +24,8 @@ This directory contains the WeChat mini program for VitalMatrix, including:
 4. Update `utils/config.js` with your deployment domain.
 5. If the backend enables `WEB_ACCESS_PASSWORD`, also set `SIMPLE_LOGIN_PASSWORD` in `utils/config.js`.
 6. Do not commit `project.config.json`, `project.private.config.json`, or any local-only IDE config.
+7. The mini program uses `/api/v1/auth/simple-login` by default, which is intended for single-user deployment.
+8. If the backend has multiple users, set `DEFAULT_USER_ID` in `backend/.env`.
 
 ## Recent Updates In 0.2.1
 

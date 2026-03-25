@@ -56,14 +56,14 @@ cd VitalMatrix
 ### 2. 初始化后端环境
 
 ```bash
-bash scripts/setup_env.sh
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-该脚本会：
-
-- 创建 `backend/venv`
-- 安装 `backend/requirements.txt`
-- 在缺失时创建 `backend/.env`
+然后按实际部署填写 `backend/.env`。
 
 ### 3. 配置环境变量
 
@@ -80,6 +80,12 @@ bash scripts/setup_env.sh
 
 - `backend/.env.example`
 
+如果你使用 Web Dashboard 或小程序里的 `simple-login`：
+
+- 单用户场景可直接使用
+- 如果数据库里存在多个用户，必须在 `backend/.env` 里配置 `DEFAULT_USER_ID`
+- 如果配置了 `WEB_ACCESS_PASSWORD`，Web 登录页会要求输入密码，小程序本地配置也需要填写同一密码
+
 ### 4. 初始化数据库
 
 ```bash
@@ -92,7 +98,9 @@ alembic upgrade head
 后端：
 
 ```bash
-bash scripts/start_dev.sh
+cd backend
+source venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Web：
