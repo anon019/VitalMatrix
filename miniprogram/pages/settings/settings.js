@@ -1,5 +1,5 @@
 // pages/settings/settings.js
-const { getUserInfo, updateUserInfo, getPolarAuthStatus, syncPolarData } = require('../../utils/request.js')
+const { getUserInfo, updateUserInfo, getPolarAuthStatus, syncPolarData, clearAllCache, clearCache } = require('../../utils/request.js')
 const config = require('../../utils/config.js')
 
 Page({
@@ -23,19 +23,26 @@ Page({
 
   onLoad() {
     console.log('设置页面加载')
+    this._hasShownOnce = false
 
     // 检查是否已登录
     const app = getApp()
     if (app.globalData.isLoggedIn) {
-      this.loadData()
+      this.loadData({ silent: true })
     }
   },
 
   onShow() {
-    // 每次显示时刷新数据
+    if (!this._hasShownOnce) {
+      this._hasShownOnce = true
+      return
+    }
+
+    const lastRefresh = wx.getStorageSync('settingsLastRefresh')
+    const now = Date.now()
     const app = getApp()
-    if (app.globalData.isLoggedIn) {
-      this.loadData()
+    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 5 * 60 * 1000)) {
+      this.loadData({ silent: true })
     }
   },
 
@@ -44,14 +51,16 @@ Page({
    */
   onLoginSuccess() {
     console.log('设置页面：收到登录成功通知')
-    this.loadData()
+    this.loadData({ silent: true })
   },
 
   /**
    * 下拉刷新
    */
   onPullDownRefresh() {
-    this.loadData().then(() => {
+    clearCache('/api/v1/user/info')
+    clearCache('/api/v1/polar/status')
+    this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
     })
   },
@@ -59,8 +68,28 @@ Page({
   /**
    * 加载数据
    */
-  async loadData() {
-    this.setData({ loading: true })
+  loadData(options = {}) {
+    if (this._loadPromise) {
+      return this._loadPromise
+    }
+
+    const loadPromise = this.performLoadData(options).finally(() => {
+      if (this._loadPromise === loadPromise) {
+        this._loadPromise = null
+      }
+    })
+
+    this._loadPromise = loadPromise
+    return loadPromise
+  },
+
+  async performLoadData(options = {}) {
+    const { silent = false } = options
+    const shouldShowLoading = !this._hasLoadedOnce || !silent
+
+    if (shouldShowLoading) {
+      this.setData({ loading: true })
+    }
 
     try {
       // 获取本地用户信息
@@ -93,14 +122,20 @@ Page({
         zoneRanges,
         loading: false
       })
+      this._hasLoadedOnce = true
+      wx.setStorageSync('settingsLastRefresh', Date.now())
     } catch (error) {
       console.error('加载数据失败:', error)
-      this.setData({ loading: false })
+      if (shouldShowLoading) {
+        this.setData({ loading: false })
+      }
 
-      wx.showToast({
-        title: '加载失败',
-        icon: 'none'
-      })
+      if (!silent || !this._hasLoadedOnce) {
+        wx.showToast({
+          title: '加载失败',
+          icon: 'none'
+        })
+      }
     }
   },
 
@@ -138,9 +173,9 @@ Page({
   authorizePolar() {
     wx.showModal({
       title: 'Polar 授权',
-      content: '请使用浏览器访问 Polar Flow 完成授权流程。授权后，训练数据将自动同步到本系统。',
+      content: '当前版本暂不支持在小程序内直接发起 Polar 授权。请先在 Web 端完成授权，后续小程序会自动显示同步状态。',
       showCancel: false,
-      confirmText: '知道了'
+      confirmText: '我知道了'
     })
 
     // TODO: 实现Polar OAuth授权流程
@@ -174,7 +209,10 @@ Page({
       const syncResult = await syncPolarData(7)
 
       console.log('Polar数据同步成功:', syncResult)
+      clearCache('/api/v1/polar/status')
+      clearCache('/api/v1/training')
 
+      await this.loadData({ silent: true })
       wx.hideLoading()
 
       wx.showToast({
@@ -182,11 +220,6 @@ Page({
         icon: 'success',
         duration: 2000
       })
-
-      // 刷新数据
-      setTimeout(() => {
-        this.loadData()
-      }, 1000)
     } catch (error) {
       console.error('同步失败:', error)
       wx.hideLoading()
@@ -230,6 +263,7 @@ Page({
       await updateUserInfo({ hr_max: newHrMax })
 
       console.log('最大心率更新成功:', newHrMax)
+      clearCache('/api/v1/user/info')
 
       // 重新计算Zone区间
       const zoneRanges = this.calculateZoneRanges(newHrMax)
@@ -276,6 +310,7 @@ Page({
       // 保留token和用户信息
       const token = wx.getStorageSync('token')
       const userInfo = wx.getStorageSync('userInfo')
+      clearAllCache()
 
       wx.clearStorageSync()
 
@@ -306,7 +341,8 @@ Page({
     })
 
     try {
-      await this.loadData()
+      clearAllCache()
+      await this.loadData({ silent: true })
 
       wx.hideLoading()
 

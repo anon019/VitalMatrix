@@ -26,27 +26,33 @@ Page({
 
   onLoad() {
     console.log('AI页面加载')
+    this._hasShownOnce = false
     this.setDates()
 
     const app = getApp()
     if (app.globalData.isLoggedIn) {
-      this.loadData()
+      this.loadData({ silent: true })
     }
   },
 
   onShow() {
+    if (!this._hasShownOnce) {
+      this._hasShownOnce = true
+      return
+    }
+
     const lastRefresh = wx.getStorageSync('aiLastRefresh')
     const now = Date.now()
 
     const app = getApp()
-    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 5 * 60 * 1000)) {
-      this.loadData()
+    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 15 * 60 * 1000)) {
+      this.loadData({ silent: true })
     }
   },
 
   onLoginSuccess() {
     console.log('AI页面：收到登录成功通知')
-    this.loadData()
+    this.loadData({ silent: true })
   },
 
   onPullDownRefresh() {
@@ -69,7 +75,7 @@ Page({
     const { clearCache } = require('../../utils/request.js')
     clearCache('/api/v1/ai/recommendation')
 
-    this.loadData().then(() => {
+    this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
     }).catch(() => {
       wx.stopPullDownRefresh()
@@ -88,8 +94,28 @@ Page({
     })
   },
 
-  async loadData() {
-    this.setData({ loading: true })
+  loadData(options = {}) {
+    if (this._loadPromise) {
+      return this._loadPromise
+    }
+
+    const loadPromise = this.performLoadData(options).finally(() => {
+      if (this._loadPromise === loadPromise) {
+        this._loadPromise = null
+      }
+    })
+
+    this._loadPromise = loadPromise
+    return loadPromise
+  },
+
+  async performLoadData(options = {}) {
+    const { silent = false } = options
+    const shouldShowLoading = !this._hasLoadedOnce || !silent
+
+    if (shouldShowLoading) {
+      this.setData({ loading: true })
+    }
 
     try {
       // 智能获取AI建议：并行请求今日和昨日，优先使用今日数据
@@ -130,13 +156,17 @@ Page({
 
       // 如果都没有有效数据，显示错误
       if (!data) {
-        this.setData({ loading: false })
+        if (shouldShowLoading) {
+          this.setData({ loading: false })
+        }
 
-        wx.showToast({
-          title: 'AI服务暂时不可用',
-          icon: 'none',
-          duration: 3000
-        })
+        if (!silent || !this._hasLoadedOnce) {
+          wx.showToast({
+            title: 'AI服务暂时不可用',
+            icon: 'none',
+            duration: 3000
+          })
+        }
         return
       }
 
@@ -162,23 +192,30 @@ Page({
         healthEducation: data.health_education || null,
         loading: false
       })
+      this._hasLoadedOnce = true
 
       wx.setStorageSync('aiLastRefresh', Date.now())
 
-      wx.showToast({
-        title: '刷新成功',
-        icon: 'success',
-        duration: 1500
-      })
+      if (!silent) {
+        wx.showToast({
+          title: '刷新成功',
+          icon: 'success',
+          duration: 1500
+        })
+      }
     } catch (error) {
       console.error('加载数据失败:', error)
-      this.setData({ loading: false })
+      if (shouldShowLoading) {
+        this.setData({ loading: false })
+      }
 
-      wx.showToast({
-        title: 'AI服务暂时不可用',
-        icon: 'none',
-        duration: 3000
-      })
+      if (!silent || !this._hasLoadedOnce) {
+        wx.showToast({
+          title: 'AI服务暂时不可用',
+          icon: 'none',
+          duration: 3000
+        })
+      }
     }
   },
 

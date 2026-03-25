@@ -1,5 +1,6 @@
 // pages/index/index.js
 const { getTodayTraining, getWeeklyTraining, getTrainingHistory, getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraSpo2, getOuraStress, getOuraHeartrateDetail, getDashboard } = require('../../utils/request.js')
+const { formatLocalDate } = require('../../utils/date.js')
 
 Page({
   data: {
@@ -89,26 +90,32 @@ Page({
 
   onLoad() {
     console.log('今日页面加载')
+    this._hasShownOnce = false
     this.setDates()
 
     // 检查是否已登录
     const app = getApp()
     if (app.globalData.isLoggedIn) {
       console.log('已登录，加载数据')
-      this.loadData()
+      this.loadData({ silent: true })
     } else {
       console.log('等待登录完成...')
     }
   },
 
   onShow() {
+    if (!this._hasShownOnce) {
+      this._hasShownOnce = true
+      return
+    }
+
     // 每次显示页面时，检查是否需要刷新
     const lastRefresh = wx.getStorageSync('lastRefreshTime')
     const now = Date.now()
 
     const app = getApp()
-    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 5 * 60 * 1000)) {
-      this.loadData()
+    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 10 * 60 * 1000)) {
+      this.loadData({ silent: true })
     }
   },
 
@@ -117,14 +124,14 @@ Page({
    */
   onLoginSuccess() {
     console.log('收到登录成功通知，重新加载数据')
-    this.loadData()
+    this.loadData({ silent: true })
   },
 
   onPullDownRefresh() {
-    // 下拉刷新时强制跳过缓存
+    // 下拉刷新时清除缓存
     const { clearAllCache } = require('../../utils/request.js')
     clearAllCache()
-    this.loadData(true).then(() => {
+    this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
     })
   },
@@ -308,15 +315,35 @@ Page({
    * - 第一层：关键数据（Dashboard + 训练）→ 首屏显示
    * - 第二层：核心数据（睡眠 + 准备度 + 活动）
    * - 第三层：增强数据（周报 + 压力 + 血氧 + 心率详情）
-   * @param {Boolean} forceRefresh 是否强制刷新（跳过缓存）
    */
-  async loadData(forceRefresh = false) {
-    this.setData({ loading: true })
+  loadData(options = {}) {
+    if (this._loadPromise) {
+      return this._loadPromise
+    }
+
+    const loadPromise = this.performLoadData(options).finally(() => {
+      if (this._loadPromise === loadPromise) {
+        this._loadPromise = null
+      }
+    })
+
+    this._loadPromise = loadPromise
+    return loadPromise
+  },
+
+  async performLoadData(options = {}) {
+    const { silent = false } = options
+    const shouldShowLoading = !this._hasLoadedOnce || !silent
+
+    if (shouldShowLoading) {
+      this.setData({ loading: true })
+    }
+
     const startTime = Date.now()
 
     try {
       const today = new Date()
-      const todayStr = today.toISOString().split('T')[0]
+      const todayStr = formatLocalDate(today)
 
       // ========== 第一层：关键数据（首屏） ==========
       console.log('[Performance] 第一层加载开始')
@@ -350,9 +377,9 @@ Page({
       })
       console.log(`[Performance] 第一层完成，耗时 ${Date.now() - startTime}ms`)
 
-      // ========== 第二层：核心数据 ==========
+      // ========== 第二层：核心+增强数据 ==========
       console.log('[Performance] 第二层加载开始')
-      const [sleepResult, readinessResult, activityResult, spo2Result] = await Promise.all([
+      const [sleepResult, readinessResult, activityResult, spo2Result, weeklyResult, stressResult, heartrateDetailResult] = await Promise.all([
         getOuraSleepGrouped(7).catch(err => {
           console.warn('获取睡眠数据失败:', err)
           return null
@@ -368,43 +395,7 @@ Page({
         getOuraSpo2(7).catch(err => {
           console.warn('获取血氧数据失败:', err)
           return null
-        })
-      ])
-
-      // 处理第二层数据
-      const sleepData = this.processSleepData(sleepResult, spo2Result, dashboardResult)
-      const spo2Data = this.processSpo2Data(spo2Result)
-      const readinessData = this.processReadinessData(readinessResult, sleepData)
-      const activityData = this.processActivityData(activityResult)
-
-      const sleepDate = sleepData && sleepData.day ? sleepData.day : this.data.sleepDate
-      const spo2Date = spo2Data && spo2Data.day ? spo2Data.day : this.data.spo2Date
-      const readinessDate = readinessData && readinessData.day ? readinessData.day : this.data.readinessDate
-      const activityDate = activityData && activityData.day ? activityData.day : this.data.activityDate
-
-      // 计算晨间检查数据
-      const morningCheckData = this.computeMorningCheckData(sleepData, readinessData, sleepResult, readinessResult)
-
-      // 第二次 setData：核心数据
-      this.setData({
-        sleepData,
-        sleepDate,
-        spo2Date,
-        readinessData,
-        readinessDate,
-        activityData,
-        activityDate,
-        // 晨间检查
-        readinessLevel: morningCheckData.readinessLevel,
-        actionAdvice: morningCheckData.actionAdvice,
-        sleepLevel: morningCheckData.sleepLevel,
-        sleepAdvice: morningCheckData.sleepAdvice
-      })
-      console.log(`[Performance] 第二层完成，耗时 ${Date.now() - startTime}ms`)
-
-      // ========== 第三层：增强数据 ==========
-      console.log('[Performance] 第三层加载开始')
-      const [weeklyResult, stressResult, heartrateDetailResult] = await Promise.all([
+        }),
         getWeeklyTraining().catch(err => {
           console.warn('获取本周训练数据失败:', err)
           return null
@@ -419,20 +410,41 @@ Page({
         })
       ])
 
-      // 处理第三层数据
+      // 处理所有数据
+      const sleepData = this.processSleepData(sleepResult, spo2Result, dashboardResult)
+      const spo2Data = this.processSpo2Data(spo2Result)
+      const readinessData = this.processReadinessData(readinessResult, sleepData)
+      const activityData = this.processActivityData(activityResult)
       const stressData = this.processStressData(stressResult, readinessData?.day)
       const heartrateDetail = this.processHeartrateDetail(heartrateDetailResult, sleepResult)
       const weeklyData = this.processWeeklyData(weeklyResult, trainingHistoryResult)
+      const morningCheckData = this.computeMorningCheckData(sleepData, readinessData, sleepResult, readinessResult)
 
+      const sleepDate = sleepData && sleepData.day ? sleepData.day : this.data.sleepDate
+      const spo2Date = spo2Data && spo2Data.day ? spo2Data.day : this.data.spo2Date
+      const readinessDate = readinessData && readinessData.day ? readinessData.day : this.data.readinessDate
+      const activityDate = activityData && activityData.day ? activityData.day : this.data.activityDate
       const stressDate = stressData && stressData.day ? stressData.day : this.data.stressDate
       const stressDateDisplay = stressDate ? this.formatDateFriendly(stressDate) : ''
 
-      // 生成健康总结和提醒
       const healthSummary = this.generateHealthSummary(sleepData, readinessData, activityData, trainingData)
       const alerts = this.generateAlerts(sleepData, readinessData, activityData, trainingData, stressData)
 
-      // 第三次 setData：增强数据
+      // 一次性 setData（合并原来的第二次和第三次）
       this.setData({
+        // 核心数据
+        sleepData,
+        sleepDate,
+        spo2Date,
+        readinessData,
+        readinessDate,
+        activityData,
+        activityDate,
+        readinessLevel: morningCheckData.readinessLevel,
+        actionAdvice: morningCheckData.actionAdvice,
+        sleepLevel: morningCheckData.sleepLevel,
+        sleepAdvice: morningCheckData.sleepAdvice,
+        // 增强数据
         stressData,
         stressDate,
         stressDateDisplay,
@@ -440,7 +452,6 @@ Page({
         heartrateDetail,
         healthSummary,
         alerts,
-        // 警报相关
         alertType: morningCheckData.alertType,
         hrvAlert: morningCheckData.hrvAlert,
         rhrAlert: morningCheckData.rhrAlert,
@@ -451,29 +462,38 @@ Page({
         remDelta: morningCheckData.remDelta,
         morningAlert: morningCheckData.morningAlert
       })
+      this._hasLoadedOnce = true
+      console.log(`[Performance] 第二层完成，总耗时 ${Date.now() - startTime}ms`)
 
-      console.log(`[Performance] 第三层完成，总耗时 ${Date.now() - startTime}ms`)
-
-      // 绘制图表（延迟执行确保canvas已渲染）
+      // 绘制图表（只绘制已展开的卡片的雷达图）
       setTimeout(() => {
-        this.drawRadarCharts()
-      }, 100)
+        const { expandedCards } = this.data
+        if (expandedCards.sleep || expandedCards.readiness || expandedCards.activity) {
+          this.drawRadarCharts()
+        }
+      }, 300)
 
       wx.setStorageSync('lastRefreshTime', Date.now())
 
-      wx.showToast({
-        title: '刷新成功',
-        icon: 'success',
-        duration: 1000
-      })
+      if (!silent) {
+        wx.showToast({
+          title: '刷新成功',
+          icon: 'success',
+          duration: 1000
+        })
+      }
     } catch (error) {
       console.error('加载数据失败:', error)
-      this.setData({ loading: false })
+      if (shouldShowLoading) {
+        this.setData({ loading: false })
+      }
 
-      wx.showToast({
-        title: '加载失败，请重试',
-        icon: 'none'
-      })
+      if (!silent || !this._hasLoadedOnce) {
+        wx.showToast({
+          title: '加载失败，请重试',
+          icon: 'none'
+        })
+      }
     }
   },
 
@@ -1478,7 +1498,7 @@ Page({
       total_min: totalMin,
       hi_min: hiMin,
       weekly_trimp: 0,  // 历史数据无法计算TRIMP
-      week_start_date: lastWeekMonday.toISOString().split('T')[0],
+      week_start_date: formatLocalDate(lastWeekMonday),
       isLastWeek: true
     }
   },

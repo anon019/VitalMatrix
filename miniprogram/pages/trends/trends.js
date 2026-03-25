@@ -1,5 +1,6 @@
 // pages/trends/trends.js
-const { getOuraSleep, getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraStress, getOuraSpo2, getTrainingTrends, getOuraHeartrateDetails, getDashboard } = require('../../utils/request.js')
+const { getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraStress, getOuraSpo2, getTrainingTrends, getOuraHeartrateDetails, getDashboard } = require('../../utils/request.js')
+const { formatLocalDate, getRecentLocalDates } = require('../../utils/date.js')
 
 Page({
   data: {
@@ -95,34 +96,40 @@ Page({
 
   onLoad() {
     console.log('趋势页面加载')
+    this._hasShownOnce = false
     this.setDateRange()
 
     const app = getApp()
     if (app.globalData.isLoggedIn) {
-      this.loadData()
+      this.loadData({ silent: true })
     }
   },
 
   onShow() {
+    if (!this._hasShownOnce) {
+      this._hasShownOnce = true
+      return
+    }
+
     const lastRefresh = wx.getStorageSync('trendsLastRefresh')
     const now = Date.now()
 
     const app = getApp()
-    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 5 * 60 * 1000)) {
-      this.loadData()
+    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 10 * 60 * 1000)) {
+      this.loadData({ silent: true })
     }
   },
 
   onLoginSuccess() {
     console.log('趋势页面：收到登录成功通知')
-    this.loadData()
+    this.loadData({ silent: true })
   },
 
   onPullDownRefresh() {
     // 下拉刷新时强制跳过缓存
     const { clearAllCache } = require('../../utils/request.js')
     clearAllCache()
-    this.loadData(true).then(() => {
+    this.loadData({ silent: false }).then(() => {
       wx.stopPullDownRefresh()
     })
   },
@@ -145,36 +152,49 @@ Page({
 
   // 获取过去7天的日期列表（从6天前到今天）
   getLast7Days() {
-    const days = []
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      days.push(date.toISOString().split('T')[0])
-    }
-    return days
+    return getRecentLocalDates(7)
   },
 
   /**
    * 分层加载趋势数据（优化版）
    * 使用缓存减少请求，保持原有数据处理逻辑
-   * @param {Boolean} forceRefresh 是否强制刷新（跳过缓存）
    */
-  async loadData(forceRefresh = false) {
-    this.setData({ loading: true })
+  loadData(options = {}) {
+    if (this._loadPromise) {
+      return this._loadPromise
+    }
+
+    const loadPromise = this.performLoadData(options).finally(() => {
+      if (this._loadPromise === loadPromise) {
+        this._loadPromise = null
+      }
+    })
+
+    this._loadPromise = loadPromise
+    return loadPromise
+  },
+
+  async performLoadData(options = {}) {
+    const { silent = false } = options
+    const shouldShowLoading = !this._hasLoadedOnce || !silent
+
+    if (shouldShowLoading) {
+      this.setData({ loading: true })
+    }
+
     const startTime = Date.now()
 
     try {
       // 并行加载所有数据（缓存层会自动去重和复用）
       console.log('[Performance] 趋势页加载开始')
-      const [sleepGroupedRes, sleepDetailRes, readinessRes, activityRes, stressRes, spo2Res, trainingRes, heartrateRes, dashboardRes] = await Promise.all([
+      const [sleepGroupedRes, readinessRes, activityRes, stressRes, spo2Res, trainingRes, dashboardRes] = await Promise.all([
         getOuraSleepGrouped(7).catch(err => { console.warn('分组睡眠数据获取失败:', err); return null }),
-        getOuraSleep(7).catch(err => { console.warn('详细睡眠数据获取失败:', err); return null }),
+        // getOuraSleep(7) 已移除 - HRV/RHR/呼吸从 grouped segments 提取
         getOuraReadiness(7).catch(err => { console.warn('准备度数据获取失败:', err); return null }),
         getOuraActivity(7).catch(err => { console.warn('活动数据获取失败:', err); return null }),
         getOuraStress(7).catch(err => { console.warn('压力数据获取失败:', err); return null }),
         getOuraSpo2(7).catch(err => { console.warn('血氧数据获取失败:', err); return null }),
         getTrainingTrends(7).catch(err => { console.warn('训练数据获取失败:', err); return null }),
-        getOuraHeartrateDetails(7).catch(err => { console.warn('心率详情获取失败:', err); return null }),
         getDashboard().catch(err => { console.warn('Dashboard数据获取失败:', err); return null })
       ])
 
@@ -183,39 +203,45 @@ Page({
       // 组装数据格式（传入 dashboard 数据用于补充今天的睡眠评分）
       const trendsData = {
         sleep: this.transformSleepGroupedData(sleepGroupedRes?.records || [], dashboardRes),
-        sleepDetail: this.transformSleepDetailData(sleepDetailRes?.records || []),
+        sleepDetail: this.extractSleepDetailFromGrouped(sleepGroupedRes?.records || []),
         readiness: this.transformReadinessData(readinessRes?.records || []),
         activity: this.transformActivityData(activityRes?.records || []),
         stress: this.transformStressData(stressRes?.records || []),
         spo2: this.transformSpo2Data(spo2Res?.records || []),
         training: this.transformTrainingData(trainingRes?.exercises || []),
-        heartrate: this.transformHeartrateData(heartrateRes || [])
+        heartrate: []
       }
 
       this.processAndSetData(trendsData)
+      this._hasLoadedOnce = true
       console.log(`[Performance] 趋势页加载完成，总耗时 ${Date.now() - startTime}ms`)
 
       wx.setStorageSync('trendsLastRefresh', Date.now())
+      this.loadHeartrateTrendData()
 
     } catch (error) {
       console.error('加载趋势数据失败:', error)
-      wx.showToast({
-        title: '加载失败，请重试',
-        icon: 'none'
-      })
+      if (shouldShowLoading) {
+        this.setData({ loading: false })
+      }
+
+      if (!silent || !this._hasLoadedOnce) {
+        wx.showToast({
+          title: '加载失败，请重试',
+          icon: 'none'
+        })
+      }
     } finally {
-      this.setData({ loading: false })
+      if (shouldShowLoading) {
+        this.setData({ loading: false })
+      }
     }
   },
 
   // 转换分组睡眠数据格式（支持主睡眠+午睡叠加）
   // dashboardRes 用于补充今天的睡眠评分（当 summary_score 为 null 时）
   transformSleepGroupedData(records, dashboardRes) {
-    // 获取今天的日期（香港时间，用于匹配 dashboard 数据）
-    const now = new Date()
-    const hkOffset = 8 * 60  // 香港时区 UTC+8
-    const hkTime = new Date(now.getTime() + (hkOffset + now.getTimezoneOffset()) * 60000)
-    const today = hkTime.toISOString().split('T')[0]
+    const today = formatLocalDate(new Date())
     // dashboard 中的睡眠评分（oura_yesterday 是昨晚的睡眠，对应今天的日期）
     const dashboardSleepScore = dashboardRes?.oura_yesterday?.sleep_score
 
@@ -310,6 +336,25 @@ Page({
           hrv: r.average_hrv || null,  // 实际HRV毫秒值
           rhr: r.lowest_heart_rate || null,  // 实际静息心率（睡眠最低心率，单位bpm）
           breath: r.average_breath || null  // 呼吸频率（次/分钟）
+        }
+      }
+    })
+    return Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date))
+  },
+
+  // 从分组睡眠数据中提取HRV/静息心率/呼吸频率（替代独立的 sleep detail API）
+  extractSleepDetailFromGrouped(records) {
+    const dailyMap = {}
+    records.forEach(r => {
+      if (!r.day || !r.segments) return
+      // 优先取主睡眠（long_sleep）的数据
+      const mainSleep = r.segments.find(s => s.sleep_type === 'long_sleep') || r.segments[0]
+      if (mainSleep) {
+        dailyMap[r.day] = {
+          date: r.day,
+          hrv: mainSleep.average_hrv || null,
+          rhr: mainSleep.lowest_heart_rate || null,
+          breath: mainSleep.average_breath || null
         }
       }
     })
@@ -472,7 +517,7 @@ Page({
 
     // 处理 Oura 心率位置数据（最低心率出现的睡眠进度百分比）
     const heartrateDays = data.heartrate || []
-    const hrPositionResult = this.processHrPositionMetric(heartrateDays)
+    const hrPositionResult = heartrateDays.length > 0 ? this.processHrPositionMetric(heartrateDays) : null
 
     this.setData({
       // Polar 训练数据
@@ -558,13 +603,45 @@ Page({
       restoredLabelBelow: restoredResult.avgLabelBelow,
 
       // Oura 心率恢复数据
-      hrPositionData: hrPositionResult.data,
-      avgHrPosition: hrPositionResult.avg,
-      hrPositionAvgPercent: hrPositionResult.avgPercent,
-      hrPositionLabelBelow: hrPositionResult.avgLabelBelow,
+      ...(hrPositionResult ? {
+        hrPositionData: hrPositionResult.data,
+        avgHrPosition: hrPositionResult.avg,
+        hrPositionAvgPercent: hrPositionResult.avgPercent,
+        hrPositionLabelBelow: hrPositionResult.avgLabelBelow
+      } : {}),
 
       loading: false
     })
+  },
+
+  async loadHeartrateTrendData() {
+    if (this._heartratePromise) {
+      return this._heartratePromise
+    }
+
+    const heartratePromise = getOuraHeartrateDetails(7)
+      .then(records => {
+        const heartrateDays = this.transformHeartrateData(records || [])
+        const hrPositionResult = this.processHrPositionMetric(heartrateDays)
+
+        this.setData({
+          hrPositionData: hrPositionResult.data,
+          avgHrPosition: hrPositionResult.avg,
+          hrPositionAvgPercent: hrPositionResult.avgPercent,
+          hrPositionLabelBelow: hrPositionResult.avgLabelBelow
+        })
+      })
+      .catch(err => {
+        console.warn('心率详情获取失败:', err)
+      })
+      .finally(() => {
+        if (this._heartratePromise === heartratePromise) {
+          this._heartratePromise = null
+        }
+      })
+
+    this._heartratePromise = heartratePromise
+    return heartratePromise
   },
 
   /**

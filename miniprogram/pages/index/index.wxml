@@ -12,7 +12,7 @@
     </view>
 
     <!-- 双评分骨架屏 -->
-    <view class="dual-score-section skeleton-section" wx:if="{{loading}}">
+    <view class="dual-score-section skeleton-section" hidden="{{!loading}}">
       <view class="score-card">
         <view class="skeleton-ring skeleton-animate"></view>
         <view class="score-info">
@@ -31,7 +31,7 @@
     </view>
 
     <!-- 双评分核心区 -->
-    <view class="dual-score-section" wx:if="{{!loading}}">
+    <view class="dual-score-section" hidden="{{loading}}">
       <!-- 准备度评分 -->
       <view class="score-card readiness-card">
         <view class="score-ring-wrap">
@@ -71,7 +71,7 @@
     </view>
 
     <!-- 四指标骨架屏 -->
-    <view class="metrics-row" wx:if="{{loading}}">
+    <view class="metrics-row" hidden="{{!loading}}">
       <view class="metric-item" wx:for="{{[1,2,3,4]}}" wx:key="index">
         <view class="skeleton-icon-sm skeleton-animate"></view>
         <view class="skeleton-text-sm skeleton-animate"></view>
@@ -80,7 +80,7 @@
     </view>
 
     <!-- 核心四指标 -->
-    <view class="metrics-row" wx:if="{{!loading}}">
+    <view class="metrics-row" hidden="{{loading}}">
       <view class="metric-item">
         <view class="metric-icon-wrap hrv-icon"><text class="metric-icon">💓</text></view>
         <text class="metric-value">{{readinessData.hrv || '--'}}</text>
@@ -124,7 +124,7 @@
 
 
   <!-- 骨架屏加载状态 -->
-  <view class="skeleton-container" wx:if="{{loading}}">
+  <view class="skeleton-container" hidden="{{!loading}}">
     <view class="skeleton-card" wx:for="{{[1,2,3]}}" wx:key="index">
       <view class="skeleton-header">
         <view class="skeleton-icon skeleton-animate"></view>
@@ -145,7 +145,7 @@
   </view>
 
   <!-- 内容区域 -->
-  <view class="content-area" wx:if="{{!loading}}">
+  <view class="content-area" hidden="{{loading}}">
 
     <!-- 数据异常提醒区 -->
     <view class="alerts-section card-appear" wx:if="{{alerts.length > 0}}" style="animation-delay: 0.15s">

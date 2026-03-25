@@ -22,13 +22,14 @@
     <!-- 餐食照片区域 - 沉浸式设计 -->
     <view class="photo-hero">
       <image
+        wx:if="{{meal.photo_path}}"
         class="hero-image"
         src="{{meal.photo_path}}"
         mode="aspectFill"
         binderror="onImageError"
         bindload="onImageLoad"
       />
-      <view wx:if="{{!meal.photo_path}}" class="no-image">
+      <view wx:else class="no-image">
         <text class="no-image-icon">📷</text>
         <text class="no-image-text">暂无图片</text>
       </view>
@@ -275,53 +276,83 @@
               <text class="hydration-text">{{analysis.recommendations.hydration_reminder}}</text>
             </view>
 
-            <!-- 下一餐推荐（新版本：数组格式） -->
-            <view wx:if="{{analysis.recommendations.next_meals && analysis.recommendations.next_meals.length > 0}}" class="next-meals-section">
+            <!-- 下一餐推荐食谱（处理后的数组格式） -->
+            <view wx:if="{{nextMealRecipes && nextMealRecipes.length > 0}}" class="next-meals-section">
               <view class="section-label">
                 <text class="label-icon">🍽️</text>
-                <text class="label-text">下一餐推荐</text>
+                <text class="label-text">下一餐推荐食谱</text>
               </view>
-              <view wx:for="{{analysis.recommendations.next_meals}}" wx:key="index" class="next-meal-card">
+              <view wx:for="{{nextMealRecipes}}" wx:key="index" class="next-meal-card">
                 <view class="meal-card-header">
-                  <text class="meal-title">{{item.meal}}</text>
-                  <view class="meal-calories-tag">{{item.total_calories}} kcal</view>
+                  <text class="meal-title">{{item.meal_name}}</text>
+                  <view class="meal-calories-tag">共 {{item.total_calories}} 千卡</view>
                 </view>
                 <view class="dishes-list">
                   <view wx:for="{{item.dishes}}" wx:for-item="dish" wx:for-index="dishIndex" wx:key="dishIndex" class="dish-card">
                     <view class="dish-top">
                       <text class="dish-name">{{dish.name}}</text>
-                      <text class="dish-cal">{{dish.calories}} kcal</text>
+                      <view class="dish-meta">
+                        <text wx:if="{{dish.cooking_time}}" class="dish-time">⏱️ {{dish.cooking_time}}</text>
+                        <text class="dish-cal">{{dish.calories}} kcal</text>
+                      </view>
                     </view>
                     <view class="dish-detail">
                       <view class="detail-row">
                         <text class="detail-label">食材</text>
-                        <text class="detail-value">{{dish.ingredients}}</text>
+                        <text class="detail-value">{{dish.ingredientsText}}</text>
                       </view>
                       <view class="detail-row">
                         <text class="detail-label">做法</text>
-                        <text class="detail-value">{{dish.method}}</text>
+                        <text class="detail-value">{{dish.cookingStepsText}}</text>
                       </view>
                     </view>
                     <view class="dish-benefit">
                       <text class="benefit-icon">💚</text>
-                      <text class="benefit-text">{{dish.benefit}}</text>
+                      <text class="benefit-text">{{dish.health_benefit}}</text>
                     </view>
                   </view>
                 </view>
-                <view wx:if="{{item.reason}}" class="meal-reason">
-                  <text class="reason-text">{{item.reason}}</text>
+                <!-- 主食推荐 -->
+                <view wx:if="{{item.staple && item.staple.name}}" class="staple-suggestion">
+                  <text class="staple-icon">🍚</text>
+                  <text class="staple-label">主食推荐</text>
+                  <text class="staple-text">{{item.staple.name}}</text>
+                </view>
+                <!-- 搭配原因 -->
+                <view wx:if="{{item.why_this_menu}}" class="meal-reason">
+                  <text class="reason-text">{{item.why_this_menu}}</text>
                 </view>
               </view>
             </view>
 
-            <!-- 下一餐建议（旧版本兼容：字符串格式） -->
-            <view wx:if="{{!analysis.recommendations.next_meals && analysis.recommendations.next_meal_menu}}" class="next-meal-menu">
+            <!-- 下一餐建议（字符串格式兼容） -->
+            <view wx:if="{{!nextMealRecipes.length && formattedNextMealMenu}}" class="next-meal-menu">
               <view class="section-label">
                 <text class="label-icon">🍽️</text>
                 <text class="label-text">下一餐推荐</text>
               </view>
               <view class="menu-content">
                 <text class="menu-text">{{formattedNextMealMenu}}</text>
+              </view>
+            </view>
+
+            <!-- 下一餐简单建议（next_meal_tips格式） -->
+            <view wx:if="{{!nextMealRecipes.length && !formattedNextMealMenu && nextMealTips && nextMealTips.length > 0}}" class="next-meal-tips">
+              <view class="section-label">
+                <text class="label-icon">💡</text>
+                <text class="label-text">下一餐建议</text>
+              </view>
+              <view class="tips-list">
+                <view wx:for="{{nextMealTips}}" wx:key="index" class="tip-item">
+                  <view class="tip-header">
+                    <text class="tip-meal">{{item.meal}}</text>
+                  </view>
+                  <text class="tip-suggestion">{{item.suggestion}}</text>
+                  <view wx:if="{{item.health_benefit}}" class="tip-benefit">
+                    <text class="benefit-icon">💚</text>
+                    <text class="benefit-text">{{item.health_benefit}}</text>
+                  </view>
+                </view>
               </view>
             </view>
           </view>

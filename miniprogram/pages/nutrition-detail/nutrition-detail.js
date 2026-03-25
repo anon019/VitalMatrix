@@ -1,5 +1,5 @@
 // pages/nutrition-detail/nutrition-detail.js
-const { getMealDetail, deleteMeal } = require('../../utils/request.js')
+const { getMealDetail, deleteMeal, clearCache } = require('../../utils/request.js')
 const config = require('../../utils/config.js')
 
 Page({
@@ -22,7 +22,9 @@ Page({
     carbsRatingClass: '',          // 碳水评级样式类
     proteinRatingClass: '',        // 蛋白质评级样式类
     fatRatingClass: '',            // 脂肪评级样式类
-    formattedNextMealMenu: ''      // 格式化后的下一餐推荐
+    formattedNextMealMenu: '',     // 格式化后的下一餐推荐
+    nextMealRecipes: [],           // 下一餐推荐食谱（新版格式）
+    nextMealTips: []               // 下一餐简单建议（next_meal_tips格式）
   },
 
   // 根据综合评级获取颜色
@@ -35,6 +37,64 @@ Page({
       '较差': '#F44336'
     }
     return colorMap[rating] || '#4CAF50'
+  },
+
+  // 标准化单个菜品数据
+  normalizeDish(dish) {
+    return {
+      name: dish.name || '',
+      calories: dish.calories || 0,
+      cooking_time: dish.cooking_time || '',
+      ingredientsText: Array.isArray(dish.ingredients) ? dish.ingredients.join('、') : (dish.ingredients || ''),
+      cookingStepsText: Array.isArray(dish.cooking_steps) ? dish.cooking_steps.join(' → ') : (dish.cooking_steps || dish.method || ''),
+      health_benefit: dish.health_benefit || dish.benefit || ''
+    }
+  },
+
+  // 标准化单个餐食推荐数据
+  normalizeMealRecipe(meal) {
+    const dishes = (meal.dishes || []).map(dish => this.normalizeDish(dish))
+    return {
+      meal_name: meal.meal_name || meal.meal || '推荐',
+      total_calories: meal.total_calories || dishes.reduce((sum, d) => sum + (d.calories || 0), 0),
+      dishes: dishes,
+      staple: meal.staple || null,
+      why_this_menu: meal.why_this_menu || meal.reason || ''
+    }
+  },
+
+  // 处理下一餐推荐食谱数据（兼容多种API格式）
+  processNextMealRecipes(recommendations) {
+    if (!recommendations) {
+      return { nextMealRecipes: [], nextMealTips: [] }
+    }
+
+    let nextMealRecipes = []
+    let nextMealTips = []
+
+    // 优先级1：next_meal_recipes（新版数组格式）
+    if (recommendations.next_meal_recipes && Array.isArray(recommendations.next_meal_recipes) && recommendations.next_meal_recipes.length > 0) {
+      nextMealRecipes = recommendations.next_meal_recipes.map(meal => this.normalizeMealRecipe(meal))
+    }
+    // 优先级2：next_meals（后端JSON指令格式）
+    else if (recommendations.next_meals && Array.isArray(recommendations.next_meals) && recommendations.next_meals.length > 0) {
+      nextMealRecipes = recommendations.next_meals.map(meal => this.normalizeMealRecipe(meal))
+    }
+    // 优先级3：next_meal_recipe（单个对象格式）
+    else if (recommendations.next_meal_recipe && typeof recommendations.next_meal_recipe === 'object') {
+      nextMealRecipes = [this.normalizeMealRecipe(recommendations.next_meal_recipe)]
+    }
+
+    // 处理 next_meal_tips（简单建议格式）
+    if (recommendations.next_meal_tips && Array.isArray(recommendations.next_meal_tips) && recommendations.next_meal_tips.length > 0) {
+      nextMealTips = recommendations.next_meal_tips.map(tip => ({
+        meal: tip.meal || '',
+        suggestion: tip.suggestion || '',
+        health_benefit: tip.health_benefit || ''
+      }))
+    }
+
+    return { nextMealRecipes, nextMealTips }
   },
 
   // 格式化下一餐推荐文本，添加换行（支持多餐推荐）
@@ -191,6 +251,9 @@ Page({
       const nextMealMenu = meal.gemini_analysis?.recommendations?.next_meal_menu || ''
       const formattedNextMealMenu = this.formatNextMealMenu(nextMealMenu)
 
+      // 处理下一餐推荐数据（兼容多种格式）
+      const { nextMealRecipes, nextMealTips } = this.processNextMealRecipes(meal.gemini_analysis?.recommendations)
+
       this.setData({
         meal: {
           ...meal,
@@ -215,6 +278,8 @@ Page({
         proteinRatingClass: this.getNutritionRatingClass(proteinRating),
         fatRatingClass: this.getNutritionRatingClass(fatRating),
         formattedNextMealMenu: formattedNextMealMenu,
+        nextMealRecipes: nextMealRecipes,
+        nextMealTips: nextMealTips,
         loading: false
       })
 
@@ -257,6 +322,8 @@ Page({
     try {
       await deleteMeal(this.data.mealId)
       console.log('Meal deleted successfully')
+      clearCache('/api/v1/nutrition')
+      wx.setStorageSync('nutritionNeedsRefresh', true)
 
       wx.hideLoading()
       wx.showToast({
