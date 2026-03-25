@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # Oura配置
     OURA_CLIENT_ID: str = ""
     OURA_CLIENT_SECRET: str = ""
-    OURA_REDIRECT_URI: str = "https://health.jackverse.cn/api/v1/oura/callback"
+    OURA_REDIRECT_URI: str = "https://your-domain.example.com/api/v1/oura/callback"
 
     # AI配置
     AI_PROVIDER: str = "gemini"  # gemini | qwen | deepseek | openai | claude
@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # MCP API配置
     MCP_API_KEY: str = ""  # 用于本地MCP服务器访问
 
+    # OpenRouter 请求标识（公开仓库默认占位值）
+    OPENROUTER_HTTP_REFERER: str = "https://your-domain.example.com"
+    OPENROUTER_APP_TITLE: str = "VitalMatrix"
+
     # 微信小程序
     WECHAT_APP_ID: str
     WECHAT_APP_SECRET: str
@@ -81,7 +85,7 @@ class Settings(BaseSettings):
     # CORS配置
     ALLOWED_ORIGINS: list = [
         "https://servicewechat.com",  # 微信小程序
-        "https://health.jackverse.cn",
+        "https://your-domain.example.com",
     ]
 
     # Web 前端访问密码（空字符串表示不需要密码）

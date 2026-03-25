@@ -248,14 +248,17 @@ class GeminiNutritionService:
 
         logger.info(f"Calling OpenRouter API: {self.model_name}")
 
+        openrouter_http_referer = os.getenv("OPENROUTER_HTTP_REFERER", "https://your-domain.example.com")
+        openrouter_app_title = os.getenv("OPENROUTER_APP_TITLE", "VitalMatrix")
+
         response = await self._http_client.post(
             OPENROUTER_API_URL,
             json=payload,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
-                "HTTP-Referer": "https://health.jackverse.cn",
-                "X-Title": "Health Assistant"
+                "HTTP-Referer": openrouter_http_referer,
+                "X-Title": openrouter_app_title
             }
         )
 

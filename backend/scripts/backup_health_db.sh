@@ -4,38 +4,41 @@
 
 set -e
 
-# 配置
-BACKUP_DIR="/root/backups/health_db"
-DB_NAME="health_db"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BACKUP_DIR="${BACKUP_DIR:-$BACKEND_DIR/backups}"
+DB_NAME="${DB_NAME:-health_db}"
+PG_DUMP_USER="${PG_DUMP_USER:-postgres}"
 DATE=$(date +%Y-%m-%d)
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/health_db_${DATE}.sql"
-LOG_FILE="/root/backups/backup.log"
-KEEP_DAYS=30  # 本地保留天数
+LOG_FILE="${LOG_FILE:-$BACKUP_DIR/backup.log}"
+KEEP_DAYS="${KEEP_DAYS:-30}"
 
-# 日志函数
+mkdir -p "$BACKUP_DIR"
+
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
 log "========== 开始备份 =========="
 
-# 1. 创建 PostgreSQL 备份
 log "正在备份数据库 ${DB_NAME}..."
-sudo -u postgres pg_dump "$DB_NAME" > "$BACKUP_FILE"
+if command -v sudo &> /dev/null; then
+    sudo -u "$PG_DUMP_USER" pg_dump "$DB_NAME" > "$BACKUP_FILE"
+else
+    pg_dump "$DB_NAME" > "$BACKUP_FILE"
+fi
 
-# 检查备份文件大小
 BACKUP_SIZE=$(ls -lh "$BACKUP_FILE" | awk '{print $5}')
 log "备份完成: ${BACKUP_FILE} (${BACKUP_SIZE})"
 
-# 2. 压缩备份文件
 log "正在压缩备份文件..."
 gzip -f "$BACKUP_FILE"
 COMPRESSED_FILE="${BACKUP_FILE}.gz"
 COMPRESSED_SIZE=$(ls -lh "$COMPRESSED_FILE" | awk '{print $5}')
 log "压缩完成: ${COMPRESSED_FILE} (${COMPRESSED_SIZE})"
 
-# 3. 上传到 Google Drive（如果 rclone 已配置）
 if command -v rclone &> /dev/null && rclone listremotes | grep -q "gdrive:"; then
     log "正在上传到 Google Drive..."
     rclone copy "$COMPRESSED_FILE" gdrive:HealthBackups/ --progress
@@ -44,7 +47,6 @@ else
     log "警告: rclone 未配置，跳过云端备份"
 fi
 
-# 4. 清理旧备份（本地）
 log "清理 ${KEEP_DAYS} 天前的本地备份..."
 find "$BACKUP_DIR" -name "health_db_*.sql.gz" -mtime +${KEEP_DAYS} -delete
 REMAINING=$(ls -1 "$BACKUP_DIR" | wc -l)
