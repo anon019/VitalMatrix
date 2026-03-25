@@ -8,12 +8,16 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# 获取项目根目录
+BACKEND_ROOT = Path(__file__).parent.parent.parent
+DEFAULT_CONFIG_PATH = BACKEND_ROOT / "config" / "prompts" / "recommendation.yaml"
+
 
 class PromptLoader:
     """Prompt加载器"""
 
-    def __init__(self, config_path: str = "/root/health/backend/config/prompts/recommendation.yaml"):
-        self.config_path = Path(config_path)
+    def __init__(self, config_path: str = None):
+        self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
         self._config: Optional[Dict[str, Any]] = None
         self._load_config()
 

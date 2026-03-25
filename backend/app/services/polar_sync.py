@@ -596,4 +596,3 @@ class PolarSyncService:
             logger.error(f"同步Polar夜间恢复数据失败: user_id={user_id} - {str(e)}")
             await self.db.rollback()
             return 0
-

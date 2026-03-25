@@ -12,18 +12,22 @@ from app.utils.datetime_helper import now_hk
 
 logger = logging.getLogger(__name__)
 
+# 获取 backend 根目录
+BACKEND_ROOT = Path(__file__).parent.parent.parent
+DEFAULT_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "nutrition"
+
 
 class FileStorageService:
     """文件存储服务类"""
 
-    def __init__(self, base_dir: str = "/root/health/backend/uploads/nutrition"):
+    def __init__(self, base_dir: str = None):
         """
         初始化文件存储服务
 
         Args:
             base_dir: 存储根目录
         """
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir) if base_dir else DEFAULT_UPLOAD_DIR
         self.thumbnail_size = (200, 200)  # 缩略图尺寸
 
         # 创建存储目录

@@ -7,9 +7,11 @@ import logging
 from datetime import date, timedelta
 from typing import Optional, Dict, Any, List
 
+from fastapi import HTTPException
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import resolve_default_user
 from app.database.session import AsyncSessionLocal
 from app.models.polar import PolarExercise
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
@@ -31,11 +33,10 @@ logger = logging.getLogger(__name__)
 
 async def get_default_user(db: AsyncSession) -> User:
     """获取默认用户（单用户模式）"""
-    result = await db.execute(select(User).limit(1))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise ValueError("未找到用户")
-    return user
+    try:
+        return await resolve_default_user(db)
+    except HTTPException as exc:
+        raise ValueError(exc.detail) from exc
 
 
 # ============ MCP Tools ============
