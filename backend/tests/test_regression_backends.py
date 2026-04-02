@@ -11,6 +11,7 @@ import pytest
 
 from app.services.ai_service import AIService
 from app.services.file_storage import FileStorageService
+from app.services.nutrition_service import NutritionService
 from app.services.sleep_metrics_service import SleepMetricsService
 from app.scheduler.jobs import MAX_CONCURRENT_USER_TASKS, _run_user_tasks
 from app.utils.datetime_helper import HK_TZ, end_of_day_hk, start_of_day_hk, today_hk
@@ -174,3 +175,22 @@ def test_file_storage_absolute_and_cleanup(monkeypatch, tmp_path):
     assert not old_date.exists()
     assert keep_date.exists()
     assert skip_dir.exists()
+
+
+def test_nutrition_flags_empty_when_no_meals():
+    assert NutritionService._calculate_nutrition_flags(0, 0, 0, 0) == {}
+
+
+def test_nutrition_flags_detect_clear_outliers():
+    flags = NutritionService._calculate_nutrition_flags(
+        total_calories=2600,
+        total_protein=45,
+        total_carbs=360,
+        total_fat=25,
+    )
+
+    assert flags["calorie_high"] is True
+    assert flags["protein_low"] is True
+    assert flags["carbs_high"] is True
+    assert flags["fat_low"] is True
+    assert flags["calorie_low"] is False

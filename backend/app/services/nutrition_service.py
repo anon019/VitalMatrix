@@ -27,6 +27,39 @@ class NutritionService:
         self.gemini_service = get_gemini_service()
         self.file_storage = get_file_storage()
 
+    @staticmethod
+    def _calculate_nutrition_flags(
+        total_calories: float,
+        total_protein: float,
+        total_carbs: float,
+        total_fat: float,
+    ) -> Dict[str, bool]:
+        """根据每日营养汇总生成轻量级风险标记。
+
+        说明：
+        - 这里的 flags 主要用于页面展示与 AI 提示补充，不应因为缺失而阻断主流程。
+        - 无餐食/全 0 数据时返回空字典，避免把“今天没记饮食”误判为营养异常。
+        - 阈值采用保守的成年人日摄入参考区间，优先避免明显异常值漏报。
+        """
+        total_calories = float(total_calories or 0)
+        total_protein = float(total_protein or 0)
+        total_carbs = float(total_carbs or 0)
+        total_fat = float(total_fat or 0)
+
+        if total_calories <= 0 and total_protein <= 0 and total_carbs <= 0 and total_fat <= 0:
+            return {}
+
+        return {
+            "calorie_high": total_calories > 2400,
+            "calorie_low": 0 < total_calories < 1400,
+            "protein_low": 0 < total_protein < 60,
+            "protein_high": total_protein > 180,
+            "carbs_high": total_carbs > 320,
+            "carbs_low": 0 < total_carbs < 130,
+            "fat_high": total_fat > 80,
+            "fat_low": 0 < total_fat < 35,
+        }
+
     async def analyze_and_save_meal(
         self,
         db: AsyncSession,
