@@ -173,7 +173,11 @@ class PolarClient:
             return response.json() if response.content else {}
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Polar API请求失败: {url} - {e.response.status_code}")
+            body = e.response.text[:300].strip() if e.response.text else ""
+            logger.error(
+                f"Polar API请求失败: {url} - {e.response.status_code}"
+                + (f" body={body}" if body else "")
+            )
             raise PolarAPIError(f"API请求失败: {e.response.status_code}")
         except Exception as e:
             logger.error(f"Polar API请求异常: {url} - {str(e)}")
@@ -297,10 +301,10 @@ class PolarClient:
 
         except PolarAPIError as e:
             logger.error(f"获取Polar训练数据失败: {str(e)}")
-            return []
+            raise
         except Exception as e:
             logger.error(f"获取Polar训练数据异常: {str(e)}")
-            return []
+            raise PolarAPIError(f"获取训练数据异常: {str(e)}") from e
 
     async def get_physical_info(self, access_token: str) -> Optional[Dict[str, Any]]:
         """

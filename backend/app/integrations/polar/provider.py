@@ -303,7 +303,7 @@ class PolarProvider(DataSourceProvider):
 
         except Exception as e:
             logger.error(f"拉取Polar训练数据失败: {str(e)}")
-            return []
+            raise
 
     async def fetch_sleep_data(
         self, user_id: uuid.UUID, start_date: date, end_date: date

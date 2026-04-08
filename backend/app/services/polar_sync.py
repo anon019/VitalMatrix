@@ -19,6 +19,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 MAX_CONCURRENT_USER_TASKS = 8
+MAX_CATCHUP_DAYS = 14
 
 
 class PolarSyncService:
@@ -50,6 +51,12 @@ class PolarSyncService:
             # 计算日期范围
             end_date = today_hk()
             start_date = end_date - timedelta(days=days - 1)
+            start_date = await self._expand_start_date_for_catchup(
+                user_id=user_id,
+                requested_start_date=start_date,
+                end_date=end_date,
+                force=force,
+            )
 
             logger.info(
                 f"开始同步Polar数据: user_id={user_id}, "
@@ -60,6 +67,7 @@ class PolarSyncService:
             training_sessions = await self.polar_provider.fetch_training_data(
                 user_id, start_date, end_date
             )
+            await self._mark_sync_success(user_id)
 
             if not training_sessions:
                 logger.info(f"未获取到新的训练数据: user_id={user_id}")
@@ -185,6 +193,38 @@ class PolarSyncService:
             logger.error(f"Polar数据同步失败: user_id={user_id} - {str(e)}")
             await self.db.rollback()
             raise
+
+    async def _expand_start_date_for_catchup(
+        self,
+        user_id: uuid.UUID,
+        requested_start_date: date,
+        end_date: date,
+        force: bool,
+    ) -> date:
+        """在短窗口轮询基础上自动补追最近成功同步以来可能漏掉的日期。"""
+        if force:
+            return requested_start_date
+
+        result = await self.db.execute(
+            select(PolarAuth.last_sync_at).where(PolarAuth.user_id == user_id)
+        )
+        last_sync_at = result.scalar_one_or_none()
+        if not last_sync_at:
+            return requested_start_date
+
+        catchup_floor = end_date - timedelta(days=MAX_CATCHUP_DAYS - 1)
+        catchup_start = max(last_sync_at.date(), catchup_floor)
+        return min(requested_start_date, catchup_start)
+
+    async def _mark_sync_success(self, user_id: uuid.UUID) -> None:
+        """记录最近一次成功访问 Polar 的时间，用于后续自动补追。"""
+        result = await self.db.execute(
+            select(PolarAuth).where(PolarAuth.user_id == user_id)
+        )
+        polar_auth = result.scalar_one_or_none()
+        if polar_auth:
+            polar_auth.last_sync_at = now_hk()
+            await self.db.flush()
 
     async def _update_summaries(self, user_id: uuid.UUID, affected_dates: set[date]):
         """同步后更新受影响的日总结和周汇总"""
