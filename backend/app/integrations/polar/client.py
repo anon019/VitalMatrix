@@ -2,7 +2,7 @@
 Polar AccessLink API客户端
 """
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 import httpx
 import asyncio
@@ -10,7 +10,6 @@ from app.config import settings
 from app.integrations.polar.constants import (
     POLAR_AUTH_URL,
     POLAR_TOKEN_URL,
-    EXERCISES_ENDPOINT,
     PHYSICAL_INFO_ENDPOINT,
     DAILY_ACTIVITY_ENDPOINT,
     POLAR_SCOPES,
@@ -346,7 +345,7 @@ class PolarClient:
             activities = await self._make_request(
                 "GET", DAILY_ACTIVITY_ENDPOINT, access_token, params=params
             )
-            logger.info(f"成功获取Polar日常活动数据")
+            logger.info("成功获取Polar日常活动数据")
             return activities.get("activity-log", [])
         except PolarAPIError as e:
             logger.error(f"获取Polar日常活动数据失败: {str(e)}")

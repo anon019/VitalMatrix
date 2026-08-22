@@ -1,13 +1,19 @@
 """
 健康报告模型 - 用于MCP预生成报告
 """
+from __future__ import annotations
+
 import uuid
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import ForeignKey, Date, DateTime, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class HealthReport(Base):

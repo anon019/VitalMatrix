@@ -3,8 +3,8 @@ Dashboard API - 小程序首页综合数据接口
 """
 import logging
 from datetime import date, timedelta
-from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, case, func, select
@@ -18,7 +18,9 @@ from app.models.oura import (
     OuraCardiovascularAge, OuraResilience, OuraVO2Max
 )
 from app.models.polar import PolarExercise, PolarSleep, PolarNightlyRecharge
+from app.models.nutrition import NutritionDailySummary
 from app.schemas.training import DailySummaryResponse, WeeklySummaryResponse
+from app.schemas.nutrition import NutritionDailySummaryResponse
 from app.schemas.ai import RecommendationResponse
 from app.services.ai_service import AIService
 from app.utils.datetime_helper import today_hk, get_week_start
@@ -55,6 +57,11 @@ class OuraSummary(BaseModel):
     # 压力
     stress_high_min: Optional[int] = None
     recovery_high_min: Optional[int] = None
+    # 指标来源日期显式返回，避免“昨夜睡眠”和“昨日活动”混在一张卡时语义不清。
+    sleep_date: Optional[date] = None
+    readiness_date: Optional[date] = None
+    activity_date: Optional[date] = None
+    stress_date: Optional[date] = None
 
 
 class DashboardResponse(BaseModel):
@@ -69,6 +76,8 @@ class DashboardResponse(BaseModel):
     oura_today: Optional[OuraSummary] = None
     # Oura数据 - 昨日完整数据（显示在下方，用于对比）
     oura_yesterday: Optional[OuraSummary] = None
+    nutrition_today: Optional[NutritionDailySummaryResponse] = None
+    nutrition_yesterday: Optional[NutritionDailySummaryResponse] = None
 
 
 @router.get("/today", response_model=DashboardResponse)
@@ -111,6 +120,10 @@ async def get_dashboard_today(
             today_recommendation=recommendation.today_recommendation,
             health_education=recommendation.health_education,
             created_at=recommendation.created_at.isoformat(),
+            requested_date=today,
+            source_date=recommendation.date,
+            is_stale=recommendation.date != today,
+            generation_metadata=recommendation.generation_metadata,
         )
 
     # 2. 获取昨日训练数据
@@ -177,13 +190,16 @@ async def get_dashboard_today(
             readiness_score=readiness_today.score if readiness_today else None,
             recovery_index=readiness_today.recovery_index if readiness_today else None,
             resting_heart_rate=readiness_today.resting_heart_rate if readiness_today else None,
+            readiness_date=today if readiness_today else None,
             # 活动
             activity_score=activity_today.score if activity_today else None,
             steps=activity_today.steps if activity_today else None,
             active_calories=activity_today.active_calories if activity_today else None,
+            activity_date=today if activity_today else None,
             # 压力
             stress_high_min=round(stress_today.stress_high / 60) if stress_today and stress_today.stress_high else None,
             recovery_high_min=round(stress_today.recovery_high / 60) if stress_today and stress_today.recovery_high else None,
+            stress_date=today if stress_today else None,
         )
 
     # 5. 获取昨日Oura数据（完整数据，显示在下方用于对比）
@@ -201,8 +217,6 @@ async def get_dashboard_today(
         .limit(1)
     )
     daily_sleep = daily_sleep_result.scalar_one_or_none()
-    daily_sleep_score = daily_sleep.score if daily_sleep else None
-
     # 获取睡眠详情（用于显示时长、深睡等详细指标）
     # Oura 的日期逻辑：睡眠记录归属于醒来那天
     # 优先级：1. 今天的 long_sleep  2. 今天最长的睡眠  3. 昨天的 long_sleep
@@ -248,6 +262,7 @@ async def get_dashboard_today(
             rem_sleep_min=round(sleep.rem_sleep_duration / 60) if sleep and sleep.rem_sleep_duration else None,
             sleep_efficiency=sleep.efficiency if sleep else None,
             average_hrv=sleep.average_hrv if sleep else None,
+            sleep_date=sleep.day if sleep else (daily_sleep.day if daily_sleep else None),
             # 睡眠贡献因子（来自 daily_sleep API）
             sleep_contributor_deep_sleep=daily_sleep.contributor_deep_sleep if daily_sleep else None,
             sleep_contributor_efficiency=daily_sleep.contributor_efficiency if daily_sleep else None,
@@ -260,14 +275,26 @@ async def get_dashboard_today(
             readiness_score=readiness.score if readiness else None,
             recovery_index=readiness.recovery_index if readiness else None,
             resting_heart_rate=readiness.resting_heart_rate if readiness else None,
+            readiness_date=yesterday if readiness else None,
             # 活动
             activity_score=activity.score if activity else None,
             steps=activity.steps if activity else None,
             active_calories=activity.active_calories if activity else None,
+            activity_date=yesterday if activity else None,
             # 压力
             stress_high_min=round(stress.stress_high / 60) if stress and stress.stress_high else None,
             recovery_high_min=round(stress.recovery_high / 60) if stress and stress.recovery_high else None,
+            stress_date=yesterday if stress else None,
         )
+
+    nutrition_result = await db.execute(
+        select(NutritionDailySummary).where(
+            NutritionDailySummary.user_id == current_user.id,
+            NutritionDailySummary.date.in_((today, yesterday)),
+            NutritionDailySummary.meals_count > 0,
+        )
+    )
+    nutrition_by_date = {row.date: row for row in nutrition_result.scalars().all()}
 
     return DashboardResponse(
         date=today,
@@ -276,6 +303,8 @@ async def get_dashboard_today(
         weekly_training=weekly_training,
         oura_today=oura_today,
         oura_yesterday=oura_yesterday,
+        nutrition_today=nutrition_by_date.get(today),
+        nutrition_yesterday=nutrition_by_date.get(yesterday),
     )
 
 
@@ -297,7 +326,7 @@ class DataAvailabilityResponse(BaseModel):
 
 @router.get("/data-availability", response_model=DataAvailabilityResponse)
 async def get_data_availability(
-    days: int = 7,
+    days: int = Query(7, ge=1, le=365),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

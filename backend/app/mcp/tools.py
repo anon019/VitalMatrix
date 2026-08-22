@@ -4,14 +4,12 @@ MCP Tools Implementation
 8 个精心设计的健康数据查询工具
 """
 import logging
-from datetime import date, timedelta
-from typing import Optional, Dict, Any, List
+from datetime import timedelta
+from typing import Optional, Dict, Any
 
-from fastapi import HTTPException
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import resolve_default_user
 from app.database.session import AsyncSessionLocal
 from app.models.polar import PolarExercise
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
@@ -21,7 +19,7 @@ from app.models.oura import (
 from app.models.ai import AIRecommendation
 from app.models.nutrition import MealRecord, NutritionDailySummary
 from app.models.user import User
-from app.utils.datetime_helper import today_hk
+from app.utils.datetime_helper import date_hk, format_hk, today_hk
 from app.config import settings
 
 from .server import mcp
@@ -33,16 +31,16 @@ logger = logging.getLogger(__name__)
 
 async def get_default_user(db: AsyncSession) -> User:
     """获取默认用户（单用户模式）"""
-    try:
-        return await resolve_default_user(db)
-    except HTTPException as exc:
-        raise ValueError(exc.detail) from exc
+    result = await db.execute(select(User).limit(1))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise ValueError("未找到用户")
+    return user
 
 
-# ============ MCP Tools ============
+# ============ 业务逻辑 ============
 
-@mcp.tool
-async def get_health_overview() -> Dict[str, Any]:
+async def _get_health_overview_data() -> Dict[str, Any]:
     """
     获取综合健康概览
 
@@ -232,6 +230,22 @@ async def get_health_overview() -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"获取健康概览失败: {str(e)}")
             return {"error": str(e)}
+
+
+# ============ MCP Tools ============
+
+@mcp.tool
+async def get_health_overview() -> Dict[str, Any]:
+    """
+    获取综合健康概览
+
+    返回昨日训练、睡眠、准备度、活动、压力数据，以及风险评估和整体状态。
+    这是获取健康状态的最佳起点。
+
+    Returns:
+        训练数据（昨日+周汇总）、睡眠评分、准备度、活动、压力、风险指标、整体状态摘要
+    """
+    return await _get_health_overview_data()
 
 
 @mcp.tool
@@ -558,7 +572,7 @@ async def get_risk_assessment() -> Dict[str, Any]:
         风险指标列表（标志、级别、消息）、整体状态（good/caution/warning）
     """
     # 复用 health_overview 的风险计算逻辑
-    overview = await get_health_overview()
+    overview = await _get_health_overview_data()
 
     if "error" in overview:
         return overview
@@ -667,8 +681,8 @@ async def get_nutrition_data(days: int = 7) -> Dict[str, Any]:
             meal_list = []
             for meal in meals:
                 meal_list.append({
-                    "date": meal.meal_time.date().isoformat(),
-                    "time": meal.meal_time.strftime("%H:%M"),
+                    "date": date_hk(meal.meal_time).isoformat(),
+                    "time": format_hk(meal.meal_time, "%H:%M"),
                     "meal_type": meal.meal_type.value if meal.meal_type else None,
                     "total_calories": float(meal.total_calories) if meal.total_calories else None,
                     "total_protein": float(meal.total_protein) if meal.total_protein else None,

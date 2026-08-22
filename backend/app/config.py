@@ -3,7 +3,6 @@
 """
 from typing import Tuple
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -35,10 +34,18 @@ class Settings(BaseSettings):
     OURA_CLIENT_ID: str = ""
     OURA_CLIENT_SECRET: str = ""
     OURA_REDIRECT_URI: str = "https://your-domain.example.com/api/v1/oura/callback"
+    OURA_TOKEN_REFRESH_THRESHOLD_DAYS: int = 3
+    OURA_DATA_STALE_ALERT_DAYS: int = 1
+    SERVER_ALERT_SCRIPT: str = ""
 
     # AI配置
     AI_PROVIDER: str = "gemini"  # gemini | qwen | deepseek | openai | claude
-    GEMINI_MODEL: str = "gemini-3-flash-preview"
+    GEMINI_MODEL: str = "gemini-3.7-flash"
+    GEMINI_VISION_MODEL: str = "gemini-3.7-flash"
+    GEMINI_POSTER_MODEL: str = "gemini-3.1-flash-image"
+    # 1K 足以满足手机端分享，同时显著降低图片模型耗时和海报传输体积；
+    # 如需印刷级导出可通过环境变量切回 2K。
+    POSTER_IMAGE_SIZE: str = "1K"
 
     # 通义千问 Qwen
     QWEN_API_KEY: str = ""
@@ -80,7 +87,7 @@ class Settings(BaseSettings):
 
     # 服务器环境配置
     TZ: str = "Asia/Hong_Kong"
-    NO_PROXY: str = "localhost,127.0.0.1,::1,169.254.0.0/16,.tencentyun.com,*.tencentyun.com"
+    NO_PROXY: str = "localhost,127.0.0.1,::1"
 
     # CORS配置
     ALLOWED_ORIGINS: list = [
@@ -91,6 +98,16 @@ class Settings(BaseSettings):
     # Web 前端访问密码（空字符串表示不需要密码）
     WEB_ACCESS_PASSWORD: str = ""
     DEFAULT_USER_ID: str = ""
+    REQUIRE_WEB_ACCESS_PASSWORD: bool = True
+
+    # 私有媒体与生成任务
+    MEDIA_URL_TTL_SECONDS: int = 3600
+    GEMINI_REQUEST_TIMEOUT_SECONDS: int = 120
+    NUTRITION_CORE_TIMEOUT_SECONDS: int = 60
+    NUTRITION_CORE_TOTAL_TIMEOUT_SECONDS: int = 100
+    NUTRITION_RECOMMENDATION_TIMEOUT_SECONDS: int = 70
+    POSTER_REQUEST_TIMEOUT_SECONDS: int = 90
+    POSTER_DAILY_LIMIT: int = 5
 
     # 日志配置
     LOG_LEVEL: str = "INFO"

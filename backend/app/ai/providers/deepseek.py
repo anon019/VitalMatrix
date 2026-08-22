@@ -385,7 +385,7 @@ class DeepSeekProvider(AIProvider):
 
         # 睡眠数据
         if oura_data.sleep_score is not None:
-            sleep_lines = [f"### 睡眠"]
+            sleep_lines = ["### 睡眠"]
             sleep_lines.append(f"- 睡眠评分：{oura_data.sleep_score}/100")
             if oura_data.total_sleep_hours:
                 sleep_lines.append(f"- 总睡眠时长：{oura_data.total_sleep_hours}小时")
@@ -401,7 +401,7 @@ class DeepSeekProvider(AIProvider):
 
         # 准备度数据
         if oura_data.readiness_score is not None:
-            readiness_lines = [f"### 准备度"]
+            readiness_lines = ["### 准备度"]
             readiness_lines.append(f"- 准备度评分：{oura_data.readiness_score}/100")
             if oura_data.recovery_index:
                 readiness_lines.append(f"- 恢复指数：{oura_data.recovery_index}")
@@ -413,7 +413,7 @@ class DeepSeekProvider(AIProvider):
 
         # 压力数据
         if oura_data.stress_high_min is not None or oura_data.recovery_high_min is not None:
-            stress_lines = [f"### 压力与恢复"]
+            stress_lines = ["### 压力与恢复"]
             if oura_data.stress_high_min is not None:
                 stress_lines.append(f"- 高压力时长：{oura_data.stress_high_min}分钟")
             if oura_data.recovery_high_min is not None:
@@ -424,7 +424,7 @@ class DeepSeekProvider(AIProvider):
 
         # 活动数据
         if oura_data.activity_score is not None:
-            activity_lines = [f"### 日常活动"]
+            activity_lines = ["### 日常活动"]
             activity_lines.append(f"- 活动评分：{oura_data.activity_score}/100")
             if oura_data.steps:
                 activity_lines.append(f"- 步数：{oura_data.steps}步")

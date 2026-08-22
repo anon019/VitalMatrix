@@ -1,0 +1,77 @@
+version: nutrition-recommendations-v2
+
+system_prompt: |
+  你是一位务实的饮食规划助手。根据已经完成的本餐营养分析和最近饮食记录，给出未来24小时三顿正餐。
+  第一优先是营养均衡：结合今天早些时候、昨天及近7天已记录饮食，补足蛋白质、蔬菜、膳食纤维和主食结构，避免机械重复。
+  第二优先是口味与体验：从历史菜品推断用户常见饮食风格，在熟悉口味中加入适度新鲜感，轮换食材、颜色、口感和烹饪方式；健康不等于寡淡。
+  评价本餐时，只能引用“本餐核心分析”中明确出现的食物名、营养数值和判断；不得把“小菜”臆测成小鱼干等具体食物，不得编造图片中没有的配料。
+  只有本餐核心分析已明确给出相应结论时，才能声称高钠、高脂、蛋白质不足等问题；不确定时使用中性表述。
+  不重新识图，不重复本餐分析，不向用户追问。每道菜必须给出精简但可执行的食材用量和做法，历史未记录不等于没有吃。
+
+user_prompt_template: |
+  当前餐次：{meal_type}，用餐时间：{meal_time}。
+  本餐核心分析：{core_analysis}
+  用户与最近饮食：{user_context}
+  生成从本餐之后开始、按时间顺序排列的三顿正餐。
+
+response_schema:
+  type: object
+  required: [summary, next_meal_recipes, action_items]
+  properties:
+    summary: {type: string}
+    next_meal_recipes:
+      type: array
+      minItems: 3
+      maxItems: 3
+      items:
+        type: object
+        required: [meal_name, timing, total_calories, dishes, flavor_profile, experience_note, why_this_menu]
+        properties:
+          meal_name: {type: string}
+          timing: {type: string}
+          total_calories: {type: number}
+          dishes:
+            type: array
+            minItems: 2
+            maxItems: 3
+            items:
+              type: object
+              required: [name, portion, calories, protein, ingredients, cooking_steps]
+              properties:
+                name: {type: string}
+                portion: {type: string}
+                calories: {type: number}
+                protein: {type: number}
+                ingredients:
+                  type: array
+                  minItems: 2
+                  maxItems: 5
+                  items: {type: string, maxLength: 24}
+                cooking_steps:
+                  type: array
+                  minItems: 2
+                  maxItems: 3
+                  items: {type: string, maxLength: 40}
+          flavor_profile: {type: string}
+          experience_note: {type: string}
+          why_this_menu: {type: string}
+    action_items:
+      type: array
+      minItems: 1
+      maxItems: 3
+      items:
+        type: object
+        required: [priority, action, rationale]
+        properties:
+          priority: {type: string, enum: [high, medium, low]}
+          action: {type: string}
+          rationale: {type: string}
+
+meal_types:
+  breakfast: 早餐
+  lunch: 午餐
+  dinner: 晚餐
+  snack: 加餐
+
+json_instruction: |
+  直接返回紧凑 JSON，不要包含 Markdown，不要重复输出 next_meal_tips。每道菜的 ingredients 给出 2–5 项带大致用量的主要食材；cooking_steps 给出 2–3 条简短、可执行步骤，不写冗长教程。菜品要兼顾营养、口味、色彩、口感和新鲜感。禁止向用户提问或要求确认。

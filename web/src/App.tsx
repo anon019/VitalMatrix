@@ -1,13 +1,21 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import Layout from '@/components/Layout'
-import Login from '@/pages/Login'
-import Dashboard from '@/pages/Dashboard'
-import Sleep from '@/pages/Sleep'
-import Readiness from '@/pages/Readiness'
-import Activity from '@/pages/Activity'
-import Stress from '@/pages/Stress'
-import Training from '@/pages/Training'
+
+const Login = lazy(() => import('@/pages/Login'))
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const Nutrition = lazy(() => import('@/pages/Nutrition'))
+const AI = lazy(() => import('@/pages/AI'))
+const Sleep = lazy(() => import('@/pages/Sleep'))
+const Readiness = lazy(() => import('@/pages/Readiness'))
+const Activity = lazy(() => import('@/pages/Activity'))
+const Stress = lazy(() => import('@/pages/Stress'))
+const Training = lazy(() => import('@/pages/Training'))
+
+function PageFallback() {
+  return <div className="min-h-64 flex items-center justify-center text-[#86868b]">加载中...</div>
+}
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -35,7 +43,8 @@ function AppRoutes() {
   }
 
   return (
-    <Routes>
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" /> : <Login />}
@@ -49,6 +58,8 @@ function AppRoutes() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="nutrition" element={<Nutrition />} />
+        <Route path="ai" element={<AI />} />
         <Route path="sleep" element={<Sleep />} />
         <Route path="readiness" element={<Readiness />} />
         <Route path="activity" element={<Activity />} />
@@ -56,7 +67,8 @@ function AppRoutes() {
         <Route path="training" element={<Training />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   )
 }
 

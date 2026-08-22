@@ -27,7 +27,7 @@ class RedisClient:
     async def close(cls):
         """关闭Redis连接"""
         if cls._instance:
-            await cls._instance.close()
+            await cls._instance.aclose()
             cls._instance = None
 
     @classmethod
@@ -63,3 +63,16 @@ class RedisClient:
         """检查键是否存在"""
         redis = await cls.get_instance()
         return await redis.exists(key) > 0
+
+    @classmethod
+    async def increment_with_expiry(cls, key: str, ttl_seconds: int) -> int:
+        """原子递增计数，并在首次写入时设置过期时间。"""
+        redis = await cls.get_instance()
+        return int(await redis.eval(
+            "local current = redis.call('INCR', KEYS[1]); "
+            "if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; "
+            "return current",
+            1,
+            key,
+            ttl_seconds,
+        ))

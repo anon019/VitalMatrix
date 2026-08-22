@@ -4,7 +4,7 @@ Google Gemini AI Provider 实现
 """
 import json
 import logging
-import os
+import asyncio
 from typing import List, Optional, Dict, Any
 
 from google.genai import types
@@ -20,6 +20,7 @@ from app.ai.base import (
 from app.ai.prompt_loader import get_prompt_loader
 from app.ai.providers.gemini_client import get_client
 from app.config import settings
+from app.schemas.ai import HealthEducation, TodayRecommendation, YesterdayReview
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,8 @@ class GeminiProvider(AIProvider):
         # 创建 google-genai 客户端
         self._client = get_client()
 
-        # 模型配置 - 使用 Gemini 3 Flash Preview
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+        # 文本建议与对话统一使用 Vertex AI 上的 Gemini 模型。
+        self.model_name = settings.GEMINI_MODEL
 
         self.prompt_loader = get_prompt_loader()
         logger.info(f"Gemini Provider initialized (google-genai SDK): model={self.model_name}")
@@ -68,28 +69,29 @@ class GeminiProvider(AIProvider):
         """
         # 构建生成配置
         config_kwargs = {
-            "temperature": temperature,
             "max_output_tokens": max_tokens,
             "system_instruction": system_prompt,
         }
 
-        # Gemini 3 模型支持 thinkingConfig
-        if "gemini-3" in self.model_name:
-            config_kwargs["thinking_config"] = types.ThinkingConfig(
-                thinking_budget=1024
-            )
+        # Gemini 3.x 由模型管理采样参数；3.7 Flash 默认使用 Medium 思考级别。
+        # 旧的 temperature / thinking_budget 会降低迁移兼容性，因此只对旧模型保留温度。
+        if not self.model_name.startswith("gemini-3"):
+            config_kwargs["temperature"] = temperature
 
         # JSON 模式
         if json_mode:
             config_kwargs["response_mime_type"] = "application/json"
+            if self.prompt_loader.response_schema:
+                config_kwargs["response_json_schema"] = self.prompt_loader.response_schema
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        response = await self._client.aio.models.generate_content(
-            model=self.model_name,
-            contents=user_prompt,
-            config=config,
-        )
+        async with asyncio.timeout(settings.GEMINI_REQUEST_TIMEOUT_SECONDS):
+            response = await self._client.aio.models.generate_content(
+                model=self.model_name,
+                contents=user_prompt,
+                config=config,
+            )
 
         # 构建兼容的返回格式
         text = response.text
@@ -122,6 +124,7 @@ class GeminiProvider(AIProvider):
             AI建议
         """
         try:
+            self.prompt_loader.reload()
             # 构建 Prompt
             system_prompt = self._build_system_prompt()
             user_prompt = self._build_recommendation_prompt(
@@ -145,16 +148,28 @@ class GeminiProvider(AIProvider):
                 raise ValueError("API 返回空内容")
 
             recommendation_data = json.loads(content)
+            summary = str(recommendation_data.get("summary", "")).strip()
+            if not summary or len(summary) > 120:
+                raise ValueError("AI summary is missing or too long")
+            yesterday_review = YesterdayReview.model_validate(
+                recommendation_data.get("yesterday_review")
+            ).model_dump()
+            today_recommendation = TodayRecommendation.model_validate(
+                recommendation_data.get("today_recommendation")
+            ).model_dump()
+            health_education = HealthEducation.model_validate(
+                recommendation_data.get("health_education")
+            ).model_dump()
 
             # 提取 Token 使用量
             usage = result["usage"]
 
             # 构建返回对象
             recommendation = Recommendation(
-                summary=recommendation_data.get("summary", ""),
-                yesterday_review=recommendation_data.get("yesterday_review", ""),
-                today_recommendation=recommendation_data.get("today_recommendation", ""),
-                health_education=recommendation_data.get("health_education", ""),
+                summary=summary,
+                yesterday_review=yesterday_review,
+                today_recommendation=today_recommendation,
+                health_education=health_education,
                 prompt_tokens=usage.get("prompt_tokens"),
                 completion_tokens=usage.get("completion_tokens"),
                 total_tokens=usage.get("total_tokens"),
@@ -336,6 +351,8 @@ class GeminiProvider(AIProvider):
 
         # 基本信息
         basic_info = []
+        if user_context.gender:
+            basic_info.append(f"性别{user_context.gender}")
         if user_context.age:
             basic_info.append(f"{user_context.age}岁")
         if basic_info:
@@ -362,7 +379,7 @@ class GeminiProvider(AIProvider):
 
     def _build_nutrition_section(self, nutrition_data) -> str:
         """构建营养数据部分的文本"""
-        if not nutrition_data or not nutrition_data.days:
+        if not nutrition_data or (not nutrition_data.days and not nutrition_data.recent_meals):
             return "## 近7天营养数据\n暂无饮食记录（用户未上传饮食照片，不代表未进食）"
 
         days_count = len(nutrition_data.days)
@@ -412,6 +429,27 @@ class GeminiProvider(AIProvider):
                 meal_parts.append(f"加餐{yesterday.snack_calories:.0f}")
             if meal_parts:
                 sections.append(f"- 昨日各餐热量(kcal): {', '.join(meal_parts)}")
+
+        if nutrition_data.recent_meals:
+            meal_labels = {
+                "breakfast": "早餐",
+                "lunch": "午餐",
+                "dinner": "晚餐",
+                "snack": "加餐",
+            }
+            sections.append("## 最近实际菜品（用于营养轮换与避免机械重复，不要逐条复述）")
+            for meal in nutrition_data.recent_meals[:20]:
+                if not meal.foods:
+                    continue
+                short_date = meal.date[5:10] if len(meal.date) >= 10 else meal.date
+                sections.append(
+                    f"- {short_date}{meal_labels.get(meal.meal_type, meal.meal_type)}："
+                    f"{'、'.join(meal.foods)}"
+                )
+            sections.append(
+                "推荐策略：先补足近几天较少出现的食物类别，并轮换蛋白质/蔬菜/主食；"
+                "不要为了去重牺牲可执行性，也不要把未记录餐次当作未进食。"
+            )
 
         return "\n".join(sections)
 

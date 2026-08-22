@@ -6,13 +6,23 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import date, datetime, timedelta
+from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
+from jose import jwt
+from PIL import Image
 
+from app.api.dependencies import get_current_user
+from app.config import settings
 from app.services.ai_service import AIService
 from app.services.file_storage import FileStorageService
 from app.services.nutrition_service import NutritionService
+from app.services.oura_sync import OuraSyncService, _user_sync_locks
 from app.services.sleep_metrics_service import SleepMetricsService
+from app.services.training_metrics import TrainingMetricsService
 from app.scheduler.jobs import MAX_CONCURRENT_USER_TASKS, _run_user_tasks
 from app.utils.datetime_helper import HK_TZ, end_of_day_hk, start_of_day_hk, today_hk
 
@@ -43,6 +53,21 @@ class _FakeSleepRecord:
         self.day = day
         self.sleep_type = sleep_type
         self.total_sleep_duration = total_sleep_duration
+
+
+@pytest.mark.asyncio
+async def test_invalid_uuid_token_subject_returns_401():
+    token = jwt.encode(
+        {"sub": "not-a-uuid"},
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_current_user(credentials=credentials, db=_FakeDB([]))
+
+    assert exc_info.value.status_code == 401
 
 
 def test_datetime_helpers_and_day_boundaries():
@@ -130,7 +155,9 @@ async def test_ai_recommendation_fallback_query():
     target = today_hk()
     fallback_record = object()
 
-    fake_db = _FakeDB([None, fallback_record])
+    # The query orders the target date first and the newest fallback second,
+    # so the database resolves both cases in one round trip.
+    fake_db = _FakeDB([fallback_record])
     service = AIService(fake_db)
 
     recommendation = await service.get_recommendation(
@@ -140,10 +167,10 @@ async def test_ai_recommendation_fallback_query():
     )
 
     assert recommendation is fallback_record
-    assert len(fake_db.calls) == 2
+    assert len(fake_db.calls) == 1
 
 
-def test_file_storage_absolute_and_cleanup(monkeypatch, tmp_path):
+def test_file_storage_absolute_path_and_permanent_retention(tmp_path):
     base_dir = tmp_path / "uploads"
     storage = FileStorageService(base_dir=str(base_dir))
 
@@ -151,8 +178,10 @@ def test_file_storage_absolute_and_cleanup(monkeypatch, tmp_path):
         base_dir / "u1" / "20260101" / "test.jpg"
     )
     assert storage.get_absolute_path("uploads/nutrition/u1/20260101/test.jpg") == (
-        base_dir / "uploads" / "nutrition" / "u1" / "20260101" / "test.jpg"
+        base_dir / "u1" / "20260101" / "test.jpg"
     )
+    with pytest.raises(ValueError, match="超出允许目录"):
+        storage.get_absolute_path("../../etc/passwd")
 
     user_dir = base_dir / "u1"
     old_date = user_dir / "20260201"
@@ -165,16 +194,91 @@ def test_file_storage_absolute_and_cleanup(monkeypatch, tmp_path):
     (keep_date / "keep.txt").write_text("x")
     (skip_dir / "bad.txt").write_text("x")
 
-    monkeypatch.setattr(
-        "app.services.file_storage.now_hk",
-        lambda: datetime(2026, 3, 12, 12, 0, tzinfo=HK_TZ),
-    )
     deleted = storage.cleanup_old_photos(days=5)
 
-    assert deleted == 1
-    assert not old_date.exists()
+    assert deleted == 0
+    assert old_date.exists()
     assert keep_date.exists()
     assert skip_dir.exists()
+
+
+@pytest.mark.asyncio
+async def test_file_storage_writes_original_and_thumbnail_from_one_decode(tmp_path):
+    source = BytesIO()
+    Image.new("RGB", (1200, 800), "orange").save(source, "PNG")
+    storage = FileStorageService(base_dir=str(tmp_path / "uploads"))
+
+    _, _, original_path, thumbnail_path = await storage.save_meal_photo(
+        user_id="u1",
+        meal_id="meal1",
+        file_content=source.getvalue(),
+        meal_time=datetime(2026, 8, 21, 12, 0),
+    )
+
+    with Image.open(original_path) as original:
+        assert original.format == "JPEG"
+        assert original.size == (1200, 800)
+    with Image.open(thumbnail_path) as thumbnail:
+        assert thumbnail.format == "JPEG"
+        assert max(thumbnail.size) == 200
+
+
+@pytest.mark.asyncio
+async def test_nutrition_core_context_skips_unused_history_query():
+    user = SimpleNamespace(
+        gender="male",
+        birth_year=1990,
+        birth_month=1,
+        weight=82,
+        height=180,
+        health_goal="maintain",
+        training_plan="zone2",
+    )
+    db = _FakeDB([user])
+
+    context = await NutritionService()._get_user_context(
+        db,
+        uuid.uuid4(),
+        include_history=False,
+    )
+
+    assert len(db.calls) == 1
+    assert context["weight"] == 82.0
+    assert "recent_meals" not in context
+
+
+@pytest.mark.asyncio
+async def test_analysis_status_query_does_not_load_json_or_food_items():
+    class StatusResult:
+        def one_or_none(self):
+            return SimpleNamespace(
+                id=uuid.uuid4(),
+                analysis_status="completed",
+                recommendation_status="processing",
+                recommendation_attempts=1,
+                analysis_error=None,
+                analysis_completed_at=None,
+                recommendation_updated_at=None,
+            )
+
+    class CaptureDB:
+        statement = None
+
+        async def execute(self, statement):
+            self.statement = statement
+            return StatusResult()
+
+    db = CaptureDB()
+    status_result = await NutritionService().get_meal_analysis_status(
+        db,
+        uuid.uuid4(),
+        uuid.uuid4(),
+    )
+
+    sql = str(db.statement.compile()).lower()
+    assert status_result["analysis_status"] == "completed"
+    assert "gemini_analysis" not in sql
+    assert "food_items" not in sql
 
 
 def test_nutrition_flags_empty_when_no_meals():
@@ -194,3 +298,60 @@ def test_nutrition_flags_detect_clear_outliers():
     assert flags["carbs_high"] is True
     assert flags["fat_low"] is True
     assert flags["calorie_low"] is False
+
+
+def test_partial_day_does_not_claim_nutrient_deficiency():
+    flags = NutritionService._calculate_nutrition_flags(440, 13, 50, 20, meals_count=1)
+    assert flags["partial_day"] is True
+    assert flags["calorie_low"] is False
+    assert flags["protein_low"] is False
+
+
+@pytest.mark.asyncio
+async def test_weekly_summary_aggregate_has_no_invalid_order_by():
+    class CaptureDB:
+        statement = None
+
+        async def execute(self, statement):
+            self.statement = statement
+            raise RuntimeError("captured")
+
+    db = CaptureDB()
+    service = TrainingMetricsService(db)
+
+    with pytest.raises(RuntimeError, match="captured"):
+        await service.calculate_weekly_summary(
+            uuid.uuid4(),
+            week_start_date=date(2026, 7, 27),
+        )
+
+    sql = str(db.statement.compile())
+    assert "ORDER BY" not in sql.upper()
+
+
+@pytest.mark.asyncio
+async def test_oura_sync_serializes_same_user(monkeypatch):
+    _user_sync_locks.clear()
+    running = 0
+    max_running = 0
+
+    async def fake_sync(self, **kwargs):
+        nonlocal running, max_running
+        running += 1
+        max_running = max(max_running, running)
+        await asyncio.sleep(0.01)
+        running -= 1
+        return {"ok": 1}
+
+    monkeypatch.setattr(OuraSyncService, "_sync_user_data_unlocked", fake_sync)
+    first = object.__new__(OuraSyncService)
+    second = object.__new__(OuraSyncService)
+    user_id = uuid.uuid4()
+
+    results = await asyncio.gather(
+        first.sync_user_data(user_id),
+        second.sync_user_data(user_id),
+    )
+
+    assert results == [{"ok": 1}, {"ok": 1}]
+    assert max_running == 1

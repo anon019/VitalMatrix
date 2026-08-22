@@ -1,10 +1,23 @@
 """
 Oura Ring集成API
 """
+import asyncio
 import logging
+import hashlib
+import hmac
+import json
 import uuid
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,14 +30,140 @@ from app.models.user import User
 from app.models.oura import (
     OuraAuth, OuraSleep, OuraDailyReadiness,
     OuraDailyActivity, OuraDailyStress, OuraDailySpo2,
-    OuraCardiovascularAge, OuraResilience, OuraVO2Max
+    OuraCardiovascularAge, OuraResilience, OuraVO2Max,
+    OuraHeartRateSample
 )
 from app.integrations.oura.client import OuraClient
 from app.services.oura_sync import OuraSyncService
+from app.database.session import AsyncSessionLocal
+from app.config import settings
 from app.utils.datetime_helper import now_hk, today_hk
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_webhook_sync_locks: dict[str, asyncio.Lock] = {}
+_webhook_pending_payloads: dict[str, dict] = {}
+
+
+def _webhook_verification_token() -> str:
+    """由应用密钥稳定派生验证令牌，不新增明文 secret。"""
+    return hashlib.sha256(
+        f"health-oura-webhook:v3:{settings.OURA_CLIENT_SECRET}".encode()
+    ).hexdigest()
+
+
+async def _sync_oura_webhook_payload(payload: dict) -> None:
+    """执行一次 webhook 数据对账。"""
+    oura_user_id = payload.get("user_id")
+    if not oura_user_id:
+        logger.warning("Oura webhook 缺少 user_id")
+        return
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(OuraAuth).where(
+                OuraAuth.oura_user_id == str(oura_user_id),
+                OuraAuth.is_active.is_(True),
+            )
+        )
+        auth = result.scalar_one_or_none()
+        if not auth:
+            logger.warning("Oura webhook 未匹配本地用户: oura_user_id=%s", oura_user_id)
+            return
+        local_user_id = auth.user_id
+        await db.commit()
+        service = OuraSyncService(db)
+        try:
+            await service.sync_user_data(
+                local_user_id,
+                days=3,
+                force_recent_days=3,
+            )
+        except Exception:
+            logger.exception(
+                "Oura webhook 后台同步失败: data_type=%s object_id=%s",
+                payload.get("data_type"),
+                payload.get("object_id"),
+            )
+        finally:
+            await service.close()
+
+
+async def _process_oura_webhook(payload: dict) -> None:
+    """按用户合并并串行处理 webhook，避免并发全量同步。"""
+    oura_user_id = str(payload.get("user_id") or "")
+    if not oura_user_id:
+        logger.warning("Oura webhook 缺少 user_id")
+        return
+
+    lock = _webhook_sync_locks.setdefault(oura_user_id, asyncio.Lock())
+    if lock.locked():
+        _webhook_pending_payloads[oura_user_id] = payload
+        logger.info(
+            "Oura webhook 已合并到进行中的同步: data_type=%s object_id=%s",
+            payload.get("data_type"),
+            payload.get("object_id"),
+        )
+        return
+
+    async with lock:
+        current_payload: Optional[dict] = payload
+        while current_payload is not None:
+            await _sync_oura_webhook_payload(current_payload)
+            current_payload = _webhook_pending_payloads.pop(oura_user_id, None)
+
+
+@router.get("/webhook")
+async def verify_oura_webhook(
+    verification_token: str = Query(...),
+    challenge: str = Query(...),
+):
+    """响应 Oura 创建订阅时的公开验证 challenge。"""
+    if not settings.OURA_CLIENT_SECRET or not hmac.compare_digest(
+        verification_token, _webhook_verification_token()
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return {"challenge": challenge}
+
+
+@router.post("/webhook")
+async def receive_oura_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_oura_signature: str = Header(...),
+    x_oura_timestamp: str = Header(...),
+):
+    """验签并快速确认 Oura webhook，数据抓取在后台执行。"""
+    raw_body = await request.body()
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+
+    signed_raw = x_oura_timestamp.encode() + raw_body
+    canonical_body = json.dumps(
+        payload, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    signed_canonical = x_oura_timestamp.encode() + canonical_body
+    expected_signatures = {
+        hmac.new(
+            settings.OURA_CLIENT_SECRET.encode(), message, hashlib.sha256
+        ).hexdigest().upper()
+        for message in (signed_raw, signed_canonical)
+    }
+    received_signature = x_oura_signature.upper()
+    if not any(
+        hmac.compare_digest(received_signature, expected)
+        for expected in expected_signatures
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    required_fields = {"event_type", "data_type", "object_id", "user_id"}
+    if not required_fields.issubset(payload):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    background_tasks.add_task(_process_oura_webhook, payload)
+    return {"status": "accepted"}
 
 
 # 辅助函数：秒转分钟（标准四舍五入，与Oura App一致）
@@ -59,8 +198,6 @@ async def get_oura_auth_url(
         授权URL和state参数
     """
     try:
-        from app.config import settings
-
         # 使用user_id作为state（防CSRF）
         state = str(current_user.id)
 
@@ -68,15 +205,14 @@ async def get_oura_auth_url(
         # Oura OAuth文档: https://cloud.ouraring.com/docs/authentication
         # Scope说明:
         # - personal: 个人信息（年龄、体重、身高）
-        # - daily: 每日活动、准备度、睡眠评分
+        # - daily: 每日活动、准备度和睡眠数据
         # - heartrate: 心率数据
         # - workout: 训练记录
         # - session: 冥想/呼吸练习
         # - tag: 用户标签
-        # - sleep: 详细睡眠数据（睡眠阶段、HRV等）
         # - spo2: 血氧饱和度
-        # - stress: 压力指标（日间压力、恢复）
-        # - ring_configuration: 戒指配置
+        # Oura 当前只接受官方列出的 OAuth scopes；压力、韧性等新数据
+        # 由已授权的 daily scope 对应接口提供，不应作为额外 scope 请求。
         scopes = [
             "personal",
             "daily",
@@ -84,10 +220,7 @@ async def get_oura_auth_url(
             "workout",
             "session",
             "tag",
-            "sleep",
             "spo2",
-            "stress",
-            "ring_configuration",
         ]
         scope_str = "+".join(scopes)
 
@@ -141,10 +274,19 @@ async def oura_oauth_callback(
 
         # 使用OuraClient换取token
         oura_client = OuraClient()
-        token_data = await oura_client.exchange_code_for_token(code)
-        await oura_client.close()
+        try:
+            token_data = await oura_client.exchange_code_for_token(code)
+            access_token = token_data.get("access_token")
 
-        access_token = token_data.get("access_token")
+            import asyncio
+
+            personal_info, capabilities = await asyncio.gather(
+                oura_client.get_personal_info(access_token),
+                oura_client.probe_capabilities(access_token, today_hk()),
+            )
+        finally:
+            await oura_client.close()
+
         refresh_token = token_data.get("refresh_token")
         expires_in = token_data.get("expires_in", 86400)
 
@@ -162,6 +304,11 @@ async def oura_oauth_callback(
             existing_auth.access_token = access_token
             existing_auth.refresh_token = refresh_token
             existing_auth.token_expires_at = token_expires_at
+            existing_auth.personal_info = personal_info
+            existing_auth.capabilities = capabilities
+            if personal_info:
+                external_id = personal_info.get("id") or personal_info.get("user_id")
+                existing_auth.oura_user_id = str(external_id) if external_id else None
             existing_auth.is_active = True
             existing_auth.updated_at = current_time
             logger.info(f"更新Oura授权信息: user_id={user_id}")
@@ -172,6 +319,15 @@ async def oura_oauth_callback(
                 access_token=access_token,
                 refresh_token=refresh_token,
                 token_expires_at=token_expires_at,
+                oura_user_id=(
+                    str(personal_info.get("id") or personal_info.get("user_id"))
+                    if personal_info and (
+                        personal_info.get("id") or personal_info.get("user_id")
+                    )
+                    else None
+                ),
+                personal_info=personal_info,
+                capabilities=capabilities,
                 is_active=True,
                 created_at=current_time,
                 updated_at=current_time,
@@ -253,8 +409,8 @@ async def check_oura_connection(
         连接状态信息
     """
     try:
-        oura_sync_service = OuraSyncService(db)
-        is_connected = await oura_sync_service.check_connection(current_user.id)
+        async with OuraSyncService(db) as oura_sync_service:
+            is_connected = await oura_sync_service.check_connection(current_user.id)
 
         return OuraStatusResponse(
             connected=is_connected,
@@ -296,12 +452,12 @@ async def sync_oura_data(
     try:
         logger.info(f"手动触发Oura数据同步: user_id={current_user.id}, days={days}, force={force}")
 
-        oura_sync_service = OuraSyncService(db)
-        stats = await oura_sync_service.sync_user_data(
-            user_id=current_user.id,
-            days=days,
-            force=force
-        )
+        async with OuraSyncService(db) as oura_sync_service:
+            stats = await oura_sync_service.sync_user_data(
+                user_id=current_user.id,
+                days=days,
+                force=force
+            )
 
         total_new = sum(stats.values())
         logger.info(f"Oura数据同步完成: user_id={current_user.id}, stats={stats}")
@@ -1428,26 +1584,19 @@ async def get_sleep_heartrate_detail(
                 detail=f"{day} 睡眠数据不完整（缺少入睡/起床时间）"
             )
 
-        # 获取Oura访问令牌
-        oura_sync_service = OuraSyncService(db)
-        access_token = await oura_sync_service.get_access_token(current_user.id)
-
-        if not access_token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Oura未连接或令牌已失效"
-            )
-
-        # 调用Oura API获取睡眠期间的心率数据
-        oura_client = OuraClient()
-        try:
-            heartrate_data = await oura_client.get_heartrate(
-                access_token=access_token,
-                start_datetime=sleep_record.bedtime_start,
-                end_datetime=sleep_record.bedtime_end
-            )
-        finally:
-            await oura_client.close()
+        # 从本地连续心率表读取，避免页面请求重复消耗 Oura API 配额。
+        heart_rate_result = await db.execute(
+            select(OuraHeartRateSample)
+            .where(OuraHeartRateSample.user_id == current_user.id)
+            .where(OuraHeartRateSample.timestamp >= sleep_record.bedtime_start)
+            .where(OuraHeartRateSample.timestamp <= sleep_record.bedtime_end)
+            .order_by(OuraHeartRateSample.timestamp)
+        )
+        heart_rate_samples = heart_rate_result.scalars().all()
+        heartrate_data = [
+            {"bpm": sample.bpm, "timestamp": sample.timestamp.isoformat()}
+            for sample in heart_rate_samples
+        ]
 
         if not heartrate_data:
             # 没有详细心率数据，返回睡眠记录中的基础信息
@@ -1471,10 +1620,7 @@ async def get_sleep_heartrate_detail(
                 bedtime_end=sleep_record.bedtime_end.isoformat() if sleep_record.bedtime_end else None
             )
 
-        # 记录Oura返回的原始数据用于调试
-        logger.info(f"Oura心率API返回 {len(heartrate_data)} 条数据")
-        if heartrate_data:
-            logger.info(f"第一条数据样本: {heartrate_data[0]}")
+        logger.info(f"本地睡眠心率返回 {len(heartrate_data)} 条数据")
 
         # 提取有效的心率数据点
         hr_points = []
@@ -1580,21 +1726,22 @@ async def get_sleep_heartrate_detail(
 
             # 只有当起床时间在当天时才获取日间数据
             if daytime_start.date() <= query_date:
-                logger.info(f"获取日间心率数据: {daytime_start} 到 {daytime_end}")
-
-                # 调用Oura API获取日间心率数据
-                oura_client2 = OuraClient()
-                try:
-                    daytime_hr_data = await oura_client2.get_heartrate(
-                        access_token=access_token,
-                        start_datetime=daytime_start,
-                        end_datetime=daytime_end
-                    )
-                finally:
-                    await oura_client2.close()
+                logger.info(f"读取本地日间心率数据: {daytime_start} 到 {daytime_end}")
+                daytime_result = await db.execute(
+                    select(OuraHeartRateSample)
+                    .where(OuraHeartRateSample.user_id == current_user.id)
+                    .where(OuraHeartRateSample.timestamp >= daytime_start)
+                    .where(OuraHeartRateSample.timestamp <= daytime_end)
+                    .order_by(OuraHeartRateSample.timestamp)
+                )
+                daytime_samples = daytime_result.scalars().all()
+                daytime_hr_data = [
+                    {"bpm": sample.bpm, "timestamp": sample.timestamp.isoformat()}
+                    for sample in daytime_samples
+                ]
 
                 if daytime_hr_data:
-                    logger.info(f"日间心率API返回 {len(daytime_hr_data)} 条数据")
+                    logger.info(f"本地日间心率返回 {len(daytime_hr_data)} 条数据")
 
                     # 解析日间心率数据
                     daytime_points = []

@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from sqlalchemy.sql import func
 
 from app.database.session import get_db
 from app.api.dependencies import resolve_default_user, verify_mcp_api_key
@@ -17,7 +16,7 @@ from app.models.polar import PolarExercise
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.oura import (
     OuraSleep, OuraDailyReadiness, OuraDailyActivity,
-    OuraDailyStress, OuraDailySpo2, OuraSleepTime
+    OuraDailyStress, OuraSleepTime
 )
 from app.models.health_report import HealthReport
 from app.models.user import User

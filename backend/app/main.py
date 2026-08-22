@@ -1,10 +1,14 @@
 """
 FastAPI主应用
 """
+import asyncio
 import logging
+import os
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database.session import engine
@@ -15,6 +19,9 @@ logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# 第三方客户端的成功请求量较大，只保留告警和错误。
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -67,6 +74,12 @@ async def lifespan(app: FastAPI):
     from app.ai.factory import AIProviderFactory
     await AIProviderFactory.close_all()
 
+    # 关闭营养分析与 Redis 的共享客户端
+    from app.services.gemini_service import get_gemini_service
+    from app.utils.redis_client import RedisClient
+    await get_gemini_service().close()
+    await RedisClient.close()
+
     # 关闭数据库连接
     await engine.dispose()
     logger.info("✅ 数据库连接已关闭")
@@ -95,15 +108,27 @@ app.add_middleware(
 )
 
 # 挂载静态文件目录（用于隐私政策、服务条款等）
-import os
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
-# 全局异常处理器（生产环境隐藏内部错误详情）
-from fastapi import Request
-from fastapi.responses import JSONResponse
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    """只记录超过 1 秒的请求，便于定位真实慢接口。"""
+    started_at = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    if elapsed_ms >= 1000:
+        logger.warning(
+            "Slow request: method=%s path=%s status=%s duration_ms=%.1f",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+        )
+    return response
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -141,8 +166,45 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/ready")
+async def readiness_check():
+    """就绪检查：数据库可访问且调度器已经启动。"""
+    from sqlalchemy import text
+    from app.scheduler.jobs import scheduler
+
+    try:
+        async with asyncio.timeout(2):
+            async with engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Readiness database check failed")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": "unavailable"},
+        )
+
+    if not scheduler.running:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "scheduler": "stopped"},
+        )
+
+    return {"status": "ready"}
+
+
 # 注册路由
-from app.api.v1 import auth, polar, oura, training, ai, user, mcp, dashboard, nutrition, trends
+from app.api.v1 import (  # noqa: E402
+    ai,
+    auth,
+    dashboard,
+    mcp,
+    nutrition,
+    oura,
+    polar,
+    training,
+    trends,
+    user,
+)
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(polar.router, prefix="/api/v1/polar", tags=["Polar"])

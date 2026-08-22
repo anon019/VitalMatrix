@@ -3,7 +3,7 @@ AI建议API
 """
 import logging
 from datetime import date
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,9 +14,30 @@ from app.models.user import User
 from app.services.ai_service import AIService
 from app.schemas.ai import RecommendationResponse, ChatRequest, ChatResponse
 from app.utils.datetime_helper import today_hk
+from app.utils.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _recommendation_response(recommendation, requested_date: date) -> RecommendationResponse:
+    """统一返回来源日期，避免历史回退被前端误认为当天建议。"""
+    source_date = recommendation.date
+    return RecommendationResponse(
+        id=str(recommendation.id),
+        date=source_date,
+        provider=recommendation.provider,
+        model=recommendation.model,
+        summary=recommendation.summary,
+        yesterday_review=recommendation.yesterday_review,
+        today_recommendation=recommendation.today_recommendation,
+        health_education=recommendation.health_education,
+        created_at=recommendation.created_at.isoformat(),
+        requested_date=requested_date,
+        source_date=source_date,
+        is_stale=source_date != requested_date,
+        generation_metadata=recommendation.generation_metadata,
+    )
 
 
 class RegenerateRequest(BaseModel):
@@ -49,18 +70,7 @@ async def get_today_recommendation(
             logger.debug(f"今日建议不存在: user_id={current_user.id}")
             return None
 
-        # 转换为响应格式
-        return RecommendationResponse(
-            id=str(recommendation.id),
-            date=recommendation.date,
-            provider=recommendation.provider,
-            model=recommendation.model,
-            summary=recommendation.summary,
-            yesterday_review=recommendation.yesterday_review,
-            today_recommendation=recommendation.today_recommendation,
-            health_education=recommendation.health_education,
-            created_at=recommendation.created_at.isoformat(),
-        )
+        return _recommendation_response(recommendation, today_hk())
 
     except Exception as e:
         logger.error(f"获取AI建议失败: {str(e)}")
@@ -89,23 +99,14 @@ async def get_recommendation_by_date(
         ai_service = AIService(db)
         recommendation = await ai_service.get_recommendation(
             user_id=current_user.id,
-            target_date=target_date
+            target_date=target_date,
+            allow_fallback=False,
         )
 
         if not recommendation:
             return None
 
-        return RecommendationResponse(
-            id=str(recommendation.id),
-            date=recommendation.date,
-            provider=recommendation.provider,
-            model=recommendation.model,
-            summary=recommendation.summary,
-            yesterday_review=recommendation.yesterday_review,
-            today_recommendation=recommendation.today_recommendation,
-            health_education=recommendation.health_education,
-            created_at=recommendation.created_at.isoformat(),
-        )
+        return _recommendation_response(recommendation, target_date)
 
     except Exception as e:
         logger.error(f"获取AI建议失败: {str(e)}")
@@ -132,6 +133,9 @@ async def regenerate_recommendation(
     Returns:
         新的AI建议
     """
+    await enforce_rate_limit(
+        f"ai:regenerate:{current_user.id}", limit=10, window_seconds=86400
+    )
     try:
         ai_service = AIService(db)
 
@@ -146,23 +150,13 @@ async def regenerate_recommendation(
             provider_name=request.provider
         )
 
-        return RecommendationResponse(
-            id=str(recommendation.id),
-            date=recommendation.date,
-            provider=recommendation.provider,
-            model=recommendation.model,
-            summary=recommendation.summary,
-            yesterday_review=recommendation.yesterday_review,
-            today_recommendation=recommendation.today_recommendation,
-            health_education=recommendation.health_education,
-            created_at=recommendation.created_at.isoformat(),
-        )
+        return _recommendation_response(recommendation, request.date)
 
     except Exception as e:
         logger.error(f"重新生成AI建议失败: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"重新生成失败: {str(e)}"
+            detail="重新生成失败，请稍后重试"
         )
 
 
@@ -183,6 +177,9 @@ async def chat_with_ai(
     Returns:
         AI回复
     """
+    await enforce_rate_limit(
+        f"ai:chat:{current_user.id}", limit=60, window_seconds=86400
+    )
     try:
         ai_service = AIService(db)
 
@@ -193,7 +190,8 @@ async def chat_with_ai(
         response = await ai_service.chat(
             user_id=current_user.id,
             messages=messages,
-            provider_name=None  # 使用默认Provider
+            provider_name=None,  # 使用默认Provider
+            client_context=request.context,
         )
 
         return ChatResponse(

@@ -1,7 +1,4 @@
-import { useState, useEffect } from 'react'
-import { trends } from '@/services/api'
-import type { TrendsOverview, TimeRange, DateRange } from '@/types'
-import { getDateRange } from '@/utils/date'
+import { useTrendsPage } from '@/hooks/useTrendsPage'
 import TimeRangeSelector from '@/components/TimeRangeSelector'
 import TrendChart from '@/components/TrendChart'
 import StatCard from '@/components/StatCard'
@@ -14,34 +11,7 @@ const COLORS = {
 }
 
 export default function Readiness() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('7d')
-  const [customRange, setCustomRange] = useState<DateRange | undefined>()
-  const [data, setData] = useState<TrendsOverview | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const dates = timeRange === 'custom' && customRange
-      ? customRange
-      : getDateRange(timeRange === 'custom' ? '7d' : timeRange)
-
-    setLoading(true)
-    setError(null)
-    trends.getOverview(dates.startDate, dates.endDate)
-      .then(setData)
-      .catch((err) => {
-        console.error('Failed to fetch readiness data:', err)
-        setError('加载恢复数据失败，请稍后重试')
-      })
-      .finally(() => setLoading(false))
-  }, [timeRange, customRange])
-
-  const handleRangeChange = (range: TimeRange, dates?: DateRange) => {
-    setTimeRange(range)
-    if (range === 'custom' && dates) {
-      setCustomRange(dates)
-    }
-  }
+  const { timeRange, customRange, data, loading, error, handleRangeChange } = useTrendsPage('加载恢复数据失败，请稍后重试')
 
   const lastIdx = data?.dates?.length ? data.dates.length - 1 : -1
   const latestDate = lastIdx >= 0 ? data?.dates[lastIdx] : null

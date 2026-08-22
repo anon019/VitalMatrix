@@ -77,14 +77,14 @@ async def get_current_user(
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM]
         )
-        user_id_str: str = payload.get("sub")
-        if user_id_str is None:
+        user_id_str = payload.get("sub")
+        if not isinstance(user_id_str, str) or not user_id_str:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="无效的认证凭证",
             )
         user_id = uuid.UUID(user_id_str)
-    except JWTError:
+    except (JWTError, ValueError, TypeError, AttributeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的认证凭证",

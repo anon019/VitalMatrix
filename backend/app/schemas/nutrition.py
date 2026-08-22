@@ -3,9 +3,13 @@
 """
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer
 from enum import Enum
 import uuid
+
+from app.utils.media_url import create_signed_media_url
+from app.config import settings
+from app.utils.datetime_helper import ensure_hk
 
 
 class MealTypeEnum(str, Enum):
@@ -57,8 +61,7 @@ class FoodItemResponse(FoodItemBase):
     meal_id: uuid.UUID
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===== 餐次记录Schema =====
@@ -89,22 +92,39 @@ class MealRecordResponse(MealRecordBase):
     total_fiber: Optional[float]
     ai_model: Optional[str] = Field(None, description="使用的AI模型名称")
     gemini_analysis: Optional[Dict[str, Any]]
+    analysis_status: str = Field("completed", description="核心识图状态")
+    recommendation_status: str = Field("completed", description="扩展建议状态")
+    recommendation_attempts: int = Field(0, description="扩展建议已尝试次数")
+    analysis_error: Optional[str] = Field(None, description="处理失败的可读错误")
+    analysis_started_at: Optional[datetime] = None
+    analysis_completed_at: Optional[datetime] = None
+    recommendation_updated_at: Optional[datetime] = None
     food_items: List[FoodItemResponse] = []
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def current_ai_model(self) -> str:
+        return settings.GEMINI_VISION_MODEL
+
+    @computed_field
+    @property
+    def analysis_is_legacy(self) -> bool:
+        return bool(self.ai_model and self.ai_model != settings.GEMINI_VISION_MODEL)
 
     @field_serializer('photo_path', 'thumbnail_path')
     def _normalize_path(self, path: Optional[str]) -> Optional[str]:
         """规范化路径：确保路径以 /uploads/nutrition/ 开头（序列化时自动应用）"""
         if not path:
             return path
-        if path.startswith("/uploads/nutrition/"):
-            return path  # 已经是正确格式
-        # 旧格式路径，添加前缀
-        return f"/uploads/nutrition/{path}"
+        return create_signed_media_url(path)
 
-    class Config:
-        from_attributes = True
+    @field_serializer("meal_time")
+    def _serialize_meal_time_hk(self, value: datetime) -> str:
+        return ensure_hk(value).isoformat()
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MealListResponse(BaseModel):
@@ -152,8 +172,7 @@ class NutritionDailySummaryResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===== 周营养趋势Schema =====
@@ -167,6 +186,8 @@ class WeeklyNutritionTrend(BaseModel):
     weekly_avg_protein: Optional[float]
     weekly_avg_carbs: Optional[float]
     weekly_avg_fat: Optional[float]
+    recorded_days: int = Field(description="7 天窗口中实际有饮食记录的天数")
+    expected_days: int = 7
 
 
 # ===== 通用响应Schema =====
@@ -183,3 +204,17 @@ class DeleteResponse(BaseModel):
     status: str
     message: str
     deleted_id: Optional[uuid.UUID] = None
+
+
+class MealPosterResponse(BaseModel):
+    """按需生成的分享海报。"""
+    poster_url: str
+    generated: bool = Field(description="本次是否实际调用了图片模型；false 表示复用缓存")
+    model: str
+    verified_metrics: Dict[str, Any]
+    content_digest: str
+    layout_version: str
+
+    @field_serializer("poster_url")
+    def _sign_poster_url(self, path: str) -> str:
+        return create_signed_media_url(path)

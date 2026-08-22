@@ -1,7 +1,7 @@
 """
 日期时间辅助函数
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import pytz
 
 # 香港时区
@@ -16,6 +16,27 @@ def now_hk() -> datetime:
 def today_hk() -> date:
     """获取当前香港日期"""
     return now_hk().date()
+
+
+def ensure_hk(value: datetime) -> datetime:
+    """把数据库或调用方时间统一转换为香港时区。
+
+    PostgreSQL 通常返回 UTC aware datetime；历史数据或测试数据也可能是 naive。
+    naive 值按 UTC 解释，避免依赖服务器本地时区。
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(HK_TZ)
+
+
+def date_hk(value: datetime) -> date:
+    """返回某个时间戳在香港时区对应的自然日。"""
+    return ensure_hk(value).date()
+
+
+def format_hk(value: datetime, pattern: str) -> str:
+    """按香港时区格式化时间。"""
+    return ensure_hk(value).strftime(pattern)
 
 
 def start_of_day_hk(current_date: date) -> datetime:

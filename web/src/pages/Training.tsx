@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react'
-import { trends } from '@/services/api'
-import type { TrendsOverview, TimeRange, DateRange } from '@/types'
-import { getDateRange, formatDuration } from '@/utils/date'
+import { formatDuration } from '@/utils/date'
+import { useTrendsPage } from '@/hooks/useTrendsPage'
 import TimeRangeSelector from '@/components/TimeRangeSelector'
 import TrendChart from '@/components/TrendChart'
 import BarChart from '@/components/BarChart'
@@ -16,34 +14,7 @@ const COLORS = {
 }
 
 export default function Training() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('7d')
-  const [customRange, setCustomRange] = useState<DateRange | undefined>()
-  const [data, setData] = useState<TrendsOverview | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const dates = timeRange === 'custom' && customRange
-      ? customRange
-      : getDateRange(timeRange === 'custom' ? '7d' : timeRange)
-
-    setLoading(true)
-    setError(null)
-    trends.getOverview(dates.startDate, dates.endDate)
-      .then(setData)
-      .catch((err) => {
-        console.error('Failed to fetch training data:', err)
-        setError('加载训练数据失败，请稍后重试')
-      })
-      .finally(() => setLoading(false))
-  }, [timeRange, customRange])
-
-  const handleRangeChange = (range: TimeRange, dates?: DateRange) => {
-    setTimeRange(range)
-    if (range === 'custom' && dates) {
-      setCustomRange(dates)
-    }
-  }
+  const { timeRange, customRange, data, loading, error, handleRangeChange } = useTrendsPage('加载训练数据失败，请稍后重试')
 
   const totalZone2 = data?.training?.reduce((sum, t) => sum + (t.zone2_min || 0), 0) || 0
   const totalZone45 = data?.training?.reduce((sum, t) => sum + (t.hi_min || 0), 0) || 0

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { trends } from '@/services/api'
-import type { TrendsOverview, TimeRange, DateRange } from '@/types'
+import { dashboard as dashboardApi, trends } from '@/services/api'
+import type { DashboardData, TrendsOverview, TimeRange, DateRange } from '@/types'
 import { getDateRange } from '@/utils/date'
 import TimeRangeSelector from '@/components/TimeRangeSelector'
 import ScoreCard from '@/components/ScoreCard'
@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState<TimeRange>('7d')
   const [customRange, setCustomRange] = useState<DateRange | undefined>()
   const [data, setData] = useState<TrendsOverview | null>(null)
+  const [todayData, setTodayData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,8 +32,12 @@ export default function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const result = await trends.getOverview(startDate, endDate)
+      const [result, today] = await Promise.all([
+        trends.getOverview(startDate, endDate),
+        dashboardApi.getToday(),
+      ])
       setData(result)
+      setTodayData(today)
     } catch (err) {
       setError('加载数据失败')
       console.error(err)
@@ -74,6 +79,11 @@ export default function Dashboard() {
     date: t.date,
     zone2: t.zone2_min || 0,
     zone45: t.hi_min || 0,
+  })) || []
+
+  const nutritionChartData = data?.dates?.map((date, i) => ({
+    date,
+    calories: data.nutrition.calories[i],
   })) || []
 
   // HRV and resting heart rate data
@@ -123,12 +133,25 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-[22px] font-semibold text-[#1d1d1f]">数据总览</h2>
+        <div><p className="text-[11px] font-semibold tracking-[0.16em] text-[#2f7d5b]">TODAY</p><h2 className="text-[24px] font-semibold text-[#1d1d1f]">今日健康重点</h2></div>
         <TimeRangeSelector
           value={timeRange}
           customRange={customRange}
           onChange={handleRangeChange}
         />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+        <button onClick={() => navigate('/nutrition')} className="rounded-2xl bg-gradient-to-br from-[#195f45] to-[#2f8a65] p-5 text-left text-white shadow-sm transition hover:-translate-y-0.5">
+          <div className="flex items-center justify-between"><span className="text-[12px] text-white/70">今日饮食 · 第一优先级</span><span aria-hidden>→</span></div>
+          <div className="mt-5 flex items-end gap-2"><span className="text-[38px] font-semibold">{todayData?.nutrition_today?.total_calories == null ? '—' : Math.round(todayData.nutrition_today.total_calories)}</span><span className="pb-2 text-[13px] text-white/70">kcal</span></div>
+          <div className="mt-2 text-[13px] text-white/80">{todayData?.nutrition_today ? `已记录 ${todayData.nutrition_today.meals_count} 餐 · 蛋白质 ${Math.round(todayData.nutrition_today.total_protein ?? 0)}g` : '还没有记录餐食，上传照片后会建立连续饮食上下文'}</div>
+        </button>
+        <button onClick={() => navigate('/ai')} className="rounded-2xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5">
+          <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] font-medium text-[#5e5ce6]">AI 今日建议</span>{todayData?.recommendation?.model && <span className="rounded-full bg-[#f2f1ff] px-2 py-1 text-[10px] text-[#5e5ce6]">{todayData.recommendation.model}</span>}</div>
+          <p className="mt-5 text-[19px] font-semibold leading-7 text-[#1d1d1f]">{todayData?.recommendation?.summary ?? '数据准备好后，生成一份以饮食和睡眠恢复为先的今日建议。'}</p>
+          {todayData?.recommendation?.is_stale && <p className="mt-2 text-[11px] text-amber-700">当前为 {todayData.recommendation.source_date} 的最近建议</p>}
+        </button>
       </div>
 
       {/* Score Cards */}
@@ -172,6 +195,15 @@ export default function Dashboard() {
           { dataKey: 'activity', name: '活动', color: COLORS.activity },
         ]}
         yAxisDomain={[0, 100]}
+        showStats
+      />
+
+      <TrendChart
+        title="饮食记录趋势"
+        data={nutritionChartData}
+        lines={[
+          { dataKey: 'calories', name: '热量 kcal', color: '#2f8a65' },
+        ]}
         showStats
       />
 
@@ -238,9 +270,9 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="text-center py-3">
               <div className="text-[28px] font-semibold text-[#1d1d1f]">
-                {data.sleep.scores.filter(s => s !== null).length}
+                {data.nutrition.meals_count.filter(count => count > 0).length}
               </div>
-              <div className="text-[12px] text-[#86868b]">睡眠记录天数</div>
+              <div className="text-[12px] text-[#86868b]">饮食记录天数</div>
             </div>
             <div className="text-center py-3">
               <div className="text-[28px] font-semibold text-[#1d1d1f]">

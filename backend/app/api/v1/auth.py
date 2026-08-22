@@ -5,8 +5,8 @@ import hmac
 import logging
 from typing import Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from jose import jwt
@@ -17,6 +17,7 @@ from app.api.dependencies import resolve_default_user
 from app.models.user import User
 from app.config import settings
 from app.utils.datetime_helper import now_hk
+from app.utils.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class WeChatLoginRequest(BaseModel):
     """微信登录请求"""
-    code: str  # 微信登录code
+    code: str = Field(min_length=1, max_length=256)  # 微信登录code
 
 
 class SimpleLoginRequest(BaseModel):
@@ -71,7 +72,7 @@ async def wechat_login(
             logger.error(f"微信登录失败: {data}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"微信登录失败: {data.get('errmsg', '未知错误')}"
+                detail="微信登录失败，请重新授权"
             )
 
         openid = data.get("openid")
@@ -125,6 +126,7 @@ async def wechat_login(
 @router.post("/simple-login", response_model=AuthResponse)
 async def simple_login(
     request: SimpleLoginRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -133,13 +135,23 @@ async def simple_login(
     如果配置了密码则验证，否则直接登录
     返回 7 天有效期的 token
     """
-    # 如果配置了密码，则需要验证（使用常数时间比较防止时序攻击）
-    if settings.WEB_ACCESS_PASSWORD:
-        if not hmac.compare_digest(request.password or "", settings.WEB_ACCESS_PASSWORD):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="密码错误"
-            )
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    await enforce_rate_limit(f"auth:simple:{client_ip}", limit=10, window_seconds=900)
+
+    if settings.REQUIRE_WEB_ACCESS_PASSWORD and not settings.WEB_ACCESS_PASSWORD:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Web 登录尚未配置访问密码",
+        )
+
+    # 配置了密码时必须验证（使用常数时间比较防止时序攻击）。
+    if settings.WEB_ACCESS_PASSWORD and not hmac.compare_digest(
+        request.password or "", settings.WEB_ACCESS_PASSWORD
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="密码错误"
+        )
 
     try:
         user = await resolve_default_user(db)

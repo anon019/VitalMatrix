@@ -7,15 +7,24 @@ from typing import Optional, List
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, desc, select
+from sqlalchemy.orm import selectinload
 
 from app.ai.factory import AIProviderFactory
-from app.ai.base import UserContext, TrainingData, OuraData, NutritionData, NutritionDayRecord
-from app.models.nutrition import NutritionDailySummary
+from app.ai.base import (
+    UserContext,
+    TrainingData,
+    OuraData,
+    NutritionData,
+    NutritionDayRecord,
+    RecentMealRecord,
+)
+from app.models.nutrition import MealRecord, NutritionDailySummary
 from app.models.user import User
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.ai import AIRecommendation
 from app.models.oura import OuraSleep, OuraDailyReadiness, OuraDailyActivity, OuraDailyStress
-from app.utils.datetime_helper import today_hk, get_week_start
+from app.utils.datetime_helper import format_hk, today_hk, get_week_start, start_of_day_hk
+from app.utils.distributed_lock import distributed_lock
 logger = logging.getLogger(__name__)
 
 
@@ -26,6 +35,30 @@ class AIService:
         self.db = db
 
     async def generate_daily_recommendation(
+        self,
+        user_id: uuid.UUID,
+        target_date: date = None,
+        provider_name: str = None,
+        force_update: bool = False,
+    ) -> AIRecommendation:
+        target_date = target_date or today_hk()
+        lock_key = f"ai-recommendation:{user_id}:{target_date.isoformat()}"
+        async with distributed_lock(lock_key, ttl_seconds=180) as acquired:
+            if not acquired:
+                existing = await self.get_recommendation(
+                    user_id, target_date, allow_fallback=False
+                )
+                if existing and not force_update:
+                    return existing
+                raise ValueError("同一天的 AI 建议正在生成，请稍后再试")
+            return await self._generate_daily_recommendation_unlocked(
+                user_id=user_id,
+                target_date=target_date,
+                provider_name=provider_name,
+                force_update=force_update,
+            )
+
+    async def _generate_daily_recommendation_unlocked(
         self,
         user_id: uuid.UUID,
         target_date: date = None,
@@ -75,6 +108,25 @@ class AIService:
                 date=target_date.isoformat(),
             )
 
+            nutrition = training_data.nutrition_data
+            oura = training_data.oura_data
+            generation_metadata = {
+                "prompt_version": getattr(
+                    getattr(ai_provider, "prompt_loader", None),
+                    "version",
+                    "unknown",
+                ),
+                "target_date": target_date.isoformat(),
+                "data_completeness": {
+                    "nutrition_recorded_days": len(nutrition.days) if nutrition else 0,
+                    "nutrition_recent_meals": len(nutrition.recent_meals) if nutrition else 0,
+                    "has_sleep": bool(oura and oura.sleep_score is not None),
+                    "has_readiness": bool(oura and oura.readiness_score is not None),
+                    "has_activity": bool(oura and oura.activity_score is not None),
+                    "has_training": training_data.total_duration_min > 0,
+                },
+            }
+
             # 4. 保存到数据库（同日覆盖）
             ai_record = await self._create_recommendation(
                 user_id=user_id,
@@ -83,6 +135,7 @@ class AIService:
                 model=ai_provider.model,
                 recommendation=recommendation,
                 force_update=force_update,
+                generation_metadata=generation_metadata,
             )
 
             logger.info(
@@ -133,6 +186,8 @@ class AIService:
         # 关闭回退时，只取目标日期的最新一条
         if not allow_fallback:
             query = query.where(AIRecommendation.date == target_date)
+        else:
+            query = query.where(AIRecommendation.date <= target_date)
 
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
@@ -163,7 +218,8 @@ class AIService:
         self,
         user_id: uuid.UUID,
         messages: List[dict],
-        provider_name: str = None
+        provider_name: str = None,
+        client_context: Optional[dict] = None,
     ):
         """
         AI对话
@@ -180,6 +236,8 @@ class AIService:
             # 获取用户上下文作为对话背景
             user_context = await self._get_user_context(user_id)
             context_dict = user_context.dict()
+            if client_context:
+                context_dict["client_context"] = client_context
 
             # 调用AI Provider
             ai_provider = AIProviderFactory.create(provider_name)
@@ -210,13 +268,16 @@ class AIService:
         # 计算年龄
         age = None
         if user.birth_year:
-            current_year = today_hk().year
-            age = current_year - user.birth_year
+            current_date = today_hk()
+            age = current_date.year - user.birth_year
+            if user.birth_month and current_date.month < user.birth_month:
+                age -= 1
 
         return UserContext(
             user_id=str(user.id),
             nickname=user.nickname,
-            health_goal=user.health_goal or "降脂心血管健康优化",
+            gender=user.gender,
+            health_goal=user.health_goal or "饮食健康、睡眠与综合健康管理",
             training_plan=user.training_plan or "Zone2 55分钟 + Zone4-5 2分钟",
             hr_max=user.hr_max,
             resting_hr=user.resting_hr,
@@ -455,11 +516,10 @@ class AIService:
         )
         summaries = result.scalars().all()
 
-        if not summaries:
-            return None
-
         days = []
         for s in summaries:
+            if not s.meals_count:
+                continue
             days.append(NutritionDayRecord(
                 date=s.date.isoformat(),
                 total_calories=float(s.total_calories) if s.total_calories else None,
@@ -475,7 +535,33 @@ class AIService:
                 flags=s.flags,
             ))
 
-        return NutritionData(days=days)
+        meals_result = await self.db.execute(
+            select(MealRecord)
+            .options(selectinload(MealRecord.food_items))
+            .where(and_(
+                MealRecord.user_id == user_id,
+                MealRecord.meal_time >= start_of_day_hk(target_date - timedelta(days=6)),
+                MealRecord.meal_time < start_of_day_hk(target_date + timedelta(days=1)),
+            ))
+            .order_by(desc(MealRecord.meal_time))
+            .limit(30)
+        )
+        meals = meals_result.scalars().all()
+        recent_meals = [
+            RecentMealRecord(
+                date=format_hk(meal.meal_time, "%Y-%m-%dT%H:%M:%S%z"),
+                meal_type=meal.meal_type.value,
+                foods=[item.food_name for item in meal.food_items if item.food_name][:8],
+                total_calories=float(meal.total_calories) if meal.total_calories else None,
+                total_protein=float(meal.total_protein) if meal.total_protein else None,
+            )
+            for meal in meals
+        ]
+
+        if not days and not recent_meals:
+            return None
+
+        return NutritionData(days=days, recent_meals=recent_meals)
 
     async def _get_trend_summary(self, user_id: uuid.UUID, target_date: date) -> Optional[str]:
         """计算近14天关键指标趋势摘要（纯文本）"""
@@ -611,27 +697,24 @@ class AIService:
         model: str,
         recommendation,
         force_update: bool = False,
+        generation_metadata: Optional[dict] = None,
     ) -> AIRecommendation:
         """创建或覆盖当天AI建议记录"""
         from app.utils.datetime_helper import now_hk
 
-        existing = None
-        duplicate_records = []
-        if force_update:
-            existing_result = await self.db.execute(
-                select(AIRecommendation)
-                .where(
-                    and_(
-                        AIRecommendation.user_id == user_id,
-                        AIRecommendation.date == date,
-                    )
+        existing_result = await self.db.execute(
+            select(AIRecommendation)
+            .where(
+                and_(
+                    AIRecommendation.user_id == user_id,
+                    AIRecommendation.date == date,
                 )
-                .order_by(desc(AIRecommendation.created_at))
             )
-            same_day_records = existing_result.scalars().all()
-            if same_day_records:
-                existing = same_day_records[0]
-                duplicate_records = same_day_records[1:]
+            .order_by(desc(AIRecommendation.created_at))
+        )
+        same_day_records = existing_result.scalars().all()
+        # 在线接口只维护当天的当前版本；历史遗留重复记录不在请求链路中删除。
+        existing = same_day_records[0] if same_day_records else None
 
         if existing:
             existing.provider = provider
@@ -642,6 +725,7 @@ class AIService:
             existing.health_education = recommendation.health_education
             existing.prompt_tokens = recommendation.prompt_tokens
             existing.completion_tokens = recommendation.completion_tokens
+            existing.generation_metadata = generation_metadata
             existing.created_at = now_hk()
             ai_record = existing
         else:
@@ -656,12 +740,10 @@ class AIService:
                 health_education=recommendation.health_education,
                 prompt_tokens=recommendation.prompt_tokens,
                 completion_tokens=recommendation.completion_tokens,
+                generation_metadata=generation_metadata,
                 created_at=now_hk(),
             )
             self.db.add(ai_record)
-
-        for duplicate in duplicate_records:
-            await self.db.delete(duplicate)
 
         await self.db.commit()
         await self.db.refresh(ai_record)

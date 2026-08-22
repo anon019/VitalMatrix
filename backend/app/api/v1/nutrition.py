@@ -6,22 +6,31 @@ from datetime import datetime, date, timedelta
 from typing import Optional
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form,
+    Query, status,
+)
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db
+from app.config import settings
 from app.models.user import User
 from app.models.nutrition import MealType
 from app.services.nutrition_service import get_nutrition_service
+from app.services.poster_service import get_poster_service
 from app.schemas.nutrition import (
     MealRecordResponse,
     MealListResponse,
     NutritionDailySummaryResponse,
     WeeklyNutritionTrend,
     DeleteResponse,
-    MealTypeEnum
+    MealTypeEnum,
+    MealPosterResponse,
 )
 from app.utils.datetime_helper import now_hk, today_hk, HK_TZ
+from app.utils.media_url import verify_signed_media_url
+from app.utils.rate_limit import enforce_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +39,36 @@ router = APIRouter(prefix="/nutrition", tags=["营养饮食"])
 nutrition_service = get_nutrition_service()
 
 
+@router.get("/media", response_class=FileResponse)
+async def get_signed_nutrition_media(
+    path: str = Query(...),
+    expires: int = Query(...),
+    signature: str = Query(..., min_length=64, max_length=64),
+):
+    """通过短期 HMAC URL 读取私有餐食照片或分享海报。"""
+    normalized = verify_signed_media_url(path, expires, signature)
+    if not normalized:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="媒体链接无效或已过期")
+    try:
+        file_path = nutrition_service.file_storage.get_absolute_path(normalized)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="媒体路径无效") from exc
+    if not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="媒体文件不存在")
+    return FileResponse(
+        file_path,
+        media_type="image/png" if file_path.suffix.lower() == ".png" else "image/jpeg",
+        headers={"Cache-Control": f"private, max-age={settings.MEDIA_URL_TTL_SECONDS}"},
+    )
+
+
 @router.post("/upload", response_model=MealRecordResponse, status_code=status.HTTP_201_CREATED)
 async def upload_and_analyze_meal(
+    background_tasks: BackgroundTasks,
     image: UploadFile = File(..., description="餐食照片"),
     meal_type: MealTypeEnum = Form(..., description="餐次类型"),
     meal_time: Optional[str] = Form(None, description="用餐时间（格式：2025-11-22 12:30）"),
-    notes: Optional[str] = Form(None, description="用户备注"),
+    notes: Optional[str] = Form(None, max_length=500, description="用户备注"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -51,24 +84,26 @@ async def upload_and_analyze_meal(
     Returns:
         完整的餐次记录（包含食物明细）
     """
+    await enforce_rate_limit(
+        f"nutrition:upload:{current_user.id}", limit=20, window_seconds=86400
+    )
     try:
         # 验证文件类型
-        if not image.content_type.startswith("image/"):
+        if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="只支持图片文件"
+                detail="只支持 JPEG、PNG 或 WebP 图片"
             )
 
         # 验证文件大小（最大 10MB）
         max_size = 10 * 1024 * 1024  # 10MB
-        content = await image.read()
-        if len(content) > max_size:
+        # 只读取上限+1字节，避免恶意大文件在应用层占用过多内存。
+        image_content = await image.read(max_size + 1)
+        if len(image_content) > max_size:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="文件过大，最大支持 10MB"
             )
-        # 重置文件指针以便后续读取
-        await image.seek(0)
 
         # 解析用餐时间
         if meal_time:
@@ -84,9 +119,6 @@ async def upload_and_analyze_meal(
         else:
             parsed_meal_time = now_hk()
 
-        # 读取图片内容
-        image_content = await image.read()
-
         # 调用服务分析并保存
         result = await nutrition_service.analyze_and_save_meal(
             db=db,
@@ -99,6 +131,12 @@ async def upload_and_analyze_meal(
 
         # 返回餐次记录
         meal_record = result["meal_record"]
+        if meal_record.recommendation_status != "completed":
+            background_tasks.add_task(
+                nutrition_service.generate_recommendations_for_meal,
+                meal_record.id,
+                current_user.id,
+            )
 
         logger.info(f"User {current_user.id} uploaded meal {meal_record.id}")
 
@@ -110,7 +148,7 @@ async def upload_and_analyze_meal(
         logger.error(f"Failed to upload and analyze meal: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"分析失败：{str(e)}"
+            detail="餐食分析失败，请稍后重试"
         )
 
 
@@ -119,8 +157,8 @@ async def get_meals_list(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     meal_type: Optional[MealTypeEnum] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -159,7 +197,7 @@ async def get_meals_list(
         logger.error(f"Failed to get meals list: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取列表失败：{str(e)}"
+            detail="获取餐食列表失败，请稍后重试"
         )
 
 
@@ -199,12 +237,58 @@ async def get_meal_detail(
         logger.error(f"Failed to get meal detail: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取详情失败：{str(e)}"
+            detail="获取餐食详情失败，请稍后重试"
         )
+
+
+@router.post("/meals/{meal_id}/poster", response_model=MealPosterResponse)
+async def generate_meal_poster(
+    meal_id: uuid.UUID,
+    force: bool = Query(False, description="是否忽略同内容缓存并重新生成"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户点击后才生成分享海报；相同内容默认复用，避免重复计费。"""
+    meal = await nutrition_service.get_meal_by_id(
+        db=db,
+        meal_id=meal_id,
+        user_id=current_user.id,
+    )
+    if not meal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="餐次记录不存在",
+        )
+
+    await enforce_rate_limit(
+        f"nutrition:poster-request:{current_user.id}", limit=30, window_seconds=86400
+    )
+
+    try:
+        # 外部图片生成耗时较长，先释放数据库连接。
+        await db.commit()
+        return await get_poster_service().generate(meal, force=force)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Failed to generate poster for meal %s: %s",
+            meal_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="海报生成失败，请稍后重试",
+        ) from exc
 
 
 @router.post("/meals/{meal_id}/reanalyze", response_model=MealRecordResponse)
 async def reanalyze_meal(
+    background_tasks: BackgroundTasks,
     meal_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -220,6 +304,9 @@ async def reanalyze_meal(
     Returns:
         重新分析后的餐次记录
     """
+    await enforce_rate_limit(
+        f"nutrition:reanalyze:{current_user.id}", limit=10, window_seconds=86400
+    )
     try:
         meal = await nutrition_service.reanalyze_meal(
             db=db,
@@ -228,6 +315,12 @@ async def reanalyze_meal(
         )
 
         logger.info(f"User {current_user.id} reanalyzed meal {meal_id}")
+
+        background_tasks.add_task(
+            nutrition_service.generate_recommendations_for_meal,
+            meal.id,
+            current_user.id,
+        )
 
         return meal
 
@@ -240,8 +333,56 @@ async def reanalyze_meal(
         logger.error(f"Failed to reanalyze meal: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"重新分析失败：{str(e)}"
+            detail="重新分析失败，请稍后重试"
         )
+
+
+@router.get("/meals/{meal_id}/analysis-status")
+async def get_meal_analysis_status(
+    meal_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """查询核心识图和扩展建议状态，供小程序轻量轮询。"""
+    analysis_status = await nutrition_service.get_meal_analysis_status(
+        db, meal_id, current_user.id
+    )
+    if not analysis_status:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="餐次记录不存在")
+    return analysis_status
+
+
+@router.post("/meals/{meal_id}/recommendations", status_code=status.HTTP_202_ACCEPTED)
+async def generate_meal_recommendations(
+    meal_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    force: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """单独触发扩展建议；不重复上传或重新识图。"""
+    analysis_status = await nutrition_service.get_meal_analysis_status(
+        db, meal_id, current_user.id
+    )
+    if not analysis_status:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="餐次记录不存在")
+    if analysis_status["analysis_status"] != "completed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="核心识图尚未完成")
+    should_generate = force or analysis_status["recommendation_status"] != "completed"
+    if should_generate:
+        background_tasks.add_task(
+            nutrition_service.generate_recommendations_for_meal,
+            meal_id,
+            current_user.id,
+            force,
+        )
+    return {
+        "meal_id": str(meal_id),
+        "analysis_status": analysis_status["analysis_status"],
+        "recommendation_status": (
+            "pending" if should_generate else "completed"
+        ),
+    }
 
 
 @router.delete("/meals/{meal_id}", response_model=DeleteResponse)
@@ -284,11 +425,11 @@ async def delete_meal(
         logger.error(f"Failed to delete meal: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除失败：{str(e)}"
+            detail="删除餐次失败，请稍后重试"
         )
 
 
-@router.get("/daily/{target_date}", response_model=NutritionDailySummaryResponse)
+@router.get("/daily/{target_date}", response_model=Optional[NutritionDailySummaryResponse])
 async def get_daily_summary(
     target_date: date,
     current_user: User = Depends(get_current_user),
@@ -325,7 +466,7 @@ async def get_daily_summary(
         logger.error(f"Failed to get daily summary: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取汇总失败：{str(e)}"
+            detail="获取营养汇总失败，请稍后重试"
         )
 
 
@@ -373,14 +514,16 @@ async def get_weekly_trend(
             "weekly_avg_calories": round(weekly_avg_calories, 2),
             "weekly_avg_protein": round(weekly_avg_protein, 2),
             "weekly_avg_carbs": round(weekly_avg_carbs, 2),
-            "weekly_avg_fat": round(weekly_avg_fat, 2)
+            "weekly_avg_fat": round(weekly_avg_fat, 2),
+            "recorded_days": len(daily_data),
+            "expected_days": 7,
         }
 
     except Exception as e:
         logger.error(f"Failed to get weekly trend: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取趋势失败：{str(e)}"
+            detail="获取营养趋势失败，请稍后重试"
         )
 
 
@@ -441,5 +584,5 @@ async def get_foods_list(
         logger.error(f"Failed to get foods list: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取食物列表失败：{str(e)}"
+            detail="获取食物列表失败，请稍后重试"
         )

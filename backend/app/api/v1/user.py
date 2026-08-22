@@ -4,7 +4,7 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import get_db
@@ -24,20 +24,26 @@ class UserProfileResponse(BaseModel):
     resting_hr: Optional[int]
     weight: Optional[float]
     height: Optional[int]
+    gender: Optional[str]
+    birth_year: Optional[int]
+    birth_month: Optional[int]
     health_goal: Optional[str]
     training_plan: Optional[str]
 
 
 class UpdateProfileRequest(BaseModel):
     """更新用户信息请求"""
-    nickname: Optional[str] = None
-    avatar_url: Optional[str] = None
-    hr_max: Optional[int] = None
-    resting_hr: Optional[int] = None
-    weight: Optional[float] = None
-    height: Optional[int] = None
-    health_goal: Optional[str] = None
-    training_plan: Optional[str] = None
+    nickname: Optional[str] = Field(None, max_length=100)
+    avatar_url: Optional[str] = Field(None, max_length=500)
+    hr_max: Optional[int] = Field(None, ge=80, le=240)
+    resting_hr: Optional[int] = Field(None, ge=25, le=150)
+    weight: Optional[float] = Field(None, ge=20, le=350)
+    height: Optional[int] = Field(None, ge=80, le=250)
+    gender: Optional[str] = Field(None, pattern="^(男|女|其他|不愿透露)$", max_length=20)
+    birth_year: Optional[int] = Field(None, ge=1900, le=2100)
+    birth_month: Optional[int] = Field(None, ge=1, le=12)
+    health_goal: Optional[str] = Field(None, max_length=500)
+    training_plan: Optional[str] = Field(None, max_length=200)
 
 
 @router.get("/profile", response_model=UserProfileResponse)
@@ -58,6 +64,9 @@ async def get_user_profile(
         resting_hr=current_user.resting_hr,
         weight=current_user.weight,
         height=current_user.height,
+        gender=current_user.gender,
+        birth_year=current_user.birth_year,
+        birth_month=current_user.birth_month,
         health_goal=current_user.health_goal,
         training_plan=current_user.training_plan,
     )
@@ -92,6 +101,12 @@ async def update_user_profile(
             current_user.weight = request.weight
         if request.height is not None:
             current_user.height = request.height
+        if request.gender is not None:
+            current_user.gender = request.gender
+        if request.birth_year is not None:
+            current_user.birth_year = request.birth_year
+        if request.birth_month is not None:
+            current_user.birth_month = request.birth_month
         if request.health_goal is not None:
             current_user.health_goal = request.health_goal
         if request.training_plan is not None:
@@ -111,6 +126,9 @@ async def update_user_profile(
             resting_hr=current_user.resting_hr,
             weight=current_user.weight,
             height=current_user.height,
+            gender=current_user.gender,
+            birth_year=current_user.birth_year,
+            birth_month=current_user.birth_month,
             health_goal=current_user.health_goal,
             training_plan=current_user.training_plan,
         )

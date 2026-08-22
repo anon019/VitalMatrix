@@ -1,18 +1,17 @@
 """
-文件存储服务 - 处理营养照片的上传、存储和清理
+文件存储服务 - 处理营养照片的上传、长期存储和按餐次删除
 """
-import shutil
 import logging
-from datetime import datetime, timedelta
+import asyncio
+import warnings
+from io import BytesIO
+from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Optional
-from PIL import Image
-import aiofiles
-from app.utils.datetime_helper import now_hk
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 logger = logging.getLogger(__name__)
 
-# 获取 backend 根目录
 BACKEND_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "nutrition"
 
@@ -20,7 +19,7 @@ DEFAULT_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "nutrition"
 class FileStorageService:
     """文件存储服务类"""
 
-    def __init__(self, base_dir: str = None):
+    def __init__(self, base_dir: str | None = None):
         """
         初始化文件存储服务
 
@@ -29,6 +28,8 @@ class FileStorageService:
         """
         self.base_dir = Path(base_dir) if base_dir else DEFAULT_UPLOAD_DIR
         self.thumbnail_size = (200, 200)  # 缩略图尺寸
+        self.max_image_dimension = 4096
+        self.max_image_pixels = 40_000_000
 
         # 创建存储目录
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -83,15 +84,15 @@ class FileStorageService:
             original_path = date_dir / original_filename
             thumbnail_path = date_dir / thumbnail_filename
 
-            # 保存原图
-            async with aiofiles.open(original_path, "wb") as f:
-                await f.write(file_content)
+            # 只解码一次，同时写出规范化原图和缩略图。
+            await asyncio.to_thread(
+                self._normalize_and_save_images_sync,
+                file_content,
+                original_path,
+                thumbnail_path,
+            )
 
             logger.info(f"Saved original photo: {original_path}")
-
-            # 生成缩略图
-            await self._generate_thumbnail(original_path, thumbnail_path)
-
             logger.info(f"Saved thumbnail: {thumbnail_path}")
 
             # 返回Web可访问路径和绝对路径
@@ -112,6 +113,64 @@ class FileStorageService:
             logger.error(f"Failed to save meal photo: {str(e)}", exc_info=True)
             raise IOError(f"Failed to save meal photo: {str(e)}")
 
+    def _normalize_image_sync(self, file_content: bytes, output_path: Path) -> None:
+        """将受支持的输入统一保存为无 EXIF 的 JPEG。"""
+        image = self._decode_normalized_image(file_content)
+        try:
+            image.save(output_path, "JPEG", quality=90, optimize=True)
+        finally:
+            image.close()
+
+    def _normalize_and_save_images_sync(
+        self,
+        file_content: bytes,
+        original_path: Path,
+        thumbnail_path: Path,
+    ) -> None:
+        """一次解码后同时保存原图和缩略图。"""
+        image = self._decode_normalized_image(file_content)
+        try:
+            image.save(original_path, "JPEG", quality=90, optimize=True)
+            thumbnail = image.copy()
+            try:
+                thumbnail.thumbnail(self.thumbnail_size, Image.Resampling.LANCZOS)
+                thumbnail.save(thumbnail_path, "JPEG", quality=85)
+            finally:
+                thumbnail.close()
+        finally:
+            image.close()
+
+    def _decode_normalized_image(self, file_content: bytes) -> Image.Image:
+        """解码、纠正方向、限制像素并转为 RGB。"""
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(BytesIO(file_content)) as source:
+                    if source.format not in {"JPEG", "PNG", "WEBP"}:
+                        raise ValueError("仅支持 JPEG、PNG 和 WebP 图片")
+                    if source.width * source.height > self.max_image_pixels:
+                        raise ValueError("图片像素过大，最多支持 4000 万像素")
+
+                    image = ImageOps.exif_transpose(source)
+                    image.load()
+                    if max(image.size) > self.max_image_dimension:
+                        image.thumbnail(
+                            (self.max_image_dimension, self.max_image_dimension),
+                            Image.Resampling.LANCZOS,
+                        )
+
+                    if image.mode in ("RGBA", "LA"):
+                        background = Image.new("RGB", image.size, "white")
+                        alpha = image.getchannel("A")
+                        background.paste(image.convert("RGB"), mask=alpha)
+                        image = background
+                    elif image.mode != "RGB":
+                        image = image.convert("RGB")
+
+                    return image
+        except (UnidentifiedImageError, Image.DecompressionBombError) as exc:
+            raise ValueError("图片文件无效或像素规模不安全") from exc
+
     async def _generate_thumbnail(self, original_path: Path, thumbnail_path: Path):
         """
         生成缩略图
@@ -120,6 +179,18 @@ class FileStorageService:
             original_path: 原图路径
             thumbnail_path: 缩略图保存路径
         """
+        await asyncio.to_thread(
+            self._generate_thumbnail_sync,
+            original_path,
+            thumbnail_path,
+        )
+
+    def _generate_thumbnail_sync(
+        self,
+        original_path: Path,
+        thumbnail_path: Path,
+    ) -> None:
+        """在线程中执行 Pillow 解码和缩略图编码，避免阻塞事件循环。"""
         try:
             with Image.open(original_path) as img:
                 # 转换RGBA到RGB（避免PNG透明通道问题）
@@ -149,18 +220,22 @@ class FileStorageService:
             绝对路径
         """
         if not relative_path:
-            return self.base_dir
+            raise ValueError("媒体路径不能为空")
 
         path = relative_path
-        if path.startswith("/uploads/nutrition/"):
-            path = path[len("/uploads/nutrition/"):]
+        for prefix in ("/uploads/nutrition/", "uploads/nutrition/"):
+            if path.startswith(prefix):
+                path = path[len(prefix):]
+                break
         path = path.lstrip("/")
 
-        candidate = Path(path)
-        if candidate.is_absolute():
-            return candidate
-
-        return self.base_dir / candidate
+        base = self.base_dir.resolve()
+        candidate = (base / path).resolve()
+        try:
+            candidate.relative_to(base)
+        except ValueError as exc:
+            raise ValueError("媒体路径超出允许目录") from exc
+        return candidate
 
     def delete_meal_photos(self, original_path: str, thumbnail_path: Optional[str] = None):
         """
@@ -188,50 +263,16 @@ class FileStorageService:
             logger.error(f"Failed to delete photos: {str(e)}", exc_info=True)
 
     def cleanup_old_photos(self, days: int = 30) -> int:
+        """保留旧调用兼容性，但永久禁用已落库营养照片的按日期清理。
+
+        旧实现只删除图片目录、不删除对应餐次记录，会让历史数据永久指向
+        不存在的文件。即使旧脚本或人工命令再次调用，也必须保持为无操作。
         """
-        清理超过指定天数的照片
-
-        Args:
-            days: 保留天数（默认30天）
-
-        Returns:
-            删除的文件数量
-        """
-        cutoff_date = now_hk() - timedelta(days=days)
-        deleted_count = 0
-
-        try:
-            # 遍历所有用户目录
-            for user_dir in self.base_dir.iterdir():
-                if not user_dir.is_dir():
-                    continue
-
-                # 遍历日期目录
-                for date_dir in user_dir.iterdir():
-                    if not date_dir.is_dir():
-                        continue
-
-                    try:
-                        # 解析日期目录名（YYYYMMDD）
-                        dir_date = datetime.strptime(date_dir.name, "%Y%m%d")
-
-                        # 如果超过保留期限，删除整个目录
-                        if dir_date.date() < cutoff_date.date():
-                            shutil.rmtree(date_dir)
-                            deleted_count += 1
-                            logger.info(f"Deleted old directory: {date_dir}")
-
-                    except ValueError:
-                        # 目录名不符合日期格式，跳过
-                        logger.warning(f"Invalid date directory name: {date_dir.name}")
-                        continue
-
-            logger.info(f"Cleanup completed. Deleted {deleted_count} directories.")
-            return deleted_count
-
-        except Exception as e:
-            logger.error(f"Failed to cleanup old photos: {str(e)}", exc_info=True)
-            return deleted_count
+        logger.warning(
+            "Ignoring cleanup_old_photos(days=%s): nutrition photos are permanent records",
+            days,
+        )
+        return 0
 
     def get_storage_stats(self) -> dict:
         """

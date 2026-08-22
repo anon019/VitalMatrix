@@ -8,7 +8,6 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# 获取项目根目录
 BACKEND_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_CONFIG_PATH = BACKEND_ROOT / "config" / "prompts" / "recommendation.yaml"
 
@@ -16,7 +15,7 @@ DEFAULT_CONFIG_PATH = BACKEND_ROOT / "config" / "prompts" / "recommendation.yaml
 class PromptLoader:
     """Prompt加载器"""
 
-    def __init__(self, config_path: str = None):
+    def __init__(self, config_path: str | None = None):
         self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
         self._config: Optional[Dict[str, Any]] = None
         self._load_config()
@@ -54,6 +53,10 @@ class PromptLoader:
     def response_schema(self) -> Dict[str, Any]:
         """获取响应Schema"""
         return self._config.get("response_schema", {})
+
+    @property
+    def version(self) -> str:
+        return self._config.get("version", "recommendation-legacy")
 
     @property
     def risk_flags(self) -> Dict[str, Dict[str, str]]:

@@ -49,10 +49,6 @@ logs/
 htmlcov/
 .tox/
 
-# Alembic
-alembic/versions/*.py
-!alembic/versions/.gitkeep
-
 # OS
 .DS_Store
 Thumbs.db

@@ -6,8 +6,9 @@
 
 - Polar 训练数据同步与训练指标汇总
 - Oura 睡眠、准备度、活动、压力等恢复数据同步
-- AI 每日建议、风险标记、趋势分析
-- 营养照片上传、识别与每日营养汇总
+- Gemini 3.7 驱动的 AI 每日建议、风险标记与趋势分析
+- 营养照片上传、分阶段识别、未来三餐建议与每日营养汇总
+- 按需生成 3:4 分享海报；关键营养数字和中文内容由后端确定性排版
 - Web Dashboard 与微信小程序双端展示
 - 内嵌 MCP 服务，支持外部 Agent / Client 通过 SSE 接入
 
@@ -24,6 +25,13 @@ docs/           架构与集成文档
 
 ## 系统架构
 
+最新版可交互图表：
+
+- [VitalMatrix 系统架构图](docs/diagrams/vitalmatrix-system-architecture.html)
+- [营养分析与海报生成流程图](docs/diagrams/nutrition-poster-workflow.html)
+
+图表可直接在浏览器打开，并支持复制图片、导出 PNG 或 PDF。维护和安全约定见 [架构图说明](docs/diagrams/README.md)。
+
 - `backend/` 是核心服务，提供 REST API、定时同步、AI 生成和 MCP。
 - `web/` 提供桌面/移动浏览器可访问的可视化 Dashboard。
 - `miniprogram/` 提供微信小程序端体验。
@@ -39,7 +47,7 @@ docs/           架构与集成文档
 ## 技术栈
 
 - Backend: FastAPI, SQLAlchemy, PostgreSQL, Redis, APScheduler
-- AI: DeepSeek / Qwen / Gemini（按配置启用）
+- AI: Vertex AI Gemini / DeepSeek / Qwen（按配置启用）
 - Web: React, TypeScript, Vite
 - Mini Program: WeChat Mini Program
 - Deploy: Linux, Nginx, systemd / supervisor
@@ -75,6 +83,12 @@ cp .env.example .env
 - Oura OAuth
 - AI Provider Key
 - `MCP_API_KEY`
+
+默认 Gemini 链路使用 Vertex AI Application Default Credentials（ADC）。部署时还需要配置：
+
+- `GOOGLE_CLOUD_PROJECT`
+- `GOOGLE_CLOUD_LOCATION`
+- 具备 Vertex AI 调用权限的运行身份
 
 可参考模板文件：
 
@@ -128,6 +142,7 @@ MCP 服务已内嵌在后端中，默认随 FastAPI 一起启动。
 - `deploy/nginx-health.conf` 提供公开仓库可用的 Nginx 模板，需要按你的域名、代码路径和证书路径调整。
 - 生产环境建议通过 systemd 或 supervisor 启动后端服务。
 - Web 构建产物默认由 Nginx 直接托管。
+- 营养照片和分享海报属于私有媒体，应通过后端签名 URL 访问，不应由 Nginx 公开暴露上传目录。
 
 ## 安全说明
 

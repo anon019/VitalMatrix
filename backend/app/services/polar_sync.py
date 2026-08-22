@@ -3,7 +3,7 @@ Polar数据同步服务
 """
 import logging
 from datetime import date, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -29,6 +29,20 @@ class PolarSyncService:
         self.db = db
         self.polar_provider = PolarProvider()
         self.polar_client = PolarClient()
+
+    async def close(self) -> None:
+        """关闭同步服务持有的两个 HTTP 客户端。"""
+        await asyncio.gather(
+            self.polar_provider.client.close(),
+            self.polar_client.close(),
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.close()
+        return False
 
     async def sync_user_exercises(
         self,
@@ -62,6 +76,9 @@ class PolarSyncService:
                 f"开始同步Polar数据: user_id={user_id}, "
                 f"range={start_date} to {end_date}"
             )
+
+            # 外部 Polar 请求前结束只读事务，避免网络等待占用数据库连接。
+            await self.db.commit()
 
             # 拉取训练数据
             training_sessions = await self.polar_provider.fetch_training_data(
@@ -334,7 +351,7 @@ class PolarSyncService:
         result = await self.db.execute(
             select(PolarAuth).where(
                 PolarAuth.user_id == user_id,
-                PolarAuth.is_active == True
+                PolarAuth.is_active.is_(True)
             )
         )
         auth = result.scalar_one_or_none()

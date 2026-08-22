@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
 import { useAuth } from '@/hooks/useAuth'
 
 export default function Login() {
@@ -22,8 +23,11 @@ export default function Login() {
     try {
       await login(password)
       navigate('/')
-    } catch {
-      setError('密码错误')
+    } catch (requestError) {
+      const detail = axios.isAxiosError<{ detail?: string }>(requestError)
+        ? requestError.response?.data?.detail
+        : undefined
+      setError(detail || '登录失败，请稍后重试')
     } finally {
       setLoading(false)
     }
@@ -39,24 +43,33 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6">
           <div className="mb-4">
+            <label htmlFor="access-password" className="sr-only">
+              访问密码
+            </label>
             <input
+              id="access-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="访问密码"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+              autoComplete="current-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'login-error' : undefined}
               autoFocus
             />
           </div>
 
           {error && (
-            <div className="mb-4 text-red-500 text-sm text-center">{error}</div>
+            <div id="login-error" role="alert" className="mb-4 text-red-500 text-sm text-center">
+              {error}
+            </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-400 transition"
+            className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:bg-blue-400 transition"
           >
             {loading ? '验证中...' : '进入'}
           </button>

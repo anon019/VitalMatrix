@@ -90,6 +90,7 @@ backups/
 
 # Claude Code 配置（包含项目特定设置）
 .claude/
+.codex
 
 # WeChat 小程序敏感文件
 miniprogram/project.config.json

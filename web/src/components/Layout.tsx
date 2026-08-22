@@ -2,7 +2,9 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
 const navItems = [
-  { path: '/', label: '总览' },
+  { path: '/', label: '今日' },
+  { path: '/nutrition', label: '饮食' },
+  { path: '/ai', label: 'AI 建议' },
   { path: '/sleep', label: '睡眠' },
   { path: '/readiness', label: '恢复' },
   { path: '/activity', label: '活动' },
@@ -33,14 +35,14 @@ export default function Layout() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex gap-6 -mb-px">
+          <nav className="flex gap-6 -mb-px overflow-x-auto [scrollbar-width:none]">
             {navItems.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
                 end={item.path === '/'}
                 className={({ isActive }) =>
-                  `py-3 text-[13px] font-medium border-b-2 transition-colors ${
+                  `py-3 text-[13px] font-medium border-b-2 transition-colors whitespace-nowrap ${
                     isActive
                       ? 'text-[#1d1d1f] border-[#1d1d1f]'
                       : 'text-[#86868b] border-transparent hover:text-[#1d1d1f]'

@@ -24,7 +24,8 @@ pyjwt==2.8.0
 # AI服务
 openai>=1.10.0
 # anthropic==0.18.0  # 暂时移除，可后续添加
-google-generativeai>=0.3.0  # Gemini API
+google-auth>=2.56.0  # Vertex AI ADC 认证
+google-genai>=1.0.0  # Gemini / Vertex AI SDK
 httpx>=0.25.0
 
 # 任务调度
@@ -35,11 +36,12 @@ python-dotenv==1.0.0
 pyyaml==6.0.1
 python-dateutil==2.8.2
 pytz==2024.1
+numpy==2.2.6  # 睡眠指标计算
 Pillow>=10.0.0  # 图片处理（缩略图生成）
 aiofiles>=24.1.0  # 异步文件操作
 
 # 开发工具
-pytest==8.0.0
+pytest==7.4.4
 pytest-asyncio==0.23.3
 pytest-cov==4.1.0
 black==24.1.1

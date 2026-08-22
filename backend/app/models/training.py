@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 from datetime import datetime, date
-from typing import Optional
-from sqlalchemy import String, Integer, DECIMAL, TIMESTAMP, ForeignKey, Date, UniqueConstraint
+from typing import Optional, TYPE_CHECKING
+from sqlalchemy import Integer, DECIMAL, TIMESTAMP, ForeignKey, Date, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
 from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class DailyTrainingSummary(Base):

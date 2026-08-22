@@ -148,12 +148,12 @@ async def sync_polar_data(
         logger.info(f"手动触发Polar数据同步: user_id={current_user.id}, days={days}, force={force}")
 
         # 同步训练数据
-        polar_sync_service = PolarSyncService(db)
-        new_count, _ = await polar_sync_service.sync_user_exercises(
-            user_id=current_user.id,
-            days=days,
-            force=force
-        )
+        async with PolarSyncService(db) as polar_sync_service:
+            new_count, _ = await polar_sync_service.sync_user_exercises(
+                user_id=current_user.id,
+                days=days,
+                force=force
+            )
 
         # 重新计算训练指标（最近7天）
         metrics_service = TrainingMetricsService(db)
@@ -198,8 +198,8 @@ async def check_polar_connection(
         连接状态信息
     """
     try:
-        polar_sync_service = PolarSyncService(db)
-        is_connected = await polar_sync_service.check_connection(current_user.id)
+        async with PolarSyncService(db) as polar_sync_service:
+            is_connected = await polar_sync_service.check_connection(current_user.id)
 
         return {
             "connected": is_connected,

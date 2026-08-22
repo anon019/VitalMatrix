@@ -19,7 +19,7 @@
 - 本地调试脚本、一次性排障脚本、硬编码用户 ID 的脚本
 - `project.private.config.json`
 - 带真实 AppID 的 `project.config.json`
-- 本机绝对路径，例如 `/root/health/...`
+- 本机绝对路径，例如 `<private-workspace>/...`
 - 真实线上域名、真实服务器目录、真实内部 Referer
 
 ## 3. 必须模板化或参数化的内容

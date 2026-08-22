@@ -17,7 +17,10 @@ else:
     # 服务器内存有限（2GB），降低连接池大小
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_size"] = 3
-    engine_kwargs["max_overflow"] = 5
+    engine_kwargs["max_overflow"] = 2
+    engine_kwargs["pool_timeout"] = 10
+    engine_kwargs["pool_recycle"] = 1800
+    engine_kwargs["pool_use_lifo"] = True
 
 engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 

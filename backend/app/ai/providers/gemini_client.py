@@ -1,10 +1,10 @@
 """
 Gemini 客户端工厂函数
-支持 Vertex AI 和 API Key 双模式切换
+支持 Vertex AI 和 API Key 双模式切换，默认通过 ADC 使用 Vertex AI。
 
 通过环境变量 GEMINI_BACKEND 控制模式：
-- "vertexai"：使用 Vertex AI 认证
-- "api_key"（默认）：使用 GOOGLE_API_KEY 直接认证
+- "vertexai"（默认）：使用 Vertex AI ADC 认证
+- "api_key"：兼容旧的 GOOGLE_API_KEY 认证
 """
 import os
 import logging
@@ -22,8 +22,8 @@ def get_client() -> genai.Client:
     """获取 Gemini 客户端（带缓存），支持 Vertex AI 和 API Key 双模式。
 
     通过环境变量 GEMINI_BACKEND 控制模式：
-    - "vertexai"：使用 Vertex AI 认证（需要 GOOGLE_CLOUD_PROJECT）
-    - "api_key"（或未设置）：使用 GOOGLE_API_KEY 直接认证
+    - "vertexai"（或未设置）：使用 Vertex AI ADC 认证
+    - "api_key"：兼容旧的 GOOGLE_API_KEY 认证
 
     Client 实例会被缓存，相同 backend 模式下复用同一实例。
 
@@ -32,7 +32,7 @@ def get_client() -> genai.Client:
     """
     global _cached_client, _cached_backend
 
-    backend = os.environ.get("GEMINI_BACKEND", "api_key").lower()
+    backend = os.environ.get("GEMINI_BACKEND", "vertexai").lower()
 
     # 缓存命中，直接返回
     if _cached_client is not None and _cached_backend == backend:
@@ -40,13 +40,19 @@ def get_client() -> genai.Client:
 
     if backend == "vertexai":
         project = os.environ.get("GOOGLE_CLOUD_PROJECT")
-        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
         if not project:
-            raise ValueError(
-                "Vertex AI 模式需要设置 GOOGLE_CLOUD_PROJECT 环境变量"
-            )
-        logger.info(f"创建 Gemini 客户端（Vertex AI）: project={project}, location={location}")
-        _cached_client = genai.Client(vertexai=True, project=project, location=location)
+            raise ValueError("Vertex AI 模式需要设置 GOOGLE_CLOUD_PROJECT 环境变量")
+        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
+        logger.info(
+            "创建 Gemini 客户端（Vertex AI）: project=%s, location=%s",
+            project,
+            location,
+        )
+        _cached_client = genai.Client(
+            vertexai=True,
+            project=project,
+            location=location,
+        )
     elif backend == "api_key":
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:

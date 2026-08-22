@@ -19,7 +19,10 @@ OURA_TOKEN_URL = "https://api.ouraring.com/oauth/token"
 
 class OuraAPIError(Exception):
     """Oura API错误"""
-    pass
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class OuraClient:
@@ -62,10 +65,7 @@ class OuraClient:
             "workout",
             "session",
             "tag",
-            "sleep",
             "spo2",
-            "stress",
-            "ring_configuration",
         ]
         scope_str = "+".join(scopes)
 
@@ -145,7 +145,10 @@ class OuraClient:
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Oura令牌刷新失败: {e.response.status_code} {e.response.text}")
-            raise OuraAPIError(f"令牌刷新失败: {e.response.text}")
+            raise OuraAPIError(
+                f"令牌刷新失败: {e.response.text}",
+                status_code=e.response.status_code,
+            )
         except Exception as e:
             logger.error(f"Oura令牌刷新异常: {str(e)}")
             raise OuraAPIError(f"令牌刷新异常: {str(e)}")
@@ -180,10 +183,39 @@ class OuraClient:
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Oura API请求失败: {endpoint} - {e.response.status_code}")
-            raise OuraAPIError(f"API请求失败: {e.response.status_code}")
+            raise OuraAPIError(
+                f"API请求失败: {e.response.status_code}",
+                status_code=e.response.status_code,
+            )
         except Exception as e:
             logger.error(f"Oura API请求异常: {endpoint} - {str(e)}")
             raise OuraAPIError(f"API请求异常: {str(e)}")
+
+    async def _get_paginated_collection(
+        self,
+        endpoint: str,
+        access_token: str,
+        params: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """读取完整 collection，严格跟随 Oura 的 next_token。"""
+        items: List[Dict[str, Any]] = []
+        request_params = dict(params)
+        seen_tokens = set()
+
+        for _ in range(100):
+            response = await self._make_request(
+                "GET", endpoint, access_token, params=request_params
+            )
+            items.extend(response.get("data") or [])
+            next_token = response.get("next_token")
+            if not next_token:
+                return items
+            if next_token in seen_tokens:
+                raise OuraAPIError(f"分页令牌重复: {endpoint}")
+            seen_tokens.add(next_token)
+            request_params["next_token"] = next_token
+
+        raise OuraAPIError(f"分页超过安全上限: {endpoint}")
 
     async def get_personal_info(self, access_token: str) -> Optional[Dict[str, Any]]:
         """
@@ -202,6 +234,18 @@ class OuraClient:
         except OuraAPIError as e:
             logger.error(f"获取Oura个人信息失败: {str(e)}")
             return None
+
+    async def validate_access_token(self, access_token: str) -> None:
+        """Validate a token without swallowing an HTTP 401.
+
+        Oura access tokens can be revoked before the locally recorded expiry
+        time. Callers use the status code to force one refresh-and-retry cycle.
+        """
+        await self._make_request(
+            "GET",
+            "/usercollection/personal_info",
+            access_token,
+        )
 
     async def get_daily_sleep(
         self, access_token: str, start_date: date, end_date: date
@@ -455,7 +499,7 @@ class OuraClient:
                 "end_date": end_date.isoformat(),
             }
             response = await self._make_request(
-                "GET", "/usercollection/vo2_max", access_token, params=params
+                "GET", "/usercollection/vO2_max", access_token, params=params
             )
             data = response.get("data", [])
             logger.info(f"成功获取{len(data)}条Oura VO2 Max数据")
@@ -512,18 +556,108 @@ class OuraClient:
                 "start_datetime": start_datetime.isoformat(),
                 "end_datetime": end_datetime.isoformat(),
             }
-            response = await self._make_request(
-                "GET", "/usercollection/heartrate", access_token, params=params
+            data = await self._get_paginated_collection(
+                "/usercollection/heartrate", access_token, params
             )
-            data = response.get("data", [])
             logger.info(f"成功获取{len(data)}条Oura心率数据")
             return data
         except OuraAPIError as e:
             logger.error(f"获取Oura心率数据失败: {str(e)}")
             return []
 
-    async def get_all_daily_data(
+    async def get_workouts(
         self, access_token: str, start_date: date, end_date: date
+    ) -> List[Dict[str, Any]]:
+        """获取完整运动记录。"""
+        params = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }
+        try:
+            data = await self._get_paginated_collection(
+                "/usercollection/workout", access_token, params
+            )
+            logger.info(f"成功获取{len(data)}条Oura运动记录")
+            return data
+        except OuraAPIError as e:
+            logger.warning(f"获取Oura运动记录失败: {str(e)}")
+            return []
+
+    async def get_enhanced_tags(
+        self, access_token: str, start_date: date, end_date: date
+    ) -> List[Dict[str, Any]]:
+        """获取完整增强标签。"""
+        params = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }
+        try:
+            data = await self._get_paginated_collection(
+                "/usercollection/enhanced_tag", access_token, params
+            )
+            logger.info(f"成功获取{len(data)}条Oura增强标签")
+            return data
+        except OuraAPIError as e:
+            logger.warning(f"获取Oura增强标签失败: {str(e)}")
+            return []
+
+    async def get_rest_mode_periods(
+        self, access_token: str, start_date: date, end_date: date
+    ) -> List[Dict[str, Any]]:
+        """获取完整休息模式周期。"""
+        params = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }
+        try:
+            data = await self._get_paginated_collection(
+                "/usercollection/rest_mode_period", access_token, params
+            )
+            logger.info(f"成功获取{len(data)}条Oura休息模式周期")
+            return data
+        except OuraAPIError as e:
+            logger.warning(f"获取Oura休息模式周期失败: {str(e)}")
+            return []
+
+    async def probe_capabilities(
+        self, access_token: str, probe_date: Optional[date] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """探测各独立端点权限；单个 401 不代表整个 OAuth 失效。"""
+        probe_day = probe_date or date.today()
+        date_params = {
+            "start_date": probe_day.isoformat(),
+            "end_date": (probe_day + timedelta(days=1)).isoformat(),
+        }
+        endpoints = {
+            "workout": "/usercollection/workout",
+            "enhanced_tag": "/usercollection/enhanced_tag",
+            "rest_mode_period": "/usercollection/rest_mode_period",
+            "daily_resilience": "/usercollection/daily_resilience",
+            "vo2_max": "/usercollection/vO2_max",
+            "daily_cardiovascular_age": "/usercollection/daily_cardiovascular_age",
+            "ring_configuration": "/usercollection/ring_configuration",
+            "ring_battery_level": "/usercollection/ring_battery_level",
+        }
+        capabilities: Dict[str, Dict[str, Any]] = {}
+        for name, endpoint in endpoints.items():
+            try:
+                await self._make_request(
+                    "GET", endpoint, access_token, params=date_params
+                )
+                capabilities[name] = {"available": True, "status_code": 200}
+            except OuraAPIError as exc:
+                capabilities[name] = {
+                    "available": False,
+                    "status_code": exc.status_code,
+                }
+        return capabilities
+
+    async def get_all_daily_data(
+        self,
+        access_token: str,
+        start_date: date,
+        end_date: date,
+        capabilities: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         获取所有每日数据（睡眠、准备度、活动、压力、血氧、心血管年龄、韧性、VO2 Max）
@@ -547,31 +681,65 @@ class OuraClient:
             "resilience": [],
             "vo2_max": [],
             "sleep_time": [],
+            "workout": [],
+            "enhanced_tag": [],
+            "rest_mode_period": [],
         }
 
         # 并行获取所有数据
         import asyncio
 
-        tasks = [
-            self.get_daily_sleep(access_token, start_date, end_date),
-            self.get_sleep_details(access_token, start_date, end_date),
-            self.get_daily_readiness(access_token, start_date, end_date),
-            self.get_daily_activity(access_token, start_date, end_date),
-            self.get_daily_stress(access_token, start_date, end_date),
-            self.get_daily_spo2(access_token, start_date, end_date),
-            self.get_daily_cardiovascular_age(access_token, start_date, end_date),
-            self.get_daily_resilience(access_token, start_date, end_date),
-            self.get_vo2_max(access_token, start_date, end_date),
-            self.get_sleep_time(access_token, start_date, end_date),
+        def available(name: str) -> bool:
+            capability = (capabilities or {}).get(name)
+            return capability is None or bool(capability.get("available"))
+
+        calls = [
+            ("sleep", self.get_daily_sleep(access_token, start_date, end_date)),
+            ("sleep_details", self.get_sleep_details(access_token, start_date, end_date)),
+            ("readiness", self.get_daily_readiness(access_token, start_date, end_date)),
+            ("activity", self.get_daily_activity(access_token, start_date, end_date)),
+            ("stress", self.get_daily_stress(access_token, start_date, end_date)),
+            ("spo2", self.get_daily_spo2(access_token, start_date, end_date)),
+            ("sleep_time", self.get_sleep_time(access_token, start_date, end_date)),
         ]
+        optional_calls = [
+            (
+                "cardiovascular_age",
+                "daily_cardiovascular_age",
+                self.get_daily_cardiovascular_age,
+            ),
+            (
+                "resilience",
+                "daily_resilience",
+                self.get_daily_resilience,
+            ),
+            ("vo2_max", "vo2_max", self.get_vo2_max),
+            ("workout", "workout", self.get_workouts),
+            (
+                "enhanced_tag",
+                "enhanced_tag",
+                self.get_enhanced_tags,
+            ),
+            (
+                "rest_mode_period",
+                "rest_mode_period",
+                self.get_rest_mode_periods,
+            ),
+        ]
+        calls.extend(
+            (result_key, method(access_token, start_date, end_date))
+            for result_key, capability_name, method in optional_calls
+            if available(capability_name)
+        )
 
-        data = await asyncio.gather(*tasks, return_exceptions=True)
+        data = await asyncio.gather(
+            *(coroutine for _, coroutine in calls), return_exceptions=True
+        )
 
-        keys = ["sleep", "sleep_details", "readiness", "activity", "stress", "spo2", "cardiovascular_age", "resilience", "vo2_max", "sleep_time"]
-        for i, key in enumerate(keys):
-            if not isinstance(data[i], Exception):
-                results[key] = data[i]
+        for (key, _), value in zip(calls, data):
+            if not isinstance(value, Exception):
+                results[key] = value
             else:
-                logger.error(f"获取{key}数据失败: {data[i]}")
+                logger.error(f"获取{key}数据失败: {value}")
 
         return results

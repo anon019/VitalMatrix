@@ -3,7 +3,7 @@ AI Provider抽象接口
 """
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Message(BaseModel):
@@ -16,6 +16,7 @@ class UserContext(BaseModel):
     """用户上下文"""
     user_id: str
     nickname: Optional[str] = None
+    gender: Optional[str] = None
     health_goal: str
     training_plan: str
     hr_max: Optional[int] = None
@@ -41,9 +42,19 @@ class NutritionDayRecord(BaseModel):
     flags: Optional[Dict[str, bool]] = None
 
 
+class RecentMealRecord(BaseModel):
+    """最近一餐的菜品与营养摘要，用于避免推荐机械重复。"""
+    date: str
+    meal_type: str
+    foods: List[str] = Field(default_factory=list)
+    total_calories: Optional[float] = None
+    total_protein: Optional[float] = None
+
+
 class NutritionData(BaseModel):
     """近7天营养数据"""
-    days: List[NutritionDayRecord] = []
+    days: List[NutritionDayRecord] = Field(default_factory=list)
+    recent_meals: List[RecentMealRecord] = Field(default_factory=list)
 
 
 class OuraData(BaseModel):

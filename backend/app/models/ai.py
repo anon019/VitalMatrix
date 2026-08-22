@@ -4,13 +4,16 @@ AI推荐模型
 from __future__ import annotations
 
 from datetime import datetime, date
-from typing import Optional
-from sqlalchemy import String, Integer, Text, TIMESTAMP, ForeignKey, Date, UniqueConstraint, Index
+from typing import Optional, TYPE_CHECKING
+from sqlalchemy import String, Integer, Text, TIMESTAMP, ForeignKey, Date, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
 from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class AIRecommendation(Base):
@@ -41,6 +44,9 @@ class AIRecommendation(Base):
     # Token使用情况
     prompt_tokens: Mapped[Optional[int]] = mapped_column(Integer, comment="输入Token数")
     completion_tokens: Mapped[Optional[int]] = mapped_column(Integer, comment="输出Token数")
+    generation_metadata: Mapped[Optional[dict]] = mapped_column(
+        JSONB, comment="提示词版本、数据完整度与生成来源元数据"
+    )
 
     # 用户反馈
     user_rating: Mapped[Optional[int]] = mapped_column(Integer, comment="用户评分(1-5)")

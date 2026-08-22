@@ -4,7 +4,7 @@
 import logging
 from datetime import date, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -13,6 +13,7 @@ from app.database.session import get_db
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.models.training import DailyTrainingSummary
+from app.models.nutrition import NutritionDailySummary
 from app.models.oura import (
     OuraSleep, OuraDailySleep, OuraDailyReadiness,
     OuraDailyActivity, OuraDailyStress
@@ -20,6 +21,7 @@ from app.models.oura import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+MAX_TREND_DAYS = 366
 
 
 class SleepTrend(BaseModel):
@@ -56,6 +58,14 @@ class StressTrend(BaseModel):
     recovery_min: List[Optional[int]]
 
 
+class NutritionTrend(BaseModel):
+    calories: List[Optional[float]]
+    protein_g: List[Optional[float]]
+    carbs_g: List[Optional[float]]
+    fat_g: List[Optional[float]]
+    meals_count: List[int]
+
+
 class TrendsResponse(BaseModel):
     dates: List[str]
     sleep: SleepTrend
@@ -63,6 +73,7 @@ class TrendsResponse(BaseModel):
     activity: ActivityTrend
     training: List[TrainingDay]
     stress: StressTrend
+    nutrition: NutritionTrend
 
 
 @router.get("/overview", response_model=TrendsResponse)
@@ -77,6 +88,17 @@ async def get_trends_overview(
 
     返回指定日期范围内的所有健康数据趋势
     """
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date 不能晚于 end_date",
+        )
+    if (end_date - start_date).days + 1 > MAX_TREND_DAYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"趋势查询最多支持 {MAX_TREND_DAYS} 天",
+        )
+
     # 生成日期列表
     dates = []
     current = start_date
@@ -102,6 +124,11 @@ async def get_trends_overview(
     stress_high = []
     stress_recovery = []
     training_data = []
+    nutrition_calories = []
+    nutrition_protein = []
+    nutrition_carbs = []
+    nutrition_fat = []
+    nutrition_meals_count = []
 
     # 批量查询数据
     # 1. 睡眠数据 - 每日综合评分
@@ -177,6 +204,19 @@ async def get_trends_overview(
     )
     training_map = {t.date: t for t in training_result.scalars().all()}
 
+    # 6. 营养数据（仅有真实餐次的汇总会保留）
+    nutrition_result = await db.execute(
+        select(NutritionDailySummary).where(
+            and_(
+                NutritionDailySummary.user_id == current_user.id,
+                NutritionDailySummary.date >= start_date,
+                NutritionDailySummary.date <= end_date,
+                NutritionDailySummary.meals_count > 0,
+            )
+        )
+    )
+    nutrition_map = {n.date: n for n in nutrition_result.scalars().all()}
+
     # 按日期填充数据
     for d in dates:
         # 睡眠
@@ -231,6 +271,13 @@ async def get_trends_overview(
                 total_min=training.total_duration_min
             ))
 
+        nutrition = nutrition_map.get(d)
+        nutrition_calories.append(float(nutrition.total_calories) if nutrition else None)
+        nutrition_protein.append(float(nutrition.total_protein) if nutrition else None)
+        nutrition_carbs.append(float(nutrition.total_carbs) if nutrition else None)
+        nutrition_fat.append(float(nutrition.total_fat) if nutrition else None)
+        nutrition_meals_count.append(nutrition.meals_count if nutrition else 0)
+
     return TrendsResponse(
         dates=date_strs,
         sleep=SleepTrend(
@@ -253,5 +300,12 @@ async def get_trends_overview(
         stress=StressTrend(
             high_min=stress_high,
             recovery_min=stress_recovery
-        )
+        ),
+        nutrition=NutritionTrend(
+            calories=nutrition_calories,
+            protein_g=nutrition_protein,
+            carbs_g=nutrition_carbs,
+            fat_g=nutrition_fat,
+            meals_count=nutrition_meals_count,
+        ),
     )

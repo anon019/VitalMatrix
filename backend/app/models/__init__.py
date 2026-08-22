@@ -7,7 +7,8 @@ from app.models.oura import (
     OuraAuth, OuraSleep, OuraDailyReadiness,
     OuraDailyActivity, OuraDailyStress, OuraDailySpo2,
     OuraDailySleep, OuraCardiovascularAge, OuraResilience, OuraVO2Max,
-    OuraSleepTime
+    OuraSleepTime, OuraWorkout, OuraEnhancedTag, OuraRestModePeriod,
+    OuraHeartRateSample
 )
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.ai import AIRecommendation
@@ -31,6 +32,10 @@ __all__ = [
     "OuraResilience",
     "OuraVO2Max",
     "OuraSleepTime",
+    "OuraWorkout",
+    "OuraEnhancedTag",
+    "OuraRestModePeriod",
+    "OuraHeartRateSample",
     # 训练汇总
     "DailyTrainingSummary",
     "WeeklyTrainingSummary",

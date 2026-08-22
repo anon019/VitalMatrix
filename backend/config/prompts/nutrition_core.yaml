@@ -1,0 +1,110 @@
+version: nutrition-core-v1
+
+system_prompt: |
+  你是一位谨慎、务实的饮食健康助手。只完成本餐图片的食物识别、营养估算和简短评价。
+  图片分析是估算。无论照片是一人餐、一桌家常菜还是多人聚餐，都必须结合用户年龄、身高、体重、餐次和正常单人食量，自主估算该用户实际可能摄入的份额；营养合计只计算单人摄入，不按整桌总量计算。
+  不得向用户追问“几人分食”“吃了几根”“实际吃了多少”等问题，也不要要求二次确认。看不清的内容用保守的单人份中位估计处理，并在 portion_assumption 中用一句话说明依据。
+  合计值要与食物项大致一致，建议简短具体。不要生成食谱、未来餐单、烹饪步骤或长篇科普。
+
+user_prompt_template: |
+  分析这张【{meal_type}】照片，用餐时间为 {meal_time}。
+
+  {user_context}
+
+  仅返回本餐核心分析。控制文字长度，优先保证 JSON 完整。
+
+response_schema:
+  type: object
+  required: [identified_foods, nutrition_summary, nutrition_analysis, health_insights, analysis_quality]
+  properties:
+    identified_foods:
+      type: array
+      minItems: 1
+      maxItems: 12
+      items:
+        type: object
+        required: [name, category, weight_g, calories, protein, carbs, fat, confidence]
+        properties:
+          name: {type: string}
+          category:
+            type: string
+            enum: [staple, protein, vegetable, fruit, dairy, fat, beverage, snack, other]
+          weight_g: {type: number}
+          calories: {type: number}
+          protein: {type: number}
+          carbs: {type: number}
+          fat: {type: number}
+          fiber: {type: number}
+          sodium: {type: number}
+          confidence: {type: string, enum: [high, medium, low]}
+          notes: {type: string}
+    nutrition_summary:
+      type: object
+      required: [total_calories, total_protein, total_carbs, total_fat, total_fiber, total_weight]
+      properties:
+        total_calories: {type: number}
+        total_protein: {type: number}
+        total_carbs: {type: number}
+        total_fat: {type: number}
+        total_fiber: {type: number}
+        total_weight: {type: number}
+        calorie_range_low: {type: number}
+        calorie_range_high: {type: number}
+        estimate_note: {type: string}
+    nutrition_analysis:
+      type: object
+      required: [carbs_analysis, protein_analysis, fat_analysis, sodium_warning, overall_rating, overall_score]
+      properties:
+        carbs_analysis:
+          type: object
+          required: [rating, score, comment]
+          properties:
+            rating: {type: string, enum: [充足, 适中, 不足, 过量]}
+            score: {type: integer}
+            comment: {type: string}
+        protein_analysis:
+          type: object
+          required: [rating, score, comment]
+          properties:
+            rating: {type: string, enum: [充足, 适中, 不足, 过量]}
+            score: {type: integer}
+            comment: {type: string}
+        fat_analysis:
+          type: object
+          required: [rating, score, comment]
+          properties:
+            rating: {type: string, enum: [合理, 偏高, 偏低, 过高]}
+            score: {type: integer}
+            comment: {type: string}
+        sodium_warning: {type: boolean}
+        sodium_comment: {type: string}
+        overall_rating: {type: string, enum: [优秀, 良好, 一般, 需改善]}
+        overall_score: {type: integer}
+        overall_comment: {type: string}
+    health_insights:
+      type: object
+      required: [strengths, weaknesses, risk_level, risk_factors, uncertainty_notes]
+      properties:
+        strengths: {type: array, items: {type: string}, maxItems: 3}
+        weaknesses: {type: array, items: {type: string}, maxItems: 3}
+        risk_level: {type: string, enum: [low, medium, high]}
+        risk_factors: {type: array, items: {type: string}, maxItems: 3}
+        uncertainty_notes: {type: array, items: {type: string}, maxItems: 3}
+    analysis_quality:
+      type: object
+      required: [overall_confidence, portion_assumption]
+      properties:
+        overall_confidence: {type: string, enum: [high, medium, low]}
+        portion_assumption: {type: string}
+
+user_context_template: |
+  用户资料：性别 {gender}；年龄 {age}；体重 {weight}kg；身高 {height}cm；健康目标 {health_goal}；训练计划 {training_plan}。
+
+meal_types:
+  breakfast: 早餐
+  lunch: 午餐
+  dinner: 晚餐
+  snack: 加餐
+
+json_instruction: |
+  直接返回符合约定结构的 JSON，不要包含 Markdown。营养数值使用数字，文字字段保持简短。禁止向用户提问。

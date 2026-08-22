@@ -4,14 +4,29 @@ Oura Ring数据模型
 from __future__ import annotations
 
 from datetime import datetime, date
-from typing import Optional
-from sqlalchemy import String, Integer, DECIMAL, TIMESTAMP, ForeignKey, Text, Index, Date, Float
+from typing import Optional, TYPE_CHECKING
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    String,
+    Integer,
+    DECIMAL,
+    TIMESTAMP,
+    ForeignKey,
+    Text,
+    Index,
+    Date,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
 from app.database.base import Base
 from app.utils.crypto import EncryptedText
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class OuraAuth(Base):
@@ -31,6 +46,15 @@ class OuraAuth(Base):
     refresh_token: Mapped[Optional[str]] = mapped_column(EncryptedText, comment="刷新令牌(加密)")
     token_expires_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), comment="令牌过期时间"
+    )
+    oura_user_id: Mapped[Optional[str]] = mapped_column(
+        String(100)
+    )
+    personal_info: Mapped[Optional[dict]] = mapped_column(
+        JSONB
+    )
+    capabilities: Mapped[Optional[dict]] = mapped_column(
+        JSONB
     )
 
     # 授权状态
@@ -208,6 +232,36 @@ class OuraSleep(Base):
         DECIMAL(4, 2), comment="体温趋势偏差(°C)"
     )
 
+    # 高频睡眠序列及设备/算法元数据
+    heart_rate_samples: Mapped[Optional[dict]] = mapped_column(
+        JSONB
+    )
+    hrv_samples: Mapped[Optional[dict]] = mapped_column(
+        JSONB
+    )
+    sleep_phase_30_sec: Mapped[Optional[str]] = mapped_column(
+        Text
+    )
+    sleep_phase_5_min: Mapped[Optional[str]] = mapped_column(
+        Text
+    )
+    app_sleep_phase_5_min: Mapped[Optional[str]] = mapped_column(
+        Text
+    )
+    movement_30_sec: Mapped[Optional[str]] = mapped_column(
+        Text
+    )
+    low_battery_alert: Mapped[Optional[bool]] = mapped_column(
+        Boolean
+    )
+    period: Mapped[Optional[int]] = mapped_column(Integer)
+    sleep_algorithm_version: Mapped[Optional[str]] = mapped_column(
+        String(50)
+    )
+    sleep_analysis_reason: Mapped[Optional[str]] = mapped_column(
+        String(100)
+    )
+
     # 原始JSON数据
     raw_json: Mapped[Optional[dict]] = mapped_column(JSONB, comment="完整原始数据")
 
@@ -286,6 +340,9 @@ class OuraDailySleep(Base):
     contributor_total_sleep: Mapped[Optional[int]] = mapped_column(
         Integer, comment="总睡眠时长贡献分数"
     )
+    source_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True)
+    )
 
     # 原始JSON数据
     raw_json: Mapped[Optional[dict]] = mapped_column(JSONB, comment="完整原始数据")
@@ -357,6 +414,9 @@ class OuraDailyReadiness(Base):
     )
     sleep_regularity: Mapped[Optional[int]] = mapped_column(
         Integer, comment="睡眠规律性分数(0-100)"
+    )
+    source_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True)
     )
 
     # 原始JSON数据
@@ -467,6 +527,27 @@ class OuraDailyActivity(Base):
     )
     average_met_minutes: Mapped[Optional[float]] = mapped_column(
         DECIMAL(8, 4), comment="平均MET分钟"
+    )
+    source_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True)
+    )
+    class_5_min: Mapped[Optional[str]] = mapped_column(
+        Text
+    )
+    met_samples: Mapped[Optional[dict]] = mapped_column(
+        JSONB
+    )
+    high_activity_met_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer
+    )
+    medium_activity_met_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer
+    )
+    low_activity_met_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer
+    )
+    sedentary_met_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer
     )
 
     # 原始JSON数据
@@ -591,6 +672,9 @@ class OuraCardiovascularAge(Base):
     vascular_age: Mapped[Optional[int]] = mapped_column(
         Integer, comment="血管年龄(岁)"
     )
+    pulse_wave_velocity: Mapped[Optional[float]] = mapped_column(
+        DECIMAL(6, 3)
+    )
 
     # 原始JSON数据
     raw_json: Mapped[Optional[dict]] = mapped_column(JSONB, comment="完整原始数据")
@@ -675,6 +759,9 @@ class OuraVO2Max(Base):
     # VO2 Max值
     vo2_max: Mapped[Optional[float]] = mapped_column(
         DECIMAL(5, 2), comment="VO2 Max(ml/kg/min)"
+    )
+    source_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True)
     )
 
     # 原始JSON数据
@@ -762,6 +849,122 @@ class OuraSleepTime(Base):
         return f"{hours:02d}:{minutes:02d}"
 
 
-# 注意: OuraDailyHeartRate 模型已移除
-# 方案A: 使用现有 sleep 表的 lowest_heart_rate/average_heart_rate 字段
-# 如需活动心率数据，可从 Oura heartrate API 聚合（暂不实现）
+class OuraWorkout(Base):
+    """Oura 自动/手动记录的运动。"""
+
+    __tablename__ = "oura_workouts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    oura_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    activity: Mapped[Optional[str]] = mapped_column(String(100))
+    calories: Mapped[Optional[float]] = mapped_column(DECIMAL(10, 2))
+    distance: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 2))
+    start_datetime: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    end_datetime: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    intensity: Mapped[Optional[str]] = mapped_column(String(50))
+    label: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[Optional[str]] = mapped_column(String(50))
+    raw_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+
+    user: Mapped["User"] = relationship("User", back_populates="oura_workout_records")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "oura_id", name="uq_oura_workouts_user_oura"),
+        Index("idx_oura_workouts_user_day", "user_id", "day"),
+        Index("idx_oura_workouts_user_start", "user_id", "start_datetime"),
+    )
+
+
+class OuraEnhancedTag(Base):
+    """Oura 增强标签（症状、习惯及自定义标签）。"""
+
+    __tablename__ = "oura_enhanced_tags"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    oura_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    tag_type_code: Mapped[Optional[str]] = mapped_column(String(100))
+    start_time: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    end_time: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    start_day: Mapped[Optional[date]] = mapped_column(Date)
+    end_day: Mapped[Optional[date]] = mapped_column(Date)
+    comment: Mapped[Optional[str]] = mapped_column(Text)
+    custom_name: Mapped[Optional[str]] = mapped_column(String(200))
+    raw_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+
+    user: Mapped["User"] = relationship("User", back_populates="oura_enhanced_tag_records")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "oura_id", name="uq_oura_enhanced_tags_user_oura"),
+        Index("idx_oura_enhanced_tags_user_day", "user_id", "start_day"),
+        Index("idx_oura_enhanced_tags_user_time", "user_id", "start_time"),
+    )
+
+
+class OuraRestModePeriod(Base):
+    """Oura 休息模式周期。"""
+
+    __tablename__ = "oura_rest_mode_periods"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    oura_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    start_day: Mapped[Optional[date]] = mapped_column(Date)
+    end_day: Mapped[Optional[date]] = mapped_column(Date)
+    start_time: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    end_time: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    episodes: Mapped[Optional[dict]] = mapped_column(JSONB)
+    raw_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+
+    user: Mapped["User"] = relationship("User", back_populates="oura_rest_mode_records")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "oura_id", name="uq_oura_rest_mode_user_oura"),
+        Index("idx_oura_rest_mode_user_day", "user_id", "start_day"),
+    )
+
+
+class OuraHeartRateSample(Base):
+    """Oura 日间连续心率采样。"""
+
+    __tablename__ = "oura_heart_rate_samples"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    producer_timestamp: Mapped[Optional[int]] = mapped_column(BigInteger)
+    bpm: Mapped[int] = mapped_column(Integer, nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
+
+    user: Mapped["User"] = relationship("User", back_populates="oura_heart_rate_samples")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "timestamp", name="uq_oura_hr_user_timestamp"),
+        Index("idx_oura_hr_user_timestamp", "user_id", "timestamp"),
+    )

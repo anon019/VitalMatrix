@@ -1,7 +1,4 @@
-import { useState, useEffect } from 'react'
-import { trends } from '@/services/api'
-import type { TrendsOverview, TimeRange, DateRange } from '@/types'
-import { getDateRange } from '@/utils/date'
+import { useTrendsPage } from '@/hooks/useTrendsPage'
 import TimeRangeSelector from '@/components/TimeRangeSelector'
 import TrendChart from '@/components/TrendChart'
 import StatCard from '@/components/StatCard'
@@ -15,34 +12,7 @@ const COLORS = {
 }
 
 export default function Activity() {
-  const [timeRange, setTimeRange] = useState<TimeRange>('7d')
-  const [customRange, setCustomRange] = useState<DateRange | undefined>()
-  const [data, setData] = useState<TrendsOverview | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const dates = timeRange === 'custom' && customRange
-      ? customRange
-      : getDateRange(timeRange === 'custom' ? '7d' : timeRange)
-
-    setLoading(true)
-    setError(null)
-    trends.getOverview(dates.startDate, dates.endDate)
-      .then(setData)
-      .catch((err) => {
-        console.error('Failed to fetch activity data:', err)
-        setError('加载活动数据失败，请稍后重试')
-      })
-      .finally(() => setLoading(false))
-  }, [timeRange, customRange])
-
-  const handleRangeChange = (range: TimeRange, dates?: DateRange) => {
-    setTimeRange(range)
-    if (range === 'custom' && dates) {
-      setCustomRange(dates)
-    }
-  }
+  const { timeRange, customRange, data, loading, error, handleRangeChange } = useTrendsPage('加载活动数据失败，请稍后重试')
 
   const lastIdx = data?.dates?.length ? data.dates.length - 1 : -1
   const latestDate = lastIdx >= 0 ? data?.dates[lastIdx] : null
@@ -66,10 +36,10 @@ export default function Activity() {
     calories: data.activity.active_calories[i],
   })) || []
 
-  // 久坐时间数据（秒转小时）
+  // 后端统一返回分钟，图表直接使用分钟。
   const sedentaryData = data?.dates?.map((date, i) => ({
     date,
-    sedentary: data.activity.sedentary_min[i] ? Math.round(data.activity.sedentary_min[i]! / 360) / 10 : null,
+    sedentary: data.activity.sedentary_min[i],
   })) || []
 
   if (loading) {
@@ -111,7 +81,7 @@ export default function Activity() {
         />
         <StatCard
           title="久坐时间"
-          value={latestSedentary ? (latestSedentary / 3600).toFixed(1) : null}
+          value={latestSedentary != null ? (latestSedentary / 60).toFixed(1) : null}
           unit="小时"
           color={COLORS.sedentary}
         />
@@ -144,7 +114,7 @@ export default function Activity() {
         title="久坐时间"
         data={sedentaryData}
         lines={[{ dataKey: 'sedentary', name: '久坐', color: COLORS.sedentary }]}
-        formatValue={(v) => `${v}小时`}
+        formatValue={(v) => `${v}分钟`}
         showStats
       />
     </div>

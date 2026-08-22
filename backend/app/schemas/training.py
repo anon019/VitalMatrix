@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ZoneMetrics(BaseModel):
@@ -53,8 +53,7 @@ class ExerciseResponse(BaseModel):
     zone2_ratio: float
     hi_ratio: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailySummaryResponse(BaseModel):
@@ -70,8 +69,7 @@ class DailySummaryResponse(BaseModel):
     avg_hr: Optional[int]
     flags: Optional[dict]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WeeklySummaryResponse(BaseModel):
@@ -85,8 +83,7 @@ class WeeklySummaryResponse(BaseModel):
     training_days: int
     rest_days: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TrainingHistoryResponse(BaseModel):

@@ -2,19 +2,20 @@
 定时任务调度
 """
 import asyncio
+import os
 import logging
 from datetime import timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import desc, select, exists
+from sqlalchemy import desc, select, exists, func
 
 from app.database.session import AsyncSessionLocal
 from app.models.user import User
 from app.models.polar import PolarAuth
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.oura import (
-    OuraAuth, OuraSleep, OuraDailyReadiness,
+    OuraAuth, OuraSleep, OuraDailySleep, OuraDailyReadiness,
     OuraDailyActivity, OuraDailyStress
 )
 from app.models.health_report import HealthReport
@@ -29,7 +30,51 @@ logger = logging.getLogger(__name__)
 
 # 创建调度器
 scheduler = AsyncIOScheduler(timezone="Asia/Hong_Kong")
-MAX_CONCURRENT_USER_TASKS = 8
+MAX_CONCURRENT_USER_TASKS = 3
+
+
+async def send_server_alert(title: str, body: str) -> bool:
+    """发送到服务器监控频道。优先复用现有巡检通知脚本。"""
+    alert_script = settings.SERVER_ALERT_SCRIPT
+    if alert_script and os.path.exists(alert_script):
+        process = await asyncio.create_subprocess_exec(
+            "bash",
+            alert_script,
+            title,
+            body,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        return await process.wait() == 0
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        logger.warning("服务器告警未发送：缺少 Telegram 配置和通知脚本")
+        return False
+
+    message = (
+        f"⚠️ <b>{title}</b>\n"
+        f"🖥 主机: {os.uname().nodename}\n"
+        f"🕐 时间: {now_hk().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"{body}"
+    )
+    process = await asyncio.create_subprocess_exec(
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        "-d",
+        f"chat_id={chat_id}",
+        "-d",
+        "parse_mode=HTML",
+        "--data-urlencode",
+        f"text={message}",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    return await process.wait() == 0
 
 
 async def _run_user_tasks(users, task_handler):
@@ -89,11 +134,11 @@ async def sync_polar_data_job():
 
         async def _sync_user(user):
             async with AsyncSessionLocal() as db:
-                polar_sync_service = PolarSyncService(db)
-                new_count, new_duration_min = await polar_sync_service.sync_user_exercises(
-                    user_id=user.id,
-                    days=2
-                )
+                async with PolarSyncService(db) as polar_sync_service:
+                    new_count, new_duration_min = await polar_sync_service.sync_user_exercises(
+                        user_id=user.id,
+                        days=2
+                    )
             logger.info(f"用户{user.id}同步成功: 新增{new_count}条记录, 时长{new_duration_min}分钟")
             return ("success", None)
 
@@ -132,14 +177,14 @@ async def sync_oura_data_job():
 
         async def _sync_user(user):
             async with AsyncSessionLocal() as db:
-                oura_sync_service = OuraSyncService(db)
-                # 强制更新以获取最新完整数据（用户起床后数据才完整）
-                # days=3: 避免Oura API边界bug导致的数据遗漏
-                stats = await oura_sync_service.sync_user_data(
-                    user_id=user.id,
-                    days=3,
-                    force=True
-                )
+                async with OuraSyncService(db) as oura_sync_service:
+                    # 强制更新以获取最新完整数据（用户起床后数据才完整）
+                    # days=3: 避免Oura API边界bug导致的数据遗漏
+                    stats = await oura_sync_service.sync_user_data(
+                        user_id=user.id,
+                        days=3,
+                        force=True
+                    )
             total = sum(stats.values())
             logger.info(f"用户{user.id}Oura同步成功: 更新{total}条记录")
             return ("success", None)
@@ -322,12 +367,12 @@ async def sync_oura_data_retry_job():
 
         async def _sync_user(user):
             async with AsyncSessionLocal() as db:
-                oura_sync_service = OuraSyncService(db)
-                stats = await oura_sync_service.sync_user_data(
-                    user_id=user.id,
-                    days=3,
-                    force=True
-                )
+                async with OuraSyncService(db) as oura_sync_service:
+                    stats = await oura_sync_service.sync_user_data(
+                        user_id=user.id,
+                        days=3,
+                        force=True
+                    )
                 total = sum(stats.values())
                 logger.info(f"用户{user.id}Oura第二轮同步完成: 更新{total}条记录")
                 return "success"
@@ -430,13 +475,12 @@ async def poll_polar_notifications_job():
 
         async def _poll_user(user):
             async with AsyncSessionLocal() as db:
-                polar_sync_service = PolarSyncService(db)
-
-                # 同步最近1天的数据（增量）
-                new_count, new_duration_min = await polar_sync_service.sync_user_exercises(
-                    user_id=user.id,
-                    days=1
-                )
+                async with PolarSyncService(db) as polar_sync_service:
+                    # 同步最近1天的数据（增量）
+                    new_count, new_duration_min = await polar_sync_service.sync_user_exercises(
+                        user_id=user.id,
+                        days=1
+                    )
 
                 if new_count > 0:
                     logger.info(
@@ -467,31 +511,29 @@ async def poll_polar_notifications_job():
         logger.error(f"❌ Polar新数据轮询任务失败: {str(e)}")
 
 
-@scheduler.scheduled_job(IntervalTrigger(minutes=15))
+@scheduler.scheduled_job(CronTrigger(hour=20, minute=30))
 async def poll_oura_data_job():
     """
-    定时任务: 每15分钟轮询Oura新数据
+    定时任务: 每天20:30对账Oura新数据
 
-    同步最新的睡眠、准备度、活动等数据
-    注意：对今天的数据强制更新，确保活动数据实时更新
+    实时更新由 Oura webhook 触发；本任务作为漏通知兜底。
     """
-    logger.info("🔔 开始执行定时任务: Oura新数据轮询")
+    logger.info("🔔 开始执行定时任务: Oura webhook日终对账")
 
     try:
         users = await get_oura_active_users()
 
         async def _poll_user(user):
             async with AsyncSessionLocal() as db:
-                oura_sync_service = OuraSyncService(db)
-
-                # 轮询任务：只获取今天和昨天的数据
-                # force_recent_days=2: 强制更新这2天（处理API数据延迟）
-                # days=2: 减少API调用量，第3天由7:30/8:20定时任务兜底
-                stats = await oura_sync_service.sync_user_data(
-                    user_id=user.id,
-                    days=2,
-                    force_recent_days=2
-                )
+                async with OuraSyncService(db) as oura_sync_service:
+                    # 日终对账：只获取今天和昨天的数据
+                    # force_recent_days=2: 强制更新这2天（处理API数据延迟）
+                    # days=2: 减少API调用量，第3天由7:30/8:20定时任务兜底
+                    stats = await oura_sync_service.sync_user_data(
+                        user_id=user.id,
+                        days=2,
+                        force_recent_days=2
+                    )
 
                 total = sum(stats.values())
                 if total > 0:
@@ -512,6 +554,94 @@ async def poll_oura_data_job():
 
     except Exception as e:
         logger.error(f"❌ Oura新数据轮询任务失败: {str(e)}")
+
+
+@scheduler.scheduled_job(CronTrigger(hour=9, minute=15))
+async def oura_health_guard_job():
+    """
+    定时任务: 每天9:15检查 Oura 授权和数据新鲜度
+
+    早间同步和 AI 兜底任务之后运行，发现 token 无法续期或核心数据滞后时发服务器监控告警。
+    """
+    logger.info("🛡️ 开始执行定时任务: Oura健康巡检")
+
+    try:
+        users = await get_oura_active_users()
+        today = today_hk()
+        min_expected_day = today - timedelta(days=settings.OURA_DATA_STALE_ALERT_DAYS)
+        refresh_deadline = now_hk() + timedelta(days=settings.OURA_TOKEN_REFRESH_THRESHOLD_DAYS)
+
+        async def _check_user(user):
+            alerts = []
+            async with AsyncSessionLocal() as db:
+                async with OuraSyncService(db) as oura_sync_service:
+                    access_token = await oura_sync_service.get_access_token(user.id)
+
+                auth_result = await db.execute(
+                    select(OuraAuth).where(OuraAuth.user_id == user.id)
+                )
+                auth = auth_result.scalar_one_or_none()
+
+                if not access_token:
+                    alerts.append("Oura access token 无法获取，通常需要重新授权。")
+                elif not auth or not auth.token_expires_at:
+                    alerts.append("Oura token 过期时间缺失，请检查授权记录。")
+                elif auth.token_expires_at < now_hk():
+                    alerts.append(
+                        f"Oura token 已过期: {auth.token_expires_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                elif auth.token_expires_at <= refresh_deadline:
+                    alerts.append(
+                        "Oura token 即将过期且未能提前刷新: "
+                        f"{auth.token_expires_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+
+                data_sources = [
+                    ("每日睡眠", OuraDailySleep, OuraDailySleep.day),
+                    ("睡眠详情", OuraSleep, OuraSleep.day),
+                    ("准备度", OuraDailyReadiness, OuraDailyReadiness.day),
+                    ("活动", OuraDailyActivity, OuraDailyActivity.day),
+                    ("压力", OuraDailyStress, OuraDailyStress.day),
+                ]
+                for label, model, day_column in data_sources:
+                    result = await db.execute(
+                        select(func.max(day_column)).where(model.user_id == user.id)
+                    )
+                    latest_day = result.scalar_one_or_none()
+                    if latest_day is None:
+                        alerts.append(f"{label}没有任何入库数据。")
+                    elif latest_day < min_expected_day:
+                        alerts.append(
+                            f"{label}数据滞后，最新日期 {latest_day.isoformat()}，"
+                            f"期望至少 {min_expected_day.isoformat()}。"
+                        )
+
+            return alerts
+
+        results = await _run_user_tasks(users, _check_user)
+
+        alert_blocks = []
+        for user, result in zip(users, results):
+            if isinstance(result, Exception):
+                logger.error(f"用户{user.id}Oura健康巡检失败: {str(result)}")
+                alert_blocks.append(f"用户 {user.id}: 巡检异常 {str(result)}")
+            elif result:
+                alert_blocks.append(
+                    "用户 "
+                    f"{user.id}:\n"
+                    + "\n".join(f"  • {line}" for line in result)
+                )
+
+        if alert_blocks:
+            body = "\n\n".join(alert_blocks)
+            sent = await send_server_alert("Health Oura 数据告警", body)
+            logger.warning(f"Oura健康巡检发现异常，告警发送结果={sent}: {body}")
+        else:
+            logger.info("✅ Oura健康巡检通过")
+
+    except Exception as e:
+        logger.error(f"❌ Oura健康巡检任务失败: {str(e)}")
+        await send_server_alert("Health Oura 巡检任务失败", str(e))
 
 
 # 暂时禁用：MCP查询功能未使用
@@ -746,10 +876,12 @@ def start_scheduler():
         logger.info("  - 8:20 Oura数据重新同步")
         logger.info("  - 8:30 AI建议兜底生成（跳过已生成的用户）")
         logger.info("  【其他定时任务】")
+        logger.info("  - 9:15 Oura授权和数据新鲜度巡检")
         logger.info("  - 02:05 更新营养日汇总")
-        logger.info("  【轮询任务】(仅同步数据，不触发AI)")
+        logger.info("  【增量同步】(仅同步数据，不触发AI)")
         logger.info("  - 每15分钟 Polar新数据轮询")
-        logger.info("  - 每15分钟 Oura新数据轮询")
+        logger.info("  - 每5分钟恢复未完成的餐食扩展建议")
+        logger.info("  - Oura webhook实时同步 + 20:30日终对账")
     except Exception as e:
         logger.error(f"❌ 任务调度器启动失败: {str(e)}")
 
@@ -802,6 +934,23 @@ async def update_nutrition_daily_summaries_job():
 
     except Exception as e:
         logger.error(f"❌ 营养日汇总更新任务失败: {str(e)}")
+
+
+@scheduler.scheduled_job(
+    IntervalTrigger(minutes=5),
+    max_instances=1,
+    coalesce=True,
+)
+async def resume_nutrition_recommendations_job():
+    """恢复服务重启或模型瞬时失败留下的扩展建议任务。"""
+    try:
+        from app.services.nutrition_service import get_nutrition_service
+
+        completed = await get_nutrition_service().resume_pending_recommendations(limit=5)
+        if completed:
+            logger.info("✅ 恢复餐食扩展建议任务: completed=%s", completed)
+    except Exception:
+        logger.exception("❌ 恢复餐食扩展建议任务失败")
 
 
 

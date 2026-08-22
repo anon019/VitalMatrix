@@ -5,7 +5,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
-from sqlalchemy import String, Integer, DECIMAL, TIMESTAMP, Date, Text, ForeignKey, Enum as SQLEnum, func
+from sqlalchemy import (
+    String, Integer, DECIMAL, TIMESTAMP, Date, Text, ForeignKey, Index,
+    Enum as SQLEnum, UniqueConstraint, func, text,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
@@ -42,6 +45,25 @@ class MealRecord(Base):
     """餐次记录主表"""
 
     __tablename__ = "meal_records"
+    __table_args__ = (
+        Index(
+            "ix_meal_records_dedup_lookup",
+            "user_id",
+            "image_sha256",
+            "created_at",
+            postgresql_where=text(
+                "image_sha256 IS NOT NULL AND analysis_status = 'completed'"
+            ),
+        ),
+        Index(
+            "ix_meal_records_recommendation_queue",
+            "recommendation_status",
+            "recommendation_attempts",
+            "recommendation_updated_at",
+            "created_at",
+            postgresql_where=text("analysis_status = 'completed'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -81,10 +103,37 @@ class MealRecord(Base):
 
     # AI分析相关
     ai_model: Mapped[Optional[str]] = mapped_column(
-        String(100), comment="使用的AI模型名称（如 gemini-3-pro-preview）"
+        String(100), comment="使用的AI模型名称（如 gemini-3.7-flash）"
     )
     gemini_analysis: Mapped[Optional[dict]] = mapped_column(
         JSONB, comment="AI完整输出（包含分析、建议等）"
+    )
+    analysis_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="completed", server_default="completed",
+        index=True, comment="核心识图状态：processing/completed/failed",
+    )
+    recommendation_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="completed", server_default="completed",
+        index=True, comment="扩展建议状态：pending/processing/completed/failed",
+    )
+    analysis_error: Mapped[Optional[str]] = mapped_column(
+        Text, comment="最近一次AI处理错误（不返回模型原始内容）"
+    )
+    image_sha256: Mapped[Optional[str]] = mapped_column(
+        String(64), comment="上传图片摘要，用于短时防重复"
+    )
+    recommendation_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0",
+        comment="扩展建议已尝试次数，用于限制后台自动重试",
+    )
+    analysis_started_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), comment="核心识图开始时间"
+    )
+    analysis_completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), comment="核心识图完成时间"
+    )
+    recommendation_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), comment="扩展建议状态更新时间"
     )
 
     # 用户备注
@@ -174,6 +223,9 @@ class NutritionDailySummary(Base):
     """每日营养汇总表"""
 
     __tablename__ = "nutrition_daily_summary"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_nutrition_daily_summary_user_date"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

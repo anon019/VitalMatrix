@@ -15,9 +15,11 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.polar import PolarAuth, PolarExercise, PolarSleep, PolarNightlyRecharge
     from app.models.oura import (
-        OuraAuth, OuraSleep, OuraDailyReadiness,
+        OuraAuth, OuraSleep, OuraDailySleep, OuraDailyReadiness,
         OuraDailyActivity, OuraDailyStress, OuraDailySpo2,
-        OuraCardiovascularAge, OuraResilience, OuraVO2Max
+        OuraCardiovascularAge, OuraResilience, OuraVO2Max,
+        OuraSleepTime, OuraWorkout, OuraEnhancedTag,
+        OuraRestModePeriod, OuraHeartRateSample
     )
     from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
     from app.models.ai import AIRecommendation
@@ -42,7 +44,9 @@ class User(Base):
     resting_hr: Mapped[Optional[int]] = mapped_column(Integer, comment="静息心率")
     weight: Mapped[Optional[float]] = mapped_column(DECIMAL(5, 2), comment="体重(kg)")
     height: Mapped[Optional[int]] = mapped_column(Integer, comment="身高(cm)")
+    gender: Mapped[Optional[str]] = mapped_column(String(20), comment="性别")
     birth_year: Mapped[Optional[int]] = mapped_column(Integer, comment="出生年份")
+    birth_month: Mapped[Optional[int]] = mapped_column(Integer, comment="出生月份(1-12)")
 
     # 用户设置
     health_goal: Mapped[Optional[str]] = mapped_column(
@@ -106,6 +110,18 @@ class User(Base):
     )
     oura_sleep_time_records: Mapped[List["OuraSleepTime"]] = relationship(
         "OuraSleepTime", back_populates="user"
+    )
+    oura_workout_records: Mapped[List["OuraWorkout"]] = relationship(
+        "OuraWorkout", back_populates="user"
+    )
+    oura_enhanced_tag_records: Mapped[List["OuraEnhancedTag"]] = relationship(
+        "OuraEnhancedTag", back_populates="user"
+    )
+    oura_rest_mode_records: Mapped[List["OuraRestModePeriod"]] = relationship(
+        "OuraRestModePeriod", back_populates="user"
+    )
+    oura_heart_rate_samples: Mapped[List["OuraHeartRateSample"]] = relationship(
+        "OuraHeartRateSample", back_populates="user"
     )
 
     # 关联关系 - 训练汇总

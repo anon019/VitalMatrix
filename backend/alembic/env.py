@@ -1,26 +1,20 @@
 from logging.config import fileConfig
+import sys
+from pathlib import Path
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 
-import sys
-from pathlib import Path
-
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Import settings and models
-from app.config import settings
-from app.database import Base
-
-# Import all models to ensure they are registered with SQLAlchemy
-from app.models.user import User
-from app.models.polar import PolarAuth, PolarExercise
-from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
-from app.models.ai import AIRecommendation
-from app.models.nutrition import MealRecord, FoodItem, NutritionDailySummary
+# These imports intentionally follow the path bootstrap. Importing the models
+# package registers every mapped class in Base.metadata for autogeneration.
+import app.models  # noqa: E402, F401
+from app.config import settings  # noqa: E402
+from app.database import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

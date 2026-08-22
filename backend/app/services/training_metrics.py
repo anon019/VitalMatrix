@@ -206,7 +206,6 @@ class TrainingMetricsService:
                     DailyTrainingSummary.date <= week_end_date,
                 )
             )
-            .order_by(DailyTrainingSummary.date)
         )
         row = result.one()
 
