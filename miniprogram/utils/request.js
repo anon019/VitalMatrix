@@ -5,6 +5,17 @@
 const config = require('./config.js')
 const { formatLocalDate } = require('./date.js')
 
+/**
+ * 将后端返回的相对 API 地址补全为绝对地址。
+ * 不解析、不重组 query，避免破坏签名参数的原始顺序和编码。
+ */
+function resolveApiUrl(value) {
+  if (!value) return ''
+  const url = String(value)
+  if (/^https?:\/\//i.test(url)) return url
+  return `${config.API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
 // ========== 缓存配置 ==========
 const CACHE_CONFIG = {
   '/api/v1/dashboard/today': 10 * 60 * 1000,        // 10分钟
@@ -19,9 +30,10 @@ const CACHE_CONFIG = {
   '/api/v1/training/weekly': 10 * 60 * 1000,        // 10分钟
   '/api/v1/training/history': 10 * 60 * 1000,       // 10分钟
   '/api/v1/ai/recommendation': 10 * 60 * 1000,      // 10分钟
-  '/api/v1/meals': 30 * 60 * 1000,                  // 30分钟
-  '/api/v1/daily': 30 * 60 * 1000,                  // 30分钟
-  '/api/v1/weekly': 10 * 60 * 1000,                // 10分钟
+  '/api/v1/nutrition/meals': 30 * 60 * 1000,        // 30分钟
+  '/api/v1/nutrition/daily': 30 * 60 * 1000,        // 30分钟
+  '/api/v1/nutrition/weekly': 10 * 60 * 1000,       // 10分钟
+  '/api/v1/trends/overview': 10 * 60 * 1000,        // 10分钟
   'default': 10 * 60 * 1000                         // 默认10分钟
 }
 
@@ -47,7 +59,7 @@ function getCacheTTL(url) {
   if (CACHE_CONFIG[url]) {
     return CACHE_CONFIG[url]
   }
-  // 前缀匹配（处理带参数的URL如 /api/v1/daily/2025-01-01）
+  // 前缀匹配（处理带参数的URL如 /api/v1/nutrition/daily/2025-01-01）
   for (const key in CACHE_CONFIG) {
     if (url.startsWith(key)) {
       return CACHE_CONFIG[key]
@@ -158,11 +170,12 @@ function request(options) {
       url,
       method = 'GET',
       data = {},
-      needAuth = true
+      needAuth = true,
+      timeout = config.REQUEST_TIMEOUT
     } = options
 
     // 构建完整URL
-    const fullUrl = `${config.API_BASE_URL}${url}`
+    const fullUrl = resolveApiUrl(url)
 
     // 构建请求头
     const header = {
@@ -186,7 +199,7 @@ function request(options) {
       method,
       data,
       header,
-      timeout: config.REQUEST_TIMEOUT,
+      timeout,
       success(res) {
         console.log(`[API Response] ${method} ${url}`, res.statusCode, res.data)
 
@@ -201,16 +214,20 @@ function request(options) {
         } else {
           reject({
             code: res.statusCode,
-            message: res.data.detail || res.data.message || '请求失败'
+            statusCode: res.statusCode,
+            data: res.data,
+            message: res.data?.detail || res.data?.message || '请求失败'
           })
         }
       },
       fail(err) {
         console.error(`[API Error] ${method} ${url}`, err)
 
+        const isTimeout = /timeout/i.test(err.errMsg || '')
         reject({
-          code: -1,
-          message: '网络请求失败，请检查网络连接'
+          code: isTimeout ? 'TIMEOUT' : -1,
+          message: isTimeout ? '请求超时，请稍后重试' : '网络请求失败，请检查网络连接',
+          detail: err.errMsg || ''
         })
         showThrottledToast('network-error', '网络请求失败')
       }
@@ -285,28 +302,27 @@ function post(url, data = {}, needAuth = true) {
 }
 
 /**
- * PUT请求
- */
-function put(url, data = {}, needAuth = true) {
-  return request({
-    url,
-    method: 'PUT',
-    data,
-    needAuth
-  })
-}
-
-/**
- * 简易登录（单用户模式）
+ * 微信小程序登录。只把 wx.login 获取的一次性 code 交给微信登录接口。
  */
 function login() {
-  const data = {}
-
-  if (config.SIMPLE_LOGIN_PASSWORD) {
-    data.password = config.SIMPLE_LOGIN_PASSWORD
-  }
-
-  return post('/api/v1/auth/simple-login', data, false)
+  return new Promise((resolve, reject) => {
+    wx.login({
+      success(result) {
+        if (!result.code) {
+          reject({ code: 'WECHAT_LOGIN_FAILED', message: '微信登录凭证获取失败' })
+          return
+        }
+        post('/api/v1/auth/wechat-login', { code: result.code }, false).then(resolve, reject)
+      },
+      fail(error) {
+        reject({
+          code: 'WECHAT_LOGIN_FAILED',
+          message: '微信登录失败，请检查网络后重试',
+          detail: error.errMsg || ''
+        })
+      }
+    })
+  })
 }
 
 /**
@@ -364,7 +380,12 @@ function getRecommendation(date) {
  * @param {String} provider AI模型（可选）
  */
 function regenerateRecommendation(date, provider = null) {
-  return post('/api/v1/ai/regenerate', { date, provider })
+  return request({
+    url: '/api/v1/ai/regenerate',
+    method: 'POST',
+    data: { date, provider },
+    timeout: 60000
+  })
 }
 
 /**
@@ -379,7 +400,11 @@ function getUserInfo() {
  * @param {Object} data 用户数据
  */
 function updateUserInfo(data) {
-  return put('/api/v1/user/profile', data)
+  return request({
+    url: '/api/v1/user/profile',
+    method: 'PUT',
+    data
+  })
 }
 
 /**
@@ -401,6 +426,16 @@ function syncPolarData(days = 7) {
  */
 function getDashboard() {
   return get('/api/v1/dashboard/today')
+}
+
+/**
+ * 获取综合趋势（包含 nutrition 五组数组）
+ */
+function getTrendsOverview(startDate, endDate) {
+  return get('/api/v1/trends/overview', {
+    start_date: startDate,
+    end_date: endDate
+  })
 }
 
 /**
@@ -518,17 +553,22 @@ function getTrainingTrends(days = 7) {
  * 上传餐食照片并分析
  * @param {String} filePath 图片临时路径
  * @param {String} mealType 餐次类型 breakfast/lunch/dinner/snack
+ * @param {Object} options 餐食时间与备注
  */
-function uploadMeal(filePath, mealType) {
+function uploadMeal(filePath, mealType, options = {}) {
   return new Promise((resolve, reject) => {
     const token = wx.getStorageSync(config.TOKEN_KEY)
+    const mealTime = options.mealTime || new Date().toISOString()
+    const notes = options.notes || ''
 
     wx.uploadFile({
-      url: `${config.API_BASE_URL}/api/v1/upload`,
+      url: `${config.API_BASE_URL}/api/v1/nutrition/upload`,
       filePath: filePath,
       name: 'image',
       formData: {
-        meal_type: mealType
+        meal_type: mealType,
+        meal_time: mealTime,
+        notes
       },
       header: {
         'Authorization': `Bearer ${token}`
@@ -561,7 +601,7 @@ function uploadMeal(filePath, mealType) {
         let errorMessage = '网络请求失败'
         if (err.errMsg) {
           if (err.errMsg.includes('timeout')) {
-            errorMessage = 'AI分析超时，请稍后重试\n提示：选择较小的图片可加快分析速度'
+            errorMessage = '识图响应较慢，系统可能仍在处理，请稍后刷新饮食记录。'
           } else if (err.errMsg.includes('abort')) {
             errorMessage = '上传被中断'
           } else if (err.errMsg.includes('ssl') || err.errMsg.includes('certificate')) {
@@ -570,7 +610,11 @@ function uploadMeal(filePath, mealType) {
             errorMessage = `网络错误: ${err.errMsg}`
           }
         }
-        reject({ code: -1, message: errorMessage, detail: err.errMsg })
+        reject({
+          code: err.errMsg && err.errMsg.includes('timeout') ? 'TIMEOUT' : -1,
+          message: errorMessage,
+          detail: err.errMsg
+        })
       }
     })
   })
@@ -579,15 +623,42 @@ function uploadMeal(filePath, mealType) {
 /**
  * 获取饮食记录列表
  */
-function getMeals(params = {}) {
-  return get('/api/v1/meals', params)
+function getMeals(params = {}, forceRefresh = false) {
+  return get('/api/v1/nutrition/meals', params, true, forceRefresh)
 }
 
 /**
  * 获取单条饮食记录详情
  */
-function getMealDetail(mealId) {
-  return get(`/api/v1/meals/${mealId}`)
+function getMealDetail(mealId, forceRefresh = false) {
+  return get(`/api/v1/nutrition/meals/${mealId}`, {}, true, forceRefresh)
+}
+
+/**
+ * 查询餐食核心分析与未来饮食建议的异步状态。
+ * 每次都跳过缓存，避免轮询读到旧状态。
+ */
+function getMealAnalysisStatus(mealId) {
+  return request({
+    url: `/api/v1/nutrition/meals/${mealId}/analysis-status`,
+    method: 'GET',
+    data: {},
+    needAuth: true
+  })
+}
+
+/**
+ * 只生成饮食建议，不重复上传图片或重新执行识图。
+ * 普通失败重试不传 force；只有用户明确重新生成时才传 force=true。
+ */
+function requestMealRecommendations(mealId, force = false) {
+  const forceQuery = force ? '?force=true' : ''
+  return request({
+    url: `/api/v1/nutrition/meals/${mealId}/recommendations${forceQuery}`,
+    method: 'POST',
+    data: {},
+    timeout: 30000
+  })
 }
 
 /**
@@ -595,7 +666,7 @@ function getMealDetail(mealId) {
  */
 function deleteMeal(mealId) {
   return request({
-    url: `/api/v1/meals/${mealId}`,
+    url: `/api/v1/nutrition/meals/${mealId}`,
     method: 'DELETE'
   })
 }
@@ -604,14 +675,33 @@ function deleteMeal(mealId) {
  * 重新分析饮食记录
  */
 function reanalyzeMeal(mealId) {
-  return post(`/api/v1/meals/${mealId}/reanalyze`)
+  return request({
+    url: `/api/v1/nutrition/meals/${mealId}/reanalyze`,
+    method: 'POST',
+    data: {},
+    timeout: 120000
+  })
+}
+
+/**
+ * 按需生成餐食分享海报。普通生成允许服务端复用缓存，只有用户明确
+ * 选择重新生成时才传 force=true。
+ */
+function generateMealPoster(mealId, force = false) {
+  const forceQuery = force ? '?force=true' : ''
+  return request({
+    url: `/api/v1/nutrition/meals/${mealId}/poster${forceQuery}`,
+    method: 'POST',
+    data: {},
+    timeout: 120000
+  })
 }
 
 /**
  * 获取每日营养总结
  */
 function getNutritionDaily(date) {
-  return get(`/api/v1/daily/${date}`)
+  return get(`/api/v1/nutrition/daily/${date}`)
 }
 
 // 别名，兼容旧代码
@@ -621,7 +711,7 @@ const getNutritionDailySummary = getNutritionDaily
  * 获取每周营养趋势
  */
 function getNutritionWeekly() {
-  return get('/api/v1/weekly')
+  return get('/api/v1/nutrition/weekly')
 }
 
 module.exports = {
@@ -629,6 +719,7 @@ module.exports = {
   get,
   post,
   login,
+  resolveApiUrl,
   // 缓存工具
   clearAllCache,
   clearCache,
@@ -645,6 +736,7 @@ module.exports = {
   getPolarAuthStatus,
   syncPolarData,
   getDashboard,
+  getTrendsOverview,
   getOuraSleep,
   getOuraSleepGrouped,
   getOuraReadiness,
@@ -658,8 +750,11 @@ module.exports = {
   uploadMeal,
   getMeals,
   getMealDetail,
+  getMealAnalysisStatus,
+  requestMealRecommendations,
   deleteMeal,
   reanalyzeMeal,
+  generateMealPoster,
   getNutritionDaily,
   getNutritionDailySummary,
   getNutritionWeekly

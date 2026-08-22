@@ -1,12 +1,18 @@
 // pages/trends/trends.js
-const { getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraStress, getOuraSpo2, getTrainingTrends, getOuraHeartrateDetails, getDashboard } = require('../../utils/request.js')
+const { getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraStress, getOuraSpo2, getTrainingTrends, getOuraHeartrateDetails, getDashboard, getTrendsOverview, getNutritionWeekly } = require('../../utils/request.js')
 const { formatLocalDate, getRecentLocalDates } = require('../../utils/date.js')
 
 Page({
   data: {
     loading: true,
     dateRange: '',
-
+    trendAnchors: [
+      { key: 'nutrition', label: '饮食', icon: '🥗' },
+      { key: 'training', label: '运动', icon: '🏃' },
+      { key: 'sleep', label: '睡眠', icon: '🌙' },
+      { key: 'activity', label: '活动', icon: '🎯' },
+      { key: 'recovery', label: '恢复', icon: '🌿' }
+    ],
     // Polar 训练数据
     fatBurnData: [],
     avgFatBurn: 0,
@@ -92,10 +98,14 @@ Page({
     avgHrPosition: 0,
     hrPositionAvgPercent: 50,
     hrPositionLabelBelow: false,
+    nutritionTrendCards: [],
+    nutritionRecordedDays: 0,
+    nutritionExpectedDays: 7,
   },
 
   onLoad() {
     console.log('趋势页面加载')
+    this._isActive = true
     this._hasShownOnce = false
     this.setDateRange()
 
@@ -103,6 +113,10 @@ Page({
     if (app.globalData.isLoggedIn) {
       this.loadData({ silent: true })
     }
+  },
+
+  onUnload() {
+    this._isActive = false
   },
 
   onShow() {
@@ -150,6 +164,15 @@ Page({
     })
   },
 
+  jumpToTrendSection(event) {
+    const key = event.currentTarget.dataset.key
+    if (!key) return
+    wx.pageScrollTo({
+      selector: `#trend-${key}`,
+      duration: 320
+    })
+  },
+
   // 获取过去7天的日期列表（从6天前到今天）
   getLast7Days() {
     return getRecentLocalDates(7)
@@ -183,11 +206,14 @@ Page({
     }
 
     const startTime = Date.now()
+    const trendDates = this.getLast7Days()
+    const trendStartDate = trendDates[0]
+    const trendEndDate = trendDates[trendDates.length - 1]
 
     try {
       // 并行加载所有数据（缓存层会自动去重和复用）
       console.log('[Performance] 趋势页加载开始')
-      const [sleepGroupedRes, readinessRes, activityRes, stressRes, spo2Res, trainingRes, dashboardRes] = await Promise.all([
+      const [sleepGroupedRes, readinessRes, activityRes, stressRes, spo2Res, trainingRes, dashboardRes, overviewRes, nutritionWeeklyRes] = await Promise.all([
         getOuraSleepGrouped(7).catch(err => { console.warn('分组睡眠数据获取失败:', err); return null }),
         // getOuraSleep(7) 已移除 - HRV/RHR/呼吸从 grouped segments 提取
         getOuraReadiness(7).catch(err => { console.warn('准备度数据获取失败:', err); return null }),
@@ -195,7 +221,9 @@ Page({
         getOuraStress(7).catch(err => { console.warn('压力数据获取失败:', err); return null }),
         getOuraSpo2(7).catch(err => { console.warn('血氧数据获取失败:', err); return null }),
         getTrainingTrends(7).catch(err => { console.warn('训练数据获取失败:', err); return null }),
-        getDashboard().catch(err => { console.warn('Dashboard数据获取失败:', err); return null })
+        getDashboard().catch(err => { console.warn('Dashboard数据获取失败:', err); return null }),
+        getTrendsOverview(trendStartDate, trendEndDate).catch(err => { console.warn('综合趋势数据获取失败:', err); return null }),
+        getNutritionWeekly().catch(err => { console.warn('营养周数据获取失败:', err); return null })
       ])
 
       console.log(`[Performance] 趋势页API请求完成，耗时 ${Date.now() - startTime}ms`)
@@ -212,7 +240,13 @@ Page({
         heartrate: []
       }
 
+      if (!this._isActive) return
       this.processAndSetData(trendsData)
+      this.setData({
+        nutritionTrendCards: this.buildNutritionTrendCards(overviewRes?.nutrition),
+        nutritionRecordedDays: Number(nutritionWeeklyRes?.recorded_days) || 0,
+        nutritionExpectedDays: Number(nutritionWeeklyRes?.expected_days) || 7
+      })
       this._hasLoadedOnce = true
       console.log(`[Performance] 趋势页加载完成，总耗时 ${Date.now() - startTime}ms`)
 
@@ -221,6 +255,7 @@ Page({
 
     } catch (error) {
       console.error('加载趋势数据失败:', error)
+      if (!this._isActive) return
       if (shouldShowLoading) {
         this.setData({ loading: false })
       }
@@ -232,10 +267,62 @@ Page({
         })
       }
     } finally {
-      if (shouldShowLoading) {
+      if (shouldShowLoading && this._isActive) {
         this.setData({ loading: false })
       }
     }
+  },
+
+  normalizeActivityMinutes(value) {
+    const minutes = Number(value) || 0
+    return Math.round(minutes > 1440 ? minutes / 60 : minutes)
+  },
+
+  normalizeNutritionSeries(values, field) {
+    if (!Array.isArray(values)) return []
+    const dates = this.getLast7Days()
+    const offset = Math.max(0, dates.length - values.length)
+    return values.map((item, index) => {
+      const isObject = item && typeof item === 'object'
+      const rawValue = isObject ? (item.value ?? item[field]) : item
+      const value = rawValue === null || rawValue === undefined ? null : Number(rawValue)
+      return {
+        date: isObject ? (item.date || item.day || dates[offset + index] || '') : (dates[offset + index] || ''),
+        value: Number.isFinite(value) ? value : null
+      }
+    })
+  },
+
+  buildNutritionTrendCards(nutrition = {}) {
+    nutrition = nutrition || {}
+    const definitions = [
+      ['calories', '热量', 'kcal', 0],
+      ['protein_g', '蛋白质', 'g', 1],
+      ['carbs_g', '碳水', 'g', 1],
+      ['fat_g', '脂肪', 'g', 1],
+      ['meals_count', '记录餐数', '餐', 0]
+    ]
+    return definitions.map(([field, label, unit, decimals]) => {
+      const series = this.normalizeNutritionSeries(nutrition[field], field)
+      const valid = series.filter(item => (
+        item.value !== null && (field !== 'meals_count' || item.value > 0)
+      ))
+      const average = valid.length
+        ? valid.reduce((sum, item) => sum + item.value, 0) / valid.length
+        : null
+      return {
+        field,
+        label,
+        unit,
+        recordedCount: valid.length,
+        average: average === null ? '--' : average.toFixed(decimals),
+        values: series.map(item => ({
+          ...item,
+          display: item.value === null ? '--' : item.value.toFixed(decimals),
+          dayLabel: item.date ? item.date.slice(5) : '--'
+        }))
+      }
+    })
   },
 
   // 转换分组睡眠数据格式（支持主睡眠+午睡叠加）
@@ -380,7 +467,7 @@ Page({
       date: r.day,
       score: r.score,
       steps: r.steps,
-      sedentary_min: Math.round((r.sedentary_time || 0) / 60)
+      sedentary_min: this.normalizeActivityMinutes(r.sedentary_min ?? r.sedentary_time)
     })).sort((a, b) => a.date.localeCompare(b.date))
   },
 
@@ -624,6 +711,7 @@ Page({
         const heartrateDays = this.transformHeartrateData(records || [])
         const hrPositionResult = this.processHrPositionMetric(heartrateDays)
 
+        if (!this._isActive) return
         this.setData({
           hrPositionData: hrPositionResult.data,
           avgHrPosition: hrPositionResult.avg,

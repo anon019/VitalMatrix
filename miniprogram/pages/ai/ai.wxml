@@ -1,40 +1,22 @@
 <!--pages/ai/ai.wxml-->
 <view class="ai-container">
-  <!-- 背景装饰层 -->
-  <view class="bg-layer">
-    <view class="bg-orb orb-1"></view>
-    <view class="bg-orb orb-2"></view>
-    <view class="bg-orb orb-3"></view>
-    <view class="constellation-dots">
-      <view class="dot dot-1"></view>
-      <view class="dot dot-2"></view>
-      <view class="dot dot-3"></view>
-      <view class="dot dot-4"></view>
-      <view class="dot dot-5"></view>
-    </view>
-  </view>
-
-  <!-- 英雄区头部 -->
+  <!-- AI 概览 -->
   <view class="hero-section">
-    <!-- AI核心脉冲动画 -->
+    <view class="hero-grid" aria-hidden="true"></view>
     <view class="ai-core">
-      <view class="pulse-ring ring-1"></view>
-      <view class="pulse-ring ring-2"></view>
-      <view class="pulse-ring ring-3"></view>
       <view class="core-center">
-        <text class="core-icon">🧠</text>
+        <text class="core-icon">AI</text>
       </view>
     </view>
 
     <view class="hero-text">
+      <text class="hero-kicker">DAILY GUIDANCE</text>
       <text class="hero-title">AI 健康助理</text>
       <text class="hero-subtitle">{{todayDate}}</text>
     </view>
 
-    <!-- 模型信息徽章 -->
-    <view class="model-badge" wx:if="{{aiModel}}">
-      <view class="badge-glow"></view>
-      <text class="badge-text">{{aiModel}}</text>
+    <view class="model-badge" wx:if="{{generatedTime}}">
+      <text class="badge-text">今日建议</text>
       <text class="badge-time">{{generatedTime}}</text>
     </view>
   </view>
@@ -52,87 +34,87 @@
   <!-- 内容区域 -->
   <view class="content-area" wx:else>
     <!-- 数据日期提示 -->
-    <view class="date-notice glass-card" wx:if="{{!isDataToday}}">
+    <view class="date-notice glass-card" wx:if="{{isStale}}">
       <view class="notice-icon-wrap">
-        <text class="notice-icon">📅</text>
+        <text class="notice-icon">DATE</text>
       </view>
-      <text class="notice-text">数据来自 {{dataDate}}，今日暂无更新</text>
+      <text class="notice-text">最近建议 · 来源 {{dataDate}}，没有冒充今日生成</text>
+    </view>
+
+    <view class="glass-card completeness-card" wx:if="{{dataCompleteness.length}}">
+      <view class="completeness-head">
+        <text class="completeness-title">本次数据完整度</text>
+        <text class="completeness-caption">建议依据</text>
+      </view>
+      <view class="completeness-list">
+        <view class="completeness-item {{item.available ? 'available' : ''}}" wx:for="{{dataCompleteness}}" wx:key="label">
+          <text>{{item.label}}</text><text>{{item.value}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="empty-state glass-card" wx:if="{{loadError}}">
+      <text class="empty-icon">!</text>
+      <text class="empty-title">AI 建议暂时没加载出来</text>
+      <text class="empty-desc">{{loadError}}</text>
+      <view class="refresh-btn" bindtap="retryLoad">
+        <text class="btn-text">重新加载</text>
+        <view class="btn-shine"></view>
+      </view>
     </view>
 
     <!-- 一句话总结 - 突出显示 -->
     <view class="summary-hero glass-card card-animate" wx:if="{{summary}}" style="--delay: 0.1s">
-      <view class="summary-glow"></view>
       <view class="summary-icon-wrap">
-        <text class="summary-icon">✨</text>
+        <text class="summary-icon">✦</text>
       </view>
       <text class="summary-text">{{summary}}</text>
     </view>
 
-    <!-- 数据回顾 -->
-    <view class="insight-card glass-card review-theme card-animate" wx:if="{{yesterdayReview && yesterdayReview.items && yesterdayReview.items.length > 0}}" style="--delay: 0.2s">
-      <view class="card-header">
-        <view class="card-icon-wrap review-icon">
-          <text class="card-emoji">📊</text>
-        </view>
-        <view class="card-title-group">
-          <text class="card-title">数据回顾</text>
-          <text class="card-subtitle">Data Review</text>
-        </view>
-      </view>
-
-      <view class="card-content">
-        <view class="insight-item" wx:for="{{yesterdayReview.items}}" wx:key="index" style="--item-delay: {{index * 0.05}}s">
-          <view class="insight-marker review-marker"></view>
-          <text class="insight-text">{{item}}</text>
-        </view>
-      </view>
-    </view>
-
-    <!-- 今日综合建议 -->
-    <view class="insight-card glass-card advice-theme card-animate" wx:if="{{todayRecommendation && todayRecommendation.items && todayRecommendation.items.length > 0}}" style="--delay: 0.3s">
+    <!-- 饮食、恢复、活动建议：沿用线上卡片视觉 -->
+    <view
+      class="insight-card glass-card advice-theme card-animate"
+      wx:for="{{recommendationSections}}"
+      wx:for-item="section"
+      wx:key="key"
+      style="--delay: {{0.15 + index * 0.08}}s"
+    >
       <view class="card-header">
         <view class="card-icon-wrap advice-icon">
-          <text class="card-emoji">💡</text>
+          <text class="card-emoji">{{section.key === 'nutrition' ? '🥗' : section.key === 'recovery' ? '🌙' : '🏃'}}</text>
         </view>
         <view class="card-title-group">
-          <text class="card-title">今日综合建议</text>
-          <text class="card-subtitle">Today's Recommendations</text>
+          <text class="card-title">{{section.title}}</text>
+          <text class="card-subtitle">{{section.subtitle}}</text>
         </view>
       </view>
-
       <view class="card-content">
-        <view class="advice-item" wx:for="{{todayRecommendation.items}}" wx:key="index" style="--item-delay: {{index * 0.05}}s">
+        <view class="advice-item" wx:for="{{section.items}}" wx:for-item="advice" wx:key="index">
           <view class="advice-number">{{index + 1}}</view>
           <view class="advice-body">
-            <text class="advice-label" wx:if="{{item.label}}">{{item.label}}</text>
-            <text class="advice-text">{{item.text || item}}</text>
+            <text class="advice-label" wx:if="{{advice.label}}">{{advice.label}}</text>
+            <text class="advice-text">{{advice.text}}</text>
           </view>
         </view>
       </view>
     </view>
 
     <!-- 健康知识点 -->
-    <view class="insight-card glass-card knowledge-theme card-animate" wx:if="{{healthEducation && healthEducation.sections && healthEducation.sections.length > 0}}" style="--delay: 0.4s">
+    <view class="insight-card glass-card knowledge-theme card-animate" wx:if="{{knowledgeSections.length}}" style="--delay: 0.42s">
       <view class="card-header">
-        <view class="card-icon-wrap knowledge-icon">
-          <text class="card-emoji">📚</text>
-        </view>
+        <view class="card-icon-wrap knowledge-icon"><text class="card-emoji">🧠</text></view>
         <view class="card-title-group">
           <text class="card-title">健康知识点</text>
           <text class="card-subtitle">Health Education</text>
         </view>
       </view>
-
       <view class="card-content">
-        <view class="knowledge-section" wx:for="{{healthEducation.sections}}" wx:for-item="section" wx:key="index">
-          <view class="section-header">
-            <view class="section-dot"></view>
-            <text class="section-title">{{section.subtitle}}</text>
-          </view>
+        <view class="knowledge-section" wx:for="{{knowledgeSections}}" wx:for-item="section" wx:key="index">
+          <view class="section-header"><view class="section-dot"></view><text class="section-title">{{section.title}}</text></view>
           <view class="knowledge-list">
             <view class="knowledge-item" wx:for="{{section.items}}" wx:for-item="point" wx:key="index">
-              <text class="knowledge-label">{{point.label}}</text>
-              <text class="knowledge-text">{{point.content}}</text>
+              <text class="knowledge-label" wx:if="{{point.label}}">{{point.label}}</text>
+              <text class="knowledge-text">{{point.text}}</text>
             </view>
           </view>
         </view>
@@ -140,19 +122,19 @@
     </view>
 
     <!-- 空状态 -->
-    <view class="empty-state glass-card" wx:if="{{!yesterdayReview && !todayRecommendation && !healthEducation}}">
-      <view class="empty-animation">
-        <view class="empty-orbit">
-          <view class="orbit-dot"></view>
-        </view>
-        <text class="empty-icon">🤖</text>
-      </view>
+    <view class="empty-state glass-card" wx:if="{{!loadError && !recommendationSections.length && !knowledgeSections.length}}">
+      <view class="empty-mark"><text>AI</text></view>
       <text class="empty-title">暂无AI建议</text>
       <text class="empty-desc">后端AI服务准备中...</text>
       <view class="refresh-btn" bindtap="loadData">
         <text class="btn-text">刷新</text>
         <view class="btn-shine"></view>
       </view>
+    </view>
+
+    <view class="refresh-btn {{regenerating ? 'is-busy' : ''}}" bindtap="regenerate" aria-disabled="{{regenerating}}">
+      <text class="btn-text">{{regenerating ? '正在重新生成…' : '重新生成今日建议'}}</text>
+      <view class="btn-shine"></view>
     </view>
 
     <!-- 底部留白 -->

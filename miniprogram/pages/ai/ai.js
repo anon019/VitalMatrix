@@ -1,38 +1,68 @@
-// pages/ai/ai.js
-const { getTodayRecommendation, getRecommendation } = require('../../utils/request.js')
+const {
+  getTodayRecommendation,
+  regenerateRecommendation,
+  clearCache
+} = require('../../utils/request.js')
+const { formatLocalDate } = require('../../utils/date.js')
+
+const SECTION_DEFINITIONS = [
+  {
+    key: 'nutrition',
+    order: '01',
+    title: '饮食',
+    subtitle: '今天怎么吃更合适',
+    keywords: ['饮食', '营养', '早餐', '午餐', '晚餐', '加餐', '热量', '蛋白', '碳水', '脂肪', '蔬菜', '水分', '补水']
+  },
+  {
+    key: 'recovery',
+    order: '02',
+    title: '睡眠恢复',
+    subtitle: '根据睡眠、HRV 与身体状态',
+    keywords: ['睡眠', '恢复', 'hrv', '静息', '压力', '疲劳', '休息', '就寝', '起床']
+  },
+  {
+    key: 'activity',
+    order: '03',
+    title: '活动训练',
+    subtitle: '安排今天的活动与训练强度',
+    keywords: ['活动', '训练', '运动', '步数', '心率', 'zone', '跑步', '有氧', '力量', '拉伸']
+  }
+]
 
 Page({
   data: {
     loading: true,
+    regenerating: false,
+    loadError: '',
     todayDate: '',
-    dataDate: '',  // 实际数据的日期（用于显示）
-    isDataToday: true,  // 标识数据是否是今天的
-
-    // AI建议数据（结构化格式）
+    dataDate: '',
+    isDataToday: true,
+    requestedDate: '',
+    sourceDate: '',
+    isStale: false,
+    promptVersion: '',
+    dataCompleteness: [],
     summary: '',
     aiProvider: '',
     aiModel: '',
     generatedTime: '',
-
-    // 昨日评价
     yesterdayReview: null,
-
-    // 今日建议
     todayRecommendation: null,
-
-    // 健康科普
-    healthEducation: null
+    healthEducation: null,
+    recommendationSections: [],
+    knowledgeSections: []
   },
 
   onLoad() {
-    console.log('AI页面加载')
+    this._isActive = true
     this._hasShownOnce = false
     this.setDates()
-
     const app = getApp()
-    if (app.globalData.isLoggedIn) {
-      this.loadData({ silent: true })
-    }
+    if (app.globalData.isLoggedIn) this.loadData({ silent: true })
+  },
+
+  onUnload() {
+    this._isActive = false
   },
 
   onShow() {
@@ -42,256 +72,232 @@ Page({
     }
 
     const lastRefresh = wx.getStorageSync('aiLastRefresh')
-    const now = Date.now()
-
     const app = getApp()
-    if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 15 * 60 * 1000)) {
+    if (app.globalData.isLoggedIn && (!lastRefresh || Date.now() - lastRefresh > 15 * 60 * 1000)) {
       this.loadData({ silent: true })
     }
   },
 
   onLoginSuccess() {
-    console.log('AI页面：收到登录成功通知')
     this.loadData({ silent: true })
   },
 
   onPullDownRefresh() {
-    // 下拉刷新：先检查登录状态
     const app = getApp()
-
-    // 如果未登录或正在登录中，等待登录完成
     if (!app.globalData.isLoggedIn || app.globalData.isLoggingIn) {
-      console.log('等待登录完成...')
       wx.stopPullDownRefresh()
-      wx.showToast({
-        title: '正在登录，请稍后',
-        icon: 'none',
-        duration: 2000
-      })
+      wx.showToast({ title: '正在登录，请稍后', icon: 'none' })
       return
     }
 
-    // 下拉刷新时清除缓存
-    const { clearCache } = require('../../utils/request.js')
     clearCache('/api/v1/ai/recommendation')
-
-    this.loadData({ silent: false }).then(() => {
-      wx.stopPullDownRefresh()
-    }).catch(() => {
-      wx.stopPullDownRefresh()
-    })
+    this.loadData({ silent: false }).finally(() => wx.stopPullDownRefresh())
   },
 
   setDates() {
     const today = new Date()
-    const month = String(today.getMonth() + 1).padStart(2, '0')
-    const day = String(today.getDate()).padStart(2, '0')
     const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-    const weekDay = weekDays[today.getDay()]
-
     this.setData({
-      todayDate: `${month}月${day}日 ${weekDay}`
+      todayDate: `${String(today.getMonth() + 1).padStart(2, '0')}月${String(today.getDate()).padStart(2, '0')}日 ${weekDays[today.getDay()]}`
     })
   },
 
   loadData(options = {}) {
-    if (this._loadPromise) {
-      return this._loadPromise
-    }
+    if (this._loadPromise) return this._loadPromise
 
     const loadPromise = this.performLoadData(options).finally(() => {
-      if (this._loadPromise === loadPromise) {
-        this._loadPromise = null
-      }
+      if (this._loadPromise === loadPromise) this._loadPromise = null
     })
-
     this._loadPromise = loadPromise
     return loadPromise
   },
 
-  async performLoadData(options = {}) {
-    const { silent = false } = options
+  async performLoadData({ silent = false } = {}) {
     const shouldShowLoading = !this._hasLoadedOnce || !silent
-
-    if (shouldShowLoading) {
-      this.setData({ loading: true })
-    }
+    if (shouldShowLoading) this.setData({ loading: true, loadError: '' })
 
     try {
-      // 智能获取AI建议：并行请求今日和昨日，优先使用今日数据
       const today = new Date()
-      const yesterday = new Date(today)
-      yesterday.setDate(yesterday.getDate() - 1)
-      const todayStr = this.formatDateISO(today)
-      const yesterdayStr = this.formatDateISO(yesterday)
+      const todayStr = formatLocalDate(today)
+      const recommendation = await getTodayRecommendation()
+      if (!this.hasValidData(recommendation)) throw new Error('AI 建议暂时不可用，请稍后重试')
 
-      // 并行请求今日和昨日的AI建议（现在都很快：今日0.6秒，昨日1秒）
-      const [todayResult, yesterdayResult] = await Promise.all([
-        getTodayRecommendation().catch(err => {
-          console.warn('获取今日AI建议失败:', err)
-          return null
-        }),
-        getRecommendation(yesterdayStr).catch(err => {
-          console.warn('获取昨日AI建议失败:', err)
-          return null
-        })
-      ])
-
-      // 优先使用今日数据（如果有效）
-      let data = null
-      let dataDate = todayStr
-      let isDataToday = true
-
-      if (todayResult && this.hasValidData(todayResult)) {
-        data = todayResult
-        dataDate = todayStr
-        isDataToday = true
-        console.log('使用今日AI建议')
-      } else if (yesterdayResult && this.hasValidData(yesterdayResult)) {
-        data = yesterdayResult
-        dataDate = yesterdayStr
-        isDataToday = false
-        console.log('今日无数据，使用昨日AI建议')
-      }
-
-      // 如果都没有有效数据，显示错误
-      if (!data) {
-        if (shouldShowLoading) {
-          this.setData({ loading: false })
-        }
-
-        if (!silent || !this._hasLoadedOnce) {
-          wx.showToast({
-            title: 'AI服务暂时不可用',
-            icon: 'none',
-            duration: 3000
-          })
-        }
-        return
-      }
-
-      console.log('AI建议数据:', data, '日期:', dataDate, '是否今日数据:', isDataToday)
-
-      // 提取并显示数据
-      const aiProvider = data.provider || 'AI'
-      const aiModel = data.model || ''
-      let generatedTime = ''
-      if (data.created_at) {
-        generatedTime = this.formatGeneratedTime(data.created_at)
-      }
-
+      const view = this.buildRecommendationView(recommendation)
+      const sourceDate = recommendation.source_date || recommendation.requested_date || todayStr
+      const isStale = recommendation.is_stale === true
+      const metadata = recommendation.generation_metadata || {}
+      if (!this._isActive) return
       this.setData({
-        summary: data.summary || '',
-        aiProvider,
-        aiModel,
-        generatedTime,
-        dataDate: this.formatDateDisplay(dataDate),
-        isDataToday,
-        yesterdayReview: data.yesterday_review || null,
-        todayRecommendation: data.today_recommendation || null,
-        healthEducation: data.health_education || null,
-        loading: false
+        summary: recommendation.summary || '',
+        aiProvider: recommendation.provider || '',
+        aiModel: recommendation.model || '',
+        generatedTime: this.formatGeneratedTime(recommendation.created_at),
+        dataDate: this.formatDateDisplay(sourceDate),
+        isDataToday: !isStale,
+        requestedDate: recommendation.requested_date || todayStr,
+        sourceDate,
+        isStale,
+        promptVersion: metadata.prompt_version || '',
+        dataCompleteness: this.buildDataCompleteness(metadata.data_completeness),
+        yesterdayReview: recommendation.yesterday_review || null,
+        todayRecommendation: recommendation.today_recommendation || null,
+        healthEducation: recommendation.health_education || null,
+        recommendationSections: view.recommendationSections,
+        knowledgeSections: view.knowledgeSections,
+        loading: false,
+        loadError: ''
       })
       this._hasLoadedOnce = true
-
       wx.setStorageSync('aiLastRefresh', Date.now())
 
-      if (!silent) {
-        wx.showToast({
-          title: '刷新成功',
-          icon: 'success',
-          duration: 1500
-        })
-      }
+      if (!silent) wx.showToast({ title: '已更新', icon: 'success' })
     } catch (error) {
-      console.error('加载数据失败:', error)
-      if (shouldShowLoading) {
-        this.setData({ loading: false })
-      }
-
-      if (!silent || !this._hasLoadedOnce) {
-        wx.showToast({
-          title: 'AI服务暂时不可用',
-          icon: 'none',
-          duration: 3000
-        })
-      }
+      console.error('加载 AI 建议失败:', error)
+      if (!this._isActive) return
+      this.setData({
+        loading: false,
+        loadError: error.message || 'AI 建议暂时不可用，请稍后重试'
+      })
     }
   },
 
+  buildDataCompleteness(source = {}) {
+    source = source || {}
+    const definitions = [
+      ['饮食记录天数', source.nutrition_recorded_days ?? source.recorded_days, '天'],
+      ['最近餐食', source.recent_meals_count ?? source.recent_meals, '餐'],
+      ['睡眠', source.sleep_available ?? source.sleep, 'boolean'],
+      ['准备度', source.readiness_available ?? source.readiness, 'boolean'],
+      ['活动', source.activity_available ?? source.activity, 'boolean'],
+      ['训练', source.training_available ?? source.training, 'boolean']
+    ]
+    return definitions
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([label, value, unit]) => ({
+        label,
+        value: unit === 'boolean' ? (value ? '已纳入' : '暂无') : `${value}${unit}`,
+        available: unit === 'boolean' ? Boolean(value) : Number(value) > 0
+      }))
+  },
 
-  /**
-   * 格式化生成时间
-   */
-  formatGeneratedTime(isoString) {
-    try {
-      const date = new Date(isoString)
-      const now = new Date()
+  getSourceItems(source) {
+    if (!source) return []
+    if (Array.isArray(source)) return source
+    if (Array.isArray(source.items)) return source.items
+    if (Array.isArray(source.recommendations)) return source.recommendations
+    return []
+  },
 
-      // 计算时间差（分钟）
-      const diffMs = now - date
-      const diffMins = Math.floor(diffMs / (1000 * 60))
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-      // 如果是今天
-      if (diffDays === 0) {
-        if (diffMins < 1) {
-          return '刚刚'
-        } else if (diffMins < 60) {
-          return `${diffMins}分钟前`
-        } else {
-          return `${diffHours}小时前`
-        }
-      }
-      // 如果是昨天
-      else if (diffDays === 1) {
-        const hours = String(date.getHours()).padStart(2, '0')
-        const minutes = String(date.getMinutes()).padStart(2, '0')
-        return `昨天 ${hours}:${minutes}`
-      }
-      // 更早的日期
-      else {
-        const month = date.getMonth() + 1
-        const day = date.getDate()
-        const hours = String(date.getHours()).padStart(2, '0')
-        const minutes = String(date.getMinutes()).padStart(2, '0')
-        return `${month}月${day}日 ${hours}:${minutes}`
-      }
-    } catch (error) {
-      console.error('时间格式化失败:', error)
-      return ''
+  normalizeItem(item, sourceLabel = '') {
+    if (typeof item === 'string') return { label: sourceLabel, text: item }
+    return {
+      label: item.label || item.title || sourceLabel,
+      text: item.text || item.content || item.suggestion || item.description || ''
     }
   },
 
-  /**
-   * 判断AI数据是否有效
-   */
+  buildRecommendationView(data) {
+    const explicitSources = {
+      nutrition: data.nutrition || data.diet || data.dietary_recommendations || data.today_recommendation?.nutrition,
+      recovery: data.sleep_recovery || data.recovery || data.today_recommendation?.sleep_recovery,
+      activity: data.activity_training || data.activity || data.training || data.today_recommendation?.activity_training
+    }
+    const buckets = { nutrition: [], recovery: [], activity: [] }
+
+    SECTION_DEFINITIONS.forEach(definition => {
+      buckets[definition.key] = this.getSourceItems(explicitSources[definition.key])
+        .map(item => this.normalizeItem(item))
+        .filter(item => item.text)
+    })
+
+    const legacyItems = [
+      ...this.getSourceItems(data.yesterday_review).map(item => this.normalizeItem(item, '昨日回顾')),
+      ...this.getSourceItems(data.today_recommendation).map(item => this.normalizeItem(item))
+    ]
+
+    legacyItems.forEach(item => {
+      if (!item.text) return
+      const haystack = `${item.label} ${item.text}`.toLowerCase()
+      const match = SECTION_DEFINITIONS.find(definition =>
+        definition.keywords.some(keyword => haystack.includes(keyword))
+      )
+      const targetKey = match?.key || 'activity'
+      const isDuplicate = buckets[targetKey].some(existing => existing.text === item.text)
+      if (!isDuplicate) buckets[targetKey].push(item)
+    })
+
+    const recommendationSections = SECTION_DEFINITIONS
+      .map(definition => ({ ...definition, items: buckets[definition.key] }))
+      .filter(section => section.items.length)
+
+    const knowledgeSource = data.health_knowledge || data.health_education || {}
+    let knowledgeSections = []
+    if (Array.isArray(knowledgeSource.sections)) {
+      knowledgeSections = knowledgeSource.sections.map(section => ({
+        title: section.subtitle || section.title || '健康知识',
+        items: this.getSourceItems(section).map(item => this.normalizeItem(item)).filter(item => item.text)
+      })).filter(section => section.items.length)
+    } else {
+      const items = this.getSourceItems(knowledgeSource).map(item => this.normalizeItem(item)).filter(item => item.text)
+      if (items.length) knowledgeSections = [{ title: '健康知识', items }]
+    }
+
+    return { recommendationSections, knowledgeSections }
+  },
+
   hasValidData(data) {
     if (!data) return false
-    // 至少要有一个有效的内容
-    return !!(
-      (data.yesterday_review && data.yesterday_review.items && data.yesterday_review.items.length > 0) ||
-      (data.today_recommendation && data.today_recommendation.items && data.today_recommendation.items.length > 0) ||
-      (data.health_education && data.health_education.sections && data.health_education.sections.length > 0)
-    )
+    const view = this.buildRecommendationView(data)
+    return Boolean(data.summary || view.recommendationSections.length || view.knowledgeSections.length)
   },
 
-  /**
-   * 格式化日期为 ISO 格式 (YYYY-MM-DD)
-   */
-  formatDateISO(date) {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+  async regenerate() {
+    if (this.data.regenerating) return
+    const confirmation = await new Promise(resolve => {
+      wx.showModal({
+        title: '重新生成今日建议？',
+        content: '会根据最新健康数据重新整理建议，可能需要一点时间。',
+        confirmText: '重新生成',
+        success: resolve,
+        fail: () => resolve({ confirm: false })
+      })
+    })
+    if (!confirmation.confirm) return
+
+    this.setData({ regenerating: true, loadError: '' })
+    try {
+      await regenerateRecommendation(formatLocalDate(new Date()))
+      clearCache('/api/v1/ai/recommendation')
+      await this.loadData({ silent: true })
+      if (!this._isActive) return
+      wx.showToast({ title: '建议已重新生成', icon: 'success' })
+    } catch (error) {
+      console.error('重新生成 AI 建议失败:', error)
+      if (this._isActive) this.setData({ loadError: error.message || '重新生成失败，请稍后重试' })
+    } finally {
+      if (this._isActive) this.setData({ regenerating: false })
+    }
   },
 
-  /**
-   * 格式化日期显示 (MM-DD)
-   */
-  formatDateDisplay(isoDateStr) {
-    const [year, month, day] = isoDateStr.split('-')
-    return `${month}-${day}`
+  retryLoad() {
+    clearCache('/api/v1/ai/recommendation')
+    this.loadData({ silent: false })
+  },
+
+  formatGeneratedTime(value) {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    const today = new Date()
+    const sameDay = formatLocalDate(date) === formatLocalDate(today)
+    const hour = String(date.getHours()).padStart(2, '0')
+    const minute = String(date.getMinutes()).padStart(2, '0')
+    return sameDay ? `今天 ${hour}:${minute}` : `${date.getMonth() + 1}月${date.getDate()}日 ${hour}:${minute}`
+  },
+
+  formatDateDisplay(value) {
+    if (!value || !String(value).includes('-')) return value || ''
+    const parts = value.split('-')
+    return `${parts[1]}月${parts[2]}日`
   }
 })

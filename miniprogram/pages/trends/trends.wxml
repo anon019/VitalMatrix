@@ -8,8 +8,7 @@
       <view class="deco-circle circle-2"></view>
       <view class="deco-line line-1"></view>
       <view class="deco-line line-2"></view>
-    </view>
-
+</view>
     <view class="hero-content">
       <view class="hero-title-row">
         <text class="hero-title">数据趋势</text>
@@ -17,6 +16,28 @@
       </view>
       <text class="hero-date">{{dateRange}}</text>
     </view>
+  </view>
+
+  <view class="trend-index">
+    <view class="trend-index-heading">
+      <text class="trend-index-title">全部趋势</text>
+      <text class="trend-index-hint">均在本页连续展示</text>
+    </view>
+    <scroll-view class="trend-index-scroll" scroll-x="true" enhanced="true" show-scrollbar="{{false}}">
+      <view class="trend-index-list">
+        <view
+          class="trend-index-item"
+          wx:for="{{trendAnchors}}"
+          wx:key="key"
+          data-key="{{item.key}}"
+          bindtap="jumpToTrendSection"
+          hover-class="trend-index-item-pressed"
+        >
+          <text class="trend-index-icon">{{item.icon}}</text>
+          <text>{{item.label}}</text>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 
   <!-- 加载状态 -->
@@ -31,8 +52,32 @@
 
   <!-- 内容区域 -->
   <view class="content-area" wx:else>
+    <!-- 后端 nutrition 五数组：均值只按真实记录日计算 -->
+    <view id="trend-nutrition" class="section-group nutrition-trend-section">
+      <view class="section-header">
+        <view class="section-icon nutrition-icon"><text class="section-emoji">🥗</text></view>
+        <view class="section-title-group">
+          <text class="section-title">饮食趋势</text>
+          <text class="section-subtitle">按记录日均值 · {{nutritionRecordedDays}} / {{nutritionExpectedDays}} 天</text>
+        </view>
+      </view>
+      <view class="nutrition-trend-grid" wx:if="{{nutritionTrendCards.length}}">
+        <view class="nutrition-trend-card" wx:for="{{nutritionTrendCards}}" wx:key="field">
+          <text class="nutrition-trend-label">{{item.label}}</text>
+          <view><text class="nutrition-trend-value">{{item.average}}</text><text class="nutrition-trend-unit">{{item.unit}}</text></view>
+          <text class="nutrition-trend-caption">{{item.recordedCount}} 个记录日</text>
+          <view class="nutrition-series">
+            <view class="nutrition-series-item" wx:for="{{item.values}}" wx:for-item="point" wx:key="date">
+              <text>{{point.display}}</text><text>{{point.dayLabel}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:else><text>暂无已记录饮食趋势</text></view>
+    </view>
+
     <!-- ========== Polar 训练数据 ========== -->
-    <view class="section-group polar-section">
+    <view id="trend-training" class="section-group polar-section">
       <view class="section-header">
         <view class="section-icon polar-icon">
           <text class="section-emoji">💪</text>
@@ -134,7 +179,7 @@
     </view><!-- /polar-section -->
 
     <!-- ========== Oura 睡眠数据 ========== -->
-    <view class="section-group oura-sleep-section">
+    <view id="trend-sleep" class="section-group oura-sleep-section">
       <view class="section-header">
         <view class="section-icon oura-icon">
           <text class="section-emoji">😴</text>
@@ -442,7 +487,7 @@
     </view><!-- /oura-sleep-section -->
 
     <!-- ========== Oura 准备度/活动数据 ========== -->
-    <view class="section-group oura-activity-section">
+    <view id="trend-activity" class="section-group oura-activity-section">
       <view class="section-header">
         <view class="section-icon oura-icon">
           <text class="section-emoji">🔋</text>
@@ -579,7 +624,7 @@
     </view><!-- /oura-activity-section -->
 
     <!-- ========== Oura 压力数据 ========== -->
-    <view class="section-group oura-stress-section">
+    <view id="trend-recovery" class="section-group oura-stress-section">
       <view class="section-header">
         <view class="section-icon stress-icon">
           <text class="section-emoji">🧘</text>

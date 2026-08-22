@@ -18,20 +18,30 @@
     <text class="loading-text">正在加载...</text>
   </view>
 
-  <view wx:else class="content">
+  <view wx:elif="{{loadError}}" class="loading-container">
+    <text class="loading-text">餐食详情暂时没加载出来</text>
+    <text class="load-error-copy">{{loadError}}</text>
+    <button class="btn-primary retry-load" bindtap="retryLoad">重新加载</button>
+  </view>
+
+  <view wx:elif="{{meal}}" class="content">
     <!-- 餐食照片区域 - 沉浸式设计 -->
-    <view class="photo-hero">
+    <view class="photo-hero {{imageLoadFailed || !meal.photo_path ? 'is-placeholder' : ''}}">
       <image
-        wx:if="{{meal.photo_path}}"
+        wx:if="{{meal.photo_path && !imageLoadFailed}}"
         class="hero-image"
         src="{{meal.photo_path}}"
         mode="aspectFill"
         binderror="onImageError"
-        bindload="onImageLoad"
       />
       <view wx:else class="no-image">
-        <text class="no-image-icon">📷</text>
-        <text class="no-image-text">暂无图片</text>
+        <view class="no-image-mark"><text>餐</text></view>
+        <view class="no-image-copy">
+          <text wx:if="{{imageLoadFailed}}" class="no-image-title">历史图片不可用</text>
+          <text wx:else class="no-image-title">{{mealTypeLabel}}记录</text>
+          <text wx:if="{{imageLoadFailed}}" class="no-image-text">不影响本餐营养分析与饮食建议</text>
+          <text wx:else class="no-image-text">本餐没有可展示的照片</text>
+        </view>
       </view>
       <!-- 渐变遮罩和信息 -->
       <view class="hero-overlay">
@@ -45,17 +55,28 @@
     <!-- 主内容区域 -->
     <view class="main-content">
       <!-- 营养概览卡片 -->
-      <view class="card nutrition-card anim-slide-up" style="animation-delay: 0ms;">
+      <view class="card nutrition-card overview-card anim-slide-up" style="animation-delay: 0ms;">
         <view class="card-header green-theme">
-          <text class="card-icon">🥗</text>
-          <text class="card-title">营养成分</text>
+          <text class="card-title">本餐概览</text>
+          <view wx:if="{{analysis.nutrition_analysis}}" class="overview-rating">
+            <text>{{analysis.nutrition_analysis.overall_rating}}</text>
+            <text class="overview-rating-score">{{analysis.nutrition_analysis.overall_score}}分</text>
+          </view>
         </view>
         <view class="card-body">
           <view class="nutrition-showcase">
-            <!-- 热量中心 -->
-            <view class="calorie-display">
-              <text class="calorie-number">{{meal.total_calories}}</text>
-              <text class="calorie-unit">千卡</text>
+            <view class="overview-primary-row">
+              <view class="calorie-display">
+                <text class="overview-eyebrow">预计热量</text>
+                <view class="calorie-value-row">
+                  <text class="calorie-number">{{calorieRangeText}}</text>
+                  <text class="calorie-unit">千卡</text>
+                </view>
+              </view>
+              <view wx:if="{{analysis.nutrition_analysis}}" class="score-display overview-score">
+                <text class="overview-eyebrow">综合评分</text>
+                <view><text class="score-number" style="color: {{ratingScoreColor}}">{{analysis.nutrition_analysis.overall_score}}</text><text class="score-suffix"> / 100</text></view>
+              </view>
             </view>
             <!-- 宏量元素 -->
             <view class="macro-row">
@@ -77,27 +98,28 @@
             <text class="fiber-icon">🌾</text>
             <text class="fiber-text">膳食纤维 {{meal.total_fiber}}g</text>
           </view>
+          <view wx:if="{{overallConclusion}}" class="meal-brief">
+            <view class="meal-brief-head">
+              <text class="meal-brief-label">本餐速览</text>
+              <text class="confidence-badge {{confidenceClass}}">{{confidenceLabel}}</text>
+            </view>
+            <text class="meal-brief-text">{{overallConclusion}}</text>
+          </view>
+          <view wx:if="{{portionAssumption}}" class="portion-assumption">
+            <text class="portion-assumption-label">份量估算依据</text>
+            <text class="portion-assumption-text">{{portionAssumption}}</text>
+          </view>
         </view>
       </view>
 
       <!-- AI 分析区域 -->
       <view wx:if="{{analysis}}" class="analysis-area">
-        <!-- 综合评价卡片 -->
-        <view wx:if="{{analysis.nutrition_analysis}}" class="card rating-card anim-slide-up" style="animation-delay: 60ms;">
-          <view class="card-header amber-theme">
-            <text class="card-icon">⭐</text>
-            <text class="card-title">综合评价</text>
-            <view class="rating-pill" style="background: {{ratingBadgeColor}}">
-              {{analysis.nutrition_analysis.overall_rating}}
-            </view>
+        <view class="detail-section-heading anim-slide-up" style="animation-delay: 50ms;">
+          <view>
+            <text class="detail-section-kicker">MEAL ANALYSIS</text>
+            <text class="detail-section-title">本餐识别与分析</text>
           </view>
-          <view class="card-body rating-body">
-            <view class="score-display">
-              <text class="score-number" style="color: {{ratingScoreColor}}">{{analysis.nutrition_analysis.overall_score}}</text>
-              <text class="score-suffix">分</text>
-            </view>
-            <text wx:if="{{aiModel}}" class="ai-model-tag">{{aiModel}}</text>
-          </view>
+          <text wx:if="{{analysis.identified_foods.length}}" class="detail-section-meta">{{analysis.identified_foods.length}} 项食物</text>
         </view>
 
         <!-- 识别的食物卡片 -->
@@ -145,41 +167,44 @@
           <view class="card-body">
             <view class="analysis-list">
               <!-- 碳水分析 -->
-              <view class="analysis-item">
+              <view class="analysis-item analysis-carbs">
                 <view class="analysis-top">
                   <view class="analysis-label">
                     <text class="label-emoji">🍚</text>
                     <text class="label-text">碳水化合物</text>
                   </view>
-                  <text class="analysis-rating {{carbsRatingClass}}">
-                    {{analysis.nutrition_analysis.carbs_analysis.rating}}
-                  </text>
+                  <view class="analysis-rating {{carbsRatingClass}}">
+                    <view class="rating-dot"></view>
+                    <text>{{analysis.nutrition_analysis.carbs_analysis.rating}}</text>
+                  </view>
                 </view>
                 <text class="analysis-comment">{{analysis.nutrition_analysis.carbs_analysis.comment}}</text>
               </view>
               <!-- 蛋白质分析 -->
-              <view class="analysis-item">
+              <view class="analysis-item analysis-protein">
                 <view class="analysis-top">
                   <view class="analysis-label">
                     <text class="label-emoji">🥩</text>
                     <text class="label-text">蛋白质</text>
                   </view>
-                  <text class="analysis-rating {{proteinRatingClass}}">
-                    {{analysis.nutrition_analysis.protein_analysis.rating}}
-                  </text>
+                  <view class="analysis-rating {{proteinRatingClass}}">
+                    <view class="rating-dot"></view>
+                    <text>{{analysis.nutrition_analysis.protein_analysis.rating}}</text>
+                  </view>
                 </view>
                 <text class="analysis-comment">{{analysis.nutrition_analysis.protein_analysis.comment}}</text>
               </view>
               <!-- 脂肪分析 -->
-              <view class="analysis-item">
+              <view class="analysis-item analysis-fat">
                 <view class="analysis-top">
                   <view class="analysis-label">
                     <text class="label-emoji">🥑</text>
                     <text class="label-text">脂肪</text>
                   </view>
-                  <text class="analysis-rating {{fatRatingClass}}">
-                    {{analysis.nutrition_analysis.fat_analysis.rating}}
-                  </text>
+                  <view class="analysis-rating {{fatRatingClass}}">
+                    <view class="rating-dot"></view>
+                    <text>{{analysis.nutrition_analysis.fat_analysis.rating}}</text>
+                  </view>
                 </view>
                 <text class="analysis-comment">{{analysis.nutrition_analysis.fat_analysis.comment}}</text>
               </view>
@@ -193,61 +218,76 @@
         </view>
 
         <!-- 健康洞察卡片 -->
-        <view wx:if="{{analysis.health_insights}}" class="card insights-card anim-slide-up" style="animation-delay: 240ms;">
+        <view wx:if="{{visibleStrengths.length || visibleWeaknesses.length || riskFactors.length || uncertaintyNotes.length}}" class="card insights-card anim-slide-up" style="animation-delay: 240ms;">
           <view class="card-header teal-theme">
             <text class="card-icon">💡</text>
             <text class="card-title">健康洞察</text>
+            <button wx:if="{{hasMoreInsights}}" class="insight-toggle" bindtap="toggleInsights">{{insightsExpanded ? '收起' : '展开'}}</button>
           </view>
           <view class="card-body">
-            <!-- 优点 -->
-            <view wx:if="{{analysis.health_insights.strengths && analysis.health_insights.strengths.length > 0}}" class="insight-group">
-              <view class="group-header good">
-                <text class="group-icon">✅</text>
-                <text class="group-title">优点</text>
-              </view>
+            <view wx:if="{{visibleStrengths.length}}" class="insight-group">
+              <view class="group-header good"><text class="group-icon">✅</text><text class="group-title">优点</text></view>
               <view class="insight-list">
-                <view wx:for="{{analysis.health_insights.strengths}}" wx:key="index" class="insight-item good">
-                  <text class="insight-bullet">•</text>
-                  <text class="insight-text">{{item}}</text>
-                </view>
+                <view wx:for="{{visibleStrengths}}" wx:key="index" class="insight-item good"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
               </view>
             </view>
-            <!-- 需改进 -->
-            <view wx:if="{{analysis.health_insights.weaknesses && analysis.health_insights.weaknesses.length > 0}}" class="insight-group">
-              <view class="group-header warn">
-                <text class="group-icon">💡</text>
-                <text class="group-title">需改进</text>
-              </view>
+            <view wx:if="{{visibleWeaknesses.length}}" class="insight-group">
+              <view class="group-header warn"><text class="group-icon">💡</text><text class="group-title">需改进</text></view>
               <view class="insight-list">
-                <view wx:for="{{analysis.health_insights.weaknesses}}" wx:key="index" class="insight-item warn">
-                  <text class="insight-bullet">•</text>
-                  <text class="insight-text">{{item}}</text>
-                </view>
+                <view wx:for="{{visibleWeaknesses}}" wx:key="index" class="insight-item warn"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
               </view>
             </view>
-            <!-- 风险提示 -->
-            <view wx:if="{{analysis.health_insights.risk_factors && analysis.health_insights.risk_factors.length > 0}}" class="insight-group">
-              <view class="group-header risk">
-                <text class="group-icon">🚨</text>
-                <text class="group-title">风险提示</text>
-              </view>
+            <view wx:if="{{riskFactors.length}}" class="insight-group">
+              <view class="group-header risk"><text class="group-icon">🚨</text><text class="group-title">风险提示</text></view>
               <view class="insight-list">
-                <view wx:for="{{analysis.health_insights.risk_factors}}" wx:key="index" class="insight-item risk">
-                  <text class="insight-bullet">•</text>
-                  <text class="insight-text">{{item}}</text>
-                </view>
+                <view wx:for="{{riskFactors}}" wx:key="index" class="insight-item risk"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
+              </view>
+            </view>
+            <view wx:if="{{uncertaintyNotes.length}}" class="insight-group uncertainty-group">
+              <view class="group-header"><text class="group-icon">ℹ️</text><text class="group-title">分析边界</text></view>
+              <view class="insight-list">
+                <view wx:for="{{uncertaintyNotes}}" wx:key="index" class="insight-item"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
               </view>
             </view>
           </view>
         </view>
 
         <!-- 饮食建议卡片 -->
-        <view wx:if="{{analysis.recommendations}}" class="card recommend-card anim-slide-up" style="animation-delay: 300ms;">
+        <view wx:if="{{showRecommendationSection}}" class="recommend-section-intro anim-slide-up" style="animation-delay: 280ms;">
+          <text class="detail-section-kicker">NEXT 24 HOURS</text>
+          <text class="detail-section-title">接下来怎么吃</text>
+          <text class="detail-section-copy">基于本餐与近期饮食生成，不代表已经吃过的餐食。</text>
+        </view>
+        <view wx:if="{{showRecommendationSection}}" class="card recommend-card anim-slide-up" style="animation-delay: 300ms;">
           <view class="card-header green-theme">
             <text class="card-icon">📝</text>
-            <text class="card-title">饮食建议</text>
+            <view class="recommend-title-wrap">
+              <text class="card-title">个性化饮食建议</text>
+              <text class="recommend-kicker">覆盖接下来 24 小时</text>
+            </view>
           </view>
           <view class="card-body">
+            <view wx:if="{{analysisStatus === 'completed' && (recommendationStatus === 'pending' || recommendationStatus === 'processing') && !recommendationTimedOut}}" class="recommend-status is-loading">
+              <view class="recommend-status-spinner"></view>
+              <view class="recommend-status-copy">
+                <text class="recommend-status-title">识图完成，饮食建议生成中</text>
+                <text class="recommend-status-hint">正在结合近期饮食生成建议，可以继续查看本餐分析</text>
+              </view>
+            </view>
+
+            <view wx:if="{{recommendationStatus === 'failed'}}" class="recommend-status is-error">
+              <view class="recommend-status-copy">
+                <text class="recommend-status-title">饮食建议生成失败，可重试</text>
+                <text wx:if="{{analysisError}}" class="recommend-status-hint">{{analysisError}}</text>
+              </view>
+              <button class="recommend-retry-btn" bindtap="retryRecommendations" disabled="{{retryingRecommendations}}">{{retryingRecommendations ? '正在重新生成…' : '重新生成建议'}}</button>
+            </view>
+
+            <view wx:if="{{recommendationTimedOut}}" class="recommend-status is-waiting">
+              <text class="recommend-status-title">建议仍在后台生成，稍后进入详情即可查看</text>
+              <text class="recommend-status-hint">不会影响已经完成的本餐分析，也无需重新上传图片</text>
+            </view>
+
             <!-- 总结 -->
             <view wx:if="{{analysis.recommendations.summary}}" class="summary-box">
               <text class="summary-text">{{analysis.recommendations.summary}}</text>
@@ -276,41 +316,80 @@
               <text class="hydration-text">{{analysis.recommendations.hydration_reminder}}</text>
             </view>
 
-            <!-- 下一餐推荐食谱（处理后的数组格式） -->
+            <!-- 后续餐单：餐次名称与数量均以后端返回为准 -->
             <view wx:if="{{nextMealRecipes && nextMealRecipes.length > 0}}" class="next-meals-section">
-              <view class="section-label">
-                <text class="label-icon">🍽️</text>
-                <text class="label-text">下一餐推荐食谱</text>
+              <view class="meal-plan-heading">
+                <text class="meal-plan-title">未来三餐</text>
+                <text class="meal-plan-subtitle">结合近期饮食生成的未来 24 小时建议，不代表已经吃过</text>
               </view>
-              <view wx:for="{{nextMealRecipes}}" wx:key="index" class="next-meal-card">
+              <view class="meal-plan-tabs">
+                <view
+                  wx:for="{{nextMealRecipes}}"
+                  wx:key="index"
+                  class="meal-plan-tab {{index == activeRecipeIndex ? 'active' : ''}}"
+                  data-index="{{index}}"
+                  bindtap="selectMealRecipe"
+                  hover-class="meal-plan-tab-pressed"
+                  aria-role="button"
+                >
+                  <text class="meal-plan-tab-icon">{{item.meal_icon}}</text>
+                  <text class="meal-plan-tab-name">{{item.meal_label}}</text>
+                  <text class="meal-plan-tab-cal">{{item.total_calories}} 千卡</text>
+                </view>
+              </view>
+              <view wx:for="{{nextMealRecipes}}" wx:key="index" wx:if="{{index == activeRecipeIndex}}" class="next-meal-card">
                 <view class="meal-card-header">
-                  <text class="meal-title">{{item.meal_name}}</text>
-                  <view class="meal-calories-tag">共 {{item.total_calories}} 千卡</view>
+                  <view class="meal-title-stack">
+                    <view class="meal-header-eyebrow">
+                      <text class="meal-kicker">{{item.meal_icon}} {{item.meal_label}}</text>
+                      <view class="meal-calories-tag">建议 {{item.total_calories}} 千卡</view>
+                    </view>
+                    <text class="meal-title">{{item.menu_title}}</text>
+                    <view class="meal-meta-line">
+                      <text wx:if="{{item.timing}}" class="meal-timing">{{item.timing}}</text>
+                      <text class="meal-dish-count">{{item.dish_count}}道菜</text>
+                    </view>
+                  </view>
                 </view>
                 <view class="dishes-list">
                   <view wx:for="{{item.dishes}}" wx:for-item="dish" wx:for-index="dishIndex" wx:key="dishIndex" class="dish-card">
                     <view class="dish-top">
-                      <text class="dish-name">{{dish.name}}</text>
+                      <view class="dish-name-wrap"><text class="dish-index">{{dishIndex + 1}}</text><text class="dish-name">{{dish.name}}</text></view>
                       <view class="dish-meta">
-                        <text wx:if="{{dish.cooking_time}}" class="dish-time">⏱️ {{dish.cooking_time}}</text>
-                        <text class="dish-cal">{{dish.calories}} kcal</text>
+                        <text wx:if="{{dish.calories > 0}}" class="dish-cal">{{dish.calories}} kcal</text>
                       </view>
                     </view>
-                    <view class="dish-detail">
-                      <view class="detail-row">
+                    <view wx:if="{{dish.portion || dish.protein > 0 || dish.cooking_time}}" class="dish-facts">
+                      <text wx:if="{{dish.portion}}" class="dish-fact">⚖️ {{dish.portion}}</text>
+                      <text wx:if="{{dish.protein > 0}}" class="dish-fact">P {{dish.protein}}g</text>
+                      <text wx:if="{{dish.cooking_time}}" class="dish-fact">⏱️ {{dish.cooking_time}}</text>
+                    </view>
+                    <view wx:if="{{dish.hasRecipeDetails}}" class="dish-detail">
+                      <view wx:if="{{dish.ingredients.length}}" class="recipe-detail-section">
                         <text class="detail-label">食材</text>
-                        <text class="detail-value">{{dish.ingredientsText}}</text>
+                        <view class="ingredient-tags">
+                          <text wx:for="{{dish.ingredients}}" wx:for-item="ingredient" wx:key="index" class="ingredient-tag">{{ingredient.text}}</text>
+                        </view>
                       </view>
-                      <view class="detail-row">
+                      <view wx:if="{{dish.cooking_steps.length}}" class="recipe-detail-section cooking-section">
                         <text class="detail-label">做法</text>
-                        <text class="detail-value">{{dish.cookingStepsText}}</text>
+                        <view class="cooking-steps">
+                          <view wx:for="{{dish.cooking_steps}}" wx:for-item="step" wx:for-index="stepIndex" wx:key="index" class="cooking-step">
+                            <text class="cooking-step-index">{{stepIndex + 1}}</text>
+                            <text class="cooking-step-text">{{step.text}}</text>
+                          </view>
+                        </view>
                       </view>
                     </view>
-                    <view class="dish-benefit">
+                    <view wx:if="{{dish.health_benefit}}" class="dish-benefit">
                       <text class="benefit-icon">💚</text>
                       <text class="benefit-text">{{dish.health_benefit}}</text>
                     </view>
                   </view>
+                </view>
+                <view wx:if="{{!item.hasDetailedRecipes}}" class="recipe-availability-note">
+                  <text class="recipe-note-label">菜谱详情</text>
+                  <text class="recipe-note-copy">当前仅提供菜名、份量和营养值，详细食材与做法尚未补全。</text>
                 </view>
                 <!-- 主食推荐 -->
                 <view wx:if="{{item.staple && item.staple.name}}" class="staple-suggestion">
@@ -318,29 +397,23 @@
                   <text class="staple-label">主食推荐</text>
                   <text class="staple-text">{{item.staple.name}}</text>
                 </view>
+                <view wx:if="{{item.flavor_profile || item.experience_note}}" class="meal-experience meal-experience-footer">
+                  <text wx:if="{{item.flavor_profile}}" class="meal-flavor">口味：{{item.flavor_profile}}</text>
+                  <text wx:if="{{item.experience_note}}" class="meal-experience-note">{{item.experience_note}}</text>
+                </view>
                 <!-- 搭配原因 -->
                 <view wx:if="{{item.why_this_menu}}" class="meal-reason">
+                  <text class="reason-label">为什么这样搭配</text>
                   <text class="reason-text">{{item.why_this_menu}}</text>
                 </view>
               </view>
             </view>
 
-            <!-- 下一餐建议（字符串格式兼容） -->
-            <view wx:if="{{!nextMealRecipes.length && formattedNextMealMenu}}" class="next-meal-menu">
-              <view class="section-label">
-                <text class="label-icon">🍽️</text>
-                <text class="label-text">下一餐推荐</text>
-              </view>
-              <view class="menu-content">
-                <text class="menu-text">{{formattedNextMealMenu}}</text>
-              </view>
-            </view>
-
             <!-- 下一餐简单建议（next_meal_tips格式） -->
-            <view wx:if="{{!nextMealRecipes.length && !formattedNextMealMenu && nextMealTips && nextMealTips.length > 0}}" class="next-meal-tips">
+            <view wx:if="{{!nextMealRecipes.length && nextMealTips && nextMealTips.length > 0}}" class="next-meal-tips">
               <view class="section-label">
                 <text class="label-icon">💡</text>
-                <text class="label-text">下一餐建议</text>
+                <text class="label-text">未来 24 小时简要建议</text>
               </view>
               <view class="tips-list">
                 <view wx:for="{{nextMealTips}}" wx:key="index" class="tip-item">
@@ -355,6 +428,12 @@
                 </view>
               </view>
             </view>
+
+            <view wx:if="{{recommendationStatus === 'completed' && !hasRecommendationContent}}" class="recommend-empty">
+              <text>建议已生成，暂时没有额外需要调整的项目</text>
+            </view>
+
+            <button wx:if="{{recommendationStatus === 'completed'}}" class="recommend-regenerate-btn" bindtap="confirmRegenerateRecommendations" disabled="{{retryingRecommendations}}">重新生成建议</button>
           </view>
         </view>
       </view>
@@ -372,12 +451,17 @@
 
       <!-- 操作按钮 -->
       <view class="action-buttons anim-slide-up" style="animation-delay: 420ms;">
-        <button class="btn-primary" bindtap="generatePoster">
-          <text class="btn-icon">🎨</text>
-          <text class="btn-text">生成分享海报</text>
+        <button class="btn-primary" bindtap="generatePoster" disabled="{{generatingPoster || posterGenerationBlocked}}">
+          <text class="btn-text">{{generatingPoster ? '正在设计海报…' : posterUrl ? '查看精美海报' : '生成精美海报'}}</text>
         </button>
+        <view wx:if="{{posterGenerationBlocked}}" class="poster-prerequisite">
+          <text>未来三餐建议生成完成后可生成海报</text>
+        </view>
+        <view wx:if="{{posterError}}" class="poster-error">
+          <text>{{posterError}}</text>
+          <button wx:if="{{!posterGenerationBlocked}}" class="poster-error-retry" bindtap="generatePoster">重试</button>
+        </view>
         <button class="btn-danger" bindtap="deleteMeal">
-          <text class="btn-icon">🗑️</text>
           <text class="btn-text">删除</text>
         </button>
       </view>
@@ -385,33 +469,52 @@
   </view>
 
   <!-- 海报生成中遮罩 -->
-  <view wx:if="{{generatingPoster}}" class="modal-overlay">
+  <view wx:if="{{generatingPoster && !posterWaitingHidden}}" class="modal-overlay">
     <view class="modal-box">
       <view class="modal-spinner">
         <view class="spinner-ring"></view>
         <text class="spinner-icon">🎨</text>
       </view>
       <text class="modal-title">正在生成海报</text>
-      <text class="modal-subtitle">请稍候...</text>
+      <text class="modal-subtitle">通常需要 30–60 秒，最长等待 120 秒</text>
+      <text class="modal-subtitle">每天最多 5 次实际生成，请不要重复点击</text>
+      <button class="poster-wait-hide" bindtap="hidePosterWaiting">先返回页面继续等待</button>
     </view>
   </view>
 
-  <!-- 海报预览弹窗 -->
-  <view wx:if="{{showPosterPreview}}" class="poster-overlay" bindtap="closePosterPreview">
+  <!-- 海报预览弹窗：保留线上配色，适配服务端完整海报 -->
+  <view wx:if="{{showPosterPreview}}" class="poster-overlay" catchtouchmove="onPreviewTap">
     <view class="poster-container" catchtap="onPreviewTap">
-      <image class="poster-image" src="{{posterPath}}" mode="widthFix" />
-      <view class="poster-buttons">
-        <button class="poster-btn save" bindtap="savePoster">
-          <text class="btn-icon">💾</text>
-          <text>保存到相册</text>
-        </button>
-        <button class="poster-btn close" bindtap="closePosterPreview">
-          <text>关闭</text>
-        </button>
+      <view class="poster-preview-header">
+        <view>
+          <text class="poster-preview-title">营养分享海报</text>
+          <text class="poster-preview-status">{{posterGenerated ? '已生成最新海报' : '已刷新缓存海报'}}</text>
+          <text wx:if="{{posterLayoutVersion}}" class="poster-preview-version">版式 {{posterLayoutVersion}}</text>
+        </view>
+        <button class="poster-header-close" bindtap="closePosterPreview">关闭</button>
+      </view>
+      <scroll-view class="poster-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:if="{{posterImageLoading}}" class="poster-image-loading">
+          <view class="poster-image-loading-shimmer"></view>
+          <text>正在加载完整海报…</text>
+        </view>
+        <view wx:if="{{posterImageError}}" class="poster-image-error">{{posterImageError}}</view>
+        <image
+          wx:if="{{posterDisplayUrl}}"
+          id="poster-image-{{posterRenderKey}}"
+          class="poster-image"
+          src="{{posterDisplayUrl}}"
+          mode="widthFix"
+          aria-label="{{posterAriaLabel}}"
+          bindload="onPosterImageLoad"
+          binderror="onPosterImageError"
+        />
+      </scroll-view>
+      <view class="poster-buttons poster-safe-area">
+        <button class="poster-btn save" bindtap="savePoster" disabled="{{savingPoster}}">{{savingPoster ? '保存中…' : '保存图片'}}</button>
+        <button class="poster-btn share" open-type="share">发送给朋友</button>
+        <button class="poster-btn regenerate" bindtap="confirmRegeneratePoster" disabled="{{generatingPoster || posterGenerationBlocked}}">重新生成</button>
       </view>
     </view>
   </view>
-
-  <!-- 隐藏的Canvas用于生成海报 -->
-  <canvas type="2d" id="posterCanvas" class="poster-canvas"></canvas>
 </view>
