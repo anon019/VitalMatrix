@@ -1,28 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>VitalMatrix System Architecture</title>
-  <style>
-    :root{color-scheme:dark;--bg:#020617;--panel:#0f172a;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--front:#22d3ee;--back:#34d399;--data:#a78bfa;--cloud:#fbbf24;--security:#fb7185;--generic:#94a3b8}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;background-image:linear-gradient(rgba(51,65,85,.15) 1px,transparent 1px),linear-gradient(90deg,rgba(51,65,85,.15) 1px,transparent 1px);background-size:28px 28px}
-    #report-container{width:min(1240px,calc(100% - 32px));margin:24px auto;padding:28px;background:rgba(2,6,23,.96);border:1px solid #1e293b;border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
-    header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:18px}.eyebrow{color:var(--front);font-size:12px;letter-spacing:.16em;text-transform:uppercase}.title{font-size:28px;margin:7px 0 8px}.subtitle{color:var(--muted);font-size:13px;line-height:1.7;max-width:780px}.badge{border:1px solid #334155;border-radius:999px;padding:8px 12px;color:#cbd5e1;font-size:11px;white-space:nowrap}
-    .canvas{border:1px solid #1e293b;border-radius:14px;overflow:hidden;background:#020617}.canvas svg{display:block;width:100%;height:auto}
-    .boundary{fill:#0f172a;fill-opacity:.38;stroke:#475569;stroke-width:1.5;stroke-dasharray:8 7}.boundary-label{fill:#94a3b8;font-size:12px;letter-spacing:.12em}.node{stroke-width:1.5}.node-title{fill:#f8fafc;font-size:13px;font-weight:700}.node-sub{fill:#94a3b8;font-size:10px}.label{fill:#cbd5e1;font-size:10px}.arrow{fill:none;stroke:#64748b;stroke-width:1.8;marker-end:url(#arrow)}.arrow-dashed{fill:none;stroke:#64748b;stroke-width:1.6;stroke-dasharray:6 5;marker-end:url(#arrow)}
-    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}.card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:15px}.card h3{font-size:12px;margin:0 0 8px}.card p{font-size:11px;line-height:1.65;color:var(--muted);margin:0}.c-front{color:var(--front)}.c-back{color:var(--back)}.c-security{color:var(--security)}
-    footer{display:flex;justify-content:space-between;margin-top:18px;color:#64748b;font-size:10px}.toolbar{position:fixed;right:22px;top:22px;z-index:10}.toolbar-toggle{width:42px;height:42px;border-radius:50%;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:22px;cursor:pointer}.toolbar-menu{display:none;position:absolute;right:0;top:48px;width:150px;padding:6px;border-radius:10px;border:1px solid #334155;background:#0f172a;box-shadow:0 16px 40px rgba(0,0,0,.45)}.toolbar.open .toolbar-menu{display:block}.toolbar-menu button{width:100%;border:0;background:transparent;color:#cbd5e1;text-align:left;padding:9px 10px;border-radius:7px;cursor:pointer;font:11px inherit}.toolbar-menu button:hover{background:#1e293b;color:white}
-    @media(max-width:760px){#report-container{width:100%;margin:0;padding:14px;border-radius:0}.summary{grid-template-columns:1fr}header{display:block}.badge{display:inline-block;margin-top:12px}.title{font-size:21px}.toolbar{right:12px;top:12px}}
-    @media print{body{background:#020617}.toolbar{display:none}#report-container{width:100%;margin:0;box-shadow:none;border:0}}
-  </style>
-</head>
-<body>
-  <div class="toolbar" id="toolbar"><button class="toolbar-toggle" aria-label="Export options" onclick="toggleToolbar()">⋯</button><div class="toolbar-menu"><button onclick="copyDiagram()">Copy image</button><button onclick="downloadPng()">Download PNG</button><button onclick="downloadPdf()">Download PDF</button></div></div>
-  <main id="report-container">
-    <header><div><div class="eyebrow">VitalMatrix / Architecture</div><h1 class="title">Personal Health Intelligence Platform</h1><div class="subtitle">A single FastAPI core connects browser and agent clients to health integrations, staged AI workflows, private media, and operational data services.</div></div><div class="badge">CURRENT · 2026-08-22</div></header>
-    <section class="canvas">
-      <svg viewBox="0 0 1160 760" role="img" aria-labelledby="diagram-title diagram-desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="760" viewBox="0 0 1160 760" role="img" aria-labelledby="diagram-title diagram-desc">
+  <style>text{font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace}.boundary{fill:#0f172a;fill-opacity:.38;stroke:#475569;stroke-width:1.5;stroke-dasharray:8 7}.boundary-label{fill:#94a3b8;font-size:12px;letter-spacing:.12em}.node{stroke-width:1.5}.node-title{fill:#f8fafc;font-size:13px;font-weight:700}.node-sub{fill:#94a3b8;font-size:10px}.label{fill:#cbd5e1;font-size:10px}.arrow{fill:none;stroke:#64748b;stroke-width:1.8;marker-end:url(#arrow)}.arrow-dashed{fill:none;stroke:#64748b;stroke-width:1.6;stroke-dasharray:6 5;marker-end:url(#arrow)}</style>
+  <defs><pattern id="preview-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern></defs>
+  <rect width="1160" height="760" rx="14" fill="#020617"/>
+  <rect width="1160" height="760" rx="14" fill="url(#preview-grid)"/>
         <title id="diagram-title">VitalMatrix system architecture</title><desc id="diagram-desc">Clients connect through Nginx to FastAPI APIs, services, data stores, and external health and AI providers.</desc>
         <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#64748b"/></marker></defs>
 
@@ -68,20 +48,3 @@
 
         <g transform="translate(245 664)"><text class="boundary-label" x="0" y="0">LEGEND</text><rect x="0" y="18" width="12" height="12" rx="2" fill="#082f49" stroke="#22d3ee"/><text class="label" x="20" y="28">Frontend</text><rect x="110" y="18" width="12" height="12" rx="2" fill="#022c22" stroke="#34d399"/><text class="label" x="130" y="28">Backend</text><rect x="220" y="18" width="12" height="12" rx="2" fill="#2e1065" stroke="#a78bfa"/><text class="label" x="240" y="28">Data</text><rect x="310" y="18" width="12" height="12" rx="2" fill="#451a03" stroke="#fbbf24"/><text class="label" x="330" y="28">Cloud / external</text><rect x="475" y="18" width="12" height="12" rx="2" fill="#4c0519" stroke="#fb7185"/><text class="label" x="495" y="28">Security boundary</text></g>
       </svg>
-    </section>
-    <section class="summary"><article class="card"><h3 class="c-front">ONE CORE, THREE CLIENTS</h3><p>Web, Mini Program, and MCP clients share the same authenticated service contracts and health data model.</p></article><article class="card"><h3 class="c-back">STAGED AI WORKFLOWS</h3><p>Structured analysis, recommendation, and poster rendering are separate bounded stages with persistence between them.</p></article><article class="card"><h3 class="c-security">PRIVATE BY DEFAULT</h3><p>Health records and uploaded media stay behind application authorization; public access uses short-lived signed routes.</p></article></section>
-    <footer><span>VitalMatrix architecture reference</span><span>Self-contained HTML · PNG / PDF export</span></footer>
-  </main>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script>
-    const report=document.getElementById('report-container');
-    function toggleToolbar(){document.getElementById('toolbar').classList.toggle('open')}
-    async function capture(){const rect=report.getBoundingClientRect();return html2canvas(report,{backgroundColor:'#020617',scale:2,useCORS:true,width:rect.width,height:rect.height,windowWidth:document.documentElement.scrollWidth,windowHeight:document.documentElement.scrollHeight,x:rect.left+window.scrollX,y:rect.top+window.scrollY})}
-    async function copyDiagram(){const canvas=await capture();canvas.toBlob(async blob=>{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])},'image/png')}
-    async function downloadPng(){const canvas=await capture();const link=document.createElement('a');link.download='vitalmatrix-system-architecture.png';link.href=canvas.toDataURL('image/png');link.click()}
-    async function downloadPdf(){const canvas=await capture();const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:'landscape',unit:'px',format:[canvas.width,canvas.height],hotfixes:['px_scaling']});pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,canvas.width,canvas.height);pdf.save('vitalmatrix-system-architecture.pdf')}
-    document.addEventListener('click',event=>{const toolbar=document.getElementById('toolbar');if(!toolbar.contains(event.target))toolbar.classList.remove('open')});
-  </script>
-</body>
-</html>

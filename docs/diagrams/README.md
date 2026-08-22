@@ -1,11 +1,23 @@
 # Architecture diagrams
 
-本目录保存 VitalMatrix 的可交互架构图和流程图。文件均为自包含 HTML，可直接在浏览器打开；右上角菜单支持复制图片、导出 PNG 和导出 PDF。
+本目录保存 VitalMatrix 的架构图和流程图。每张图提供两种格式：
+
+- `.svg`：GitHub README 和 Markdown 文档中的直接预览版本。
+- `.html`：下载到本地后用浏览器打开的交互版本，右上角菜单支持复制图片、导出 PNG 和导出 PDF。GitHub 不执行仓库中的 HTML，因此直接点击 HTML 文件时会显示源码。
 
 ## 图表
 
-- [VitalMatrix 系统架构](vitalmatrix-system-architecture.html)：客户端、Nginx、FastAPI 核心、数据层和外部服务的边界与依赖。
-- [营养分析与海报生成流程](nutrition-poster-workflow.html)：从餐食上传、核心营养分析、未来三餐建议到 V9 海报生成和私有交付的完整链路。
+### VitalMatrix 系统架构
+
+![VitalMatrix 系统架构](vitalmatrix-system-architecture.svg)
+
+[SVG 图片](vitalmatrix-system-architecture.svg) · [HTML 交互版](vitalmatrix-system-architecture.html)
+
+### 营养分析与海报生成流程
+
+![营养分析与海报生成流程](nutrition-poster-workflow.svg)
+
+[SVG 图片](nutrition-poster-workflow.svg) · [HTML 交互版](nutrition-poster-workflow.html)
 
 ## 维护约定
 

@@ -46,12 +46,11 @@
 
 ## 4. 系统架构图
 
-交互式最新版图表：
+![VitalMatrix 系统架构](diagrams/vitalmatrix-system-architecture.svg)
 
-- [VitalMatrix 系统架构](diagrams/vitalmatrix-system-architecture.html)
-- [营养分析与海报生成流程](diagrams/nutrition-poster-workflow.html)
+![营养分析与海报生成流程](diagrams/nutrition-poster-workflow.svg)
 
-HTML 图表是当前架构与关键流程的视觉基线；下面的文本图保留用于纯文本阅读。
+GitHub 可直接显示上面的 SVG 预览。需要复制或导出 PNG/PDF 时，下载 [系统架构交互版](diagrams/vitalmatrix-system-architecture.html) 或 [营养流程交互版](diagrams/nutrition-poster-workflow.html) 后用浏览器打开。下面的文本图保留用于纯文本阅读。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
