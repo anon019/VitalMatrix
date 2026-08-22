@@ -25,7 +25,7 @@ docs/           架构与集成文档
 
 ## 系统架构
 
-![VitalMatrix 系统架构图](docs/diagrams/vitalmatrix-system-architecture.svg)
+![VitalMatrix 系统架构图](docs/diagrams/vitalmatrix-system-architecture.png)
 
 需要复制或导出高清 PNG/PDF 时，请下载 [HTML 交互版](docs/diagrams/vitalmatrix-system-architecture.html) 后用浏览器打开。
 
@@ -43,7 +43,7 @@ docs/           架构与集成文档
 
 ## 营养分析与海报流程
 
-![营养分析与海报生成流程图](docs/diagrams/nutrition-poster-workflow.svg)
+![营养分析与海报生成流程图](docs/diagrams/nutrition-poster-workflow.png)
 
 核心营养分析、未来三餐建议与按需海报生成采用分阶段流程。需要导出时，请下载 [HTML 交互版](docs/diagrams/nutrition-poster-workflow.html)。完整维护和安全约定见 [架构图说明](docs/diagrams/README.md)。
 

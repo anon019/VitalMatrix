@@ -1,23 +1,24 @@
-# Architecture diagrams
+# 架构图与流程图
 
-本目录保存 VitalMatrix 的架构图和流程图。每张图提供两种格式：
+本目录保存 VitalMatrix 的架构图和流程图。每张图提供三种格式：
 
-- `.svg`：GitHub README 和 Markdown 文档中的直接预览版本。
+- `.png`：完整画布的 GitHub README 和 Markdown 文档预览版本，包含标题、主图、图例、三张说明卡和页脚。
+- `.svg`：可无损缩放的矢量源图。
 - `.html`：下载到本地后用浏览器打开的交互版本，右上角菜单支持复制图片、导出 PNG 和导出 PDF。GitHub 不执行仓库中的 HTML，因此直接点击 HTML 文件时会显示源码。
 
 ## 图表
 
 ### VitalMatrix 系统架构
 
-![VitalMatrix 系统架构](vitalmatrix-system-architecture.svg)
+![VitalMatrix 系统架构](vitalmatrix-system-architecture.png)
 
-[SVG 图片](vitalmatrix-system-architecture.svg) · [HTML 交互版](vitalmatrix-system-architecture.html)
+[PNG 图片](vitalmatrix-system-architecture.png) · [SVG 矢量图](vitalmatrix-system-architecture.svg) · [HTML 交互版](vitalmatrix-system-architecture.html)
 
 ### 营养分析与海报生成流程
 
-![营养分析与海报生成流程](nutrition-poster-workflow.svg)
+![营养分析与海报生成流程](nutrition-poster-workflow.png)
 
-[SVG 图片](nutrition-poster-workflow.svg) · [HTML 交互版](nutrition-poster-workflow.html)
+[PNG 图片](nutrition-poster-workflow.png) · [SVG 矢量图](nutrition-poster-workflow.svg) · [HTML 交互版](nutrition-poster-workflow.html)
 
 ## 维护约定
 

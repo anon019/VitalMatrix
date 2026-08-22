@@ -1,28 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>VitalMatrix System Architecture</title>
+  <title>VitalMatrix 系统架构</title>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
   <style>
-    :root{color-scheme:dark;--bg:#020617;--panel:#0f172a;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--front:#22d3ee;--back:#34d399;--data:#a78bfa;--cloud:#fbbf24;--security:#fb7185;--generic:#94a3b8}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;background-image:linear-gradient(rgba(51,65,85,.15) 1px,transparent 1px),linear-gradient(90deg,rgba(51,65,85,.15) 1px,transparent 1px);background-size:28px 28px}
-    #report-container{width:min(1240px,calc(100% - 32px));margin:24px auto;padding:28px;background:rgba(2,6,23,.96);border:1px solid #1e293b;border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
-    header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:18px}.eyebrow{color:var(--front);font-size:12px;letter-spacing:.16em;text-transform:uppercase}.title{font-size:28px;margin:7px 0 8px}.subtitle{color:var(--muted);font-size:13px;line-height:1.7;max-width:780px}.badge{border:1px solid #334155;border-radius:999px;padding:8px 12px;color:#cbd5e1;font-size:11px;white-space:nowrap}
-    .canvas{border:1px solid #1e293b;border-radius:14px;overflow:hidden;background:#020617}.canvas svg{display:block;width:100%;height:auto}
-    .boundary{fill:#0f172a;fill-opacity:.38;stroke:#475569;stroke-width:1.5;stroke-dasharray:8 7}.boundary-label{fill:#94a3b8;font-size:12px;letter-spacing:.12em}.node{stroke-width:1.5}.node-title{fill:#f8fafc;font-size:13px;font-weight:700}.node-sub{fill:#94a3b8;font-size:10px}.label{fill:#cbd5e1;font-size:10px}.arrow{fill:none;stroke:#64748b;stroke-width:1.8;marker-end:url(#arrow)}.arrow-dashed{fill:none;stroke:#64748b;stroke-width:1.6;stroke-dasharray:6 5;marker-end:url(#arrow)}
-    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}.card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:15px}.card h3{font-size:12px;margin:0 0 8px}.card p{font-size:11px;line-height:1.65;color:var(--muted);margin:0}.c-front{color:var(--front)}.c-back{color:var(--back)}.c-security{color:var(--security)}
-    footer{display:flex;justify-content:space-between;margin-top:18px;color:#64748b;font-size:10px}.toolbar{position:fixed;right:22px;top:22px;z-index:10}.toolbar-toggle{width:42px;height:42px;border-radius:50%;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:22px;cursor:pointer}.toolbar-menu{display:none;position:absolute;right:0;top:48px;width:150px;padding:6px;border-radius:10px;border:1px solid #334155;background:#0f172a;box-shadow:0 16px 40px rgba(0,0,0,.45)}.toolbar.open .toolbar-menu{display:block}.toolbar-menu button{width:100%;border:0;background:transparent;color:#cbd5e1;text-align:left;padding:9px 10px;border-radius:7px;cursor:pointer;font:11px inherit}.toolbar-menu button:hover{background:#1e293b;color:white}
-    @media(max-width:760px){#report-container{width:100%;margin:0;padding:14px;border-radius:0}.summary{grid-template-columns:1fr}header{display:block}.badge{display:inline-block;margin-top:12px}.title{font-size:21px}.toolbar{right:12px;top:12px}}
-    @media print{body{background:#020617}.toolbar{display:none}#report-container{width:100%;margin:0;box-shadow:none;border:0}}
+    :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:32px;background:#020617}.container{width:min(1160px,100%);margin:0 auto}.container svg{display:block;width:100%;height:auto}.toolbar{position:fixed;right:22px;top:22px;z-index:20}.toolbar-toggle{width:42px;height:42px;border-radius:50%;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:22px;cursor:pointer}.toolbar-actions{display:none;position:absolute;right:0;top:48px;width:158px;padding:6px;border-radius:10px;border:1px solid #334155;background:#0f172a;box-shadow:0 16px 40px rgba(0,0,0,.45)}.toolbar.open .toolbar-actions{display:block}.toolbar-actions button{width:100%;border:0;background:transparent;color:#cbd5e1;text-align:left;padding:9px 10px;border-radius:7px;cursor:pointer;font:12px "Droid Sans",sans-serif}.toolbar-actions button:hover{background:#1e293b;color:#fff}@media(max-width:760px){body{padding:12px}.toolbar{right:12px;top:12px}}@media print{.toolbar{display:none!important}body{padding:0}}
   </style>
 </head>
 <body>
-  <div class="toolbar" id="toolbar"><button class="toolbar-toggle" aria-label="Export options" onclick="toggleToolbar()">⋯</button><div class="toolbar-menu"><button onclick="copyDiagram()">Copy image</button><button onclick="downloadPng()">Download PNG</button><button onclick="downloadPdf()">Download PDF</button></div></div>
-  <main id="report-container">
-    <header><div><div class="eyebrow">VitalMatrix / Architecture</div><h1 class="title">Personal Health Intelligence Platform</h1><div class="subtitle">A single FastAPI core connects browser and agent clients to health integrations, staged AI workflows, private media, and operational data services.</div></div><div class="badge">CURRENT · 2026-08-22</div></header>
-    <section class="canvas">
-      <svg viewBox="0 0 1160 760" role="img" aria-labelledby="diagram-title diagram-desc">
+  <div class="toolbar" id="toolbar">
+    <button class="toolbar-toggle" type="button" aria-label="导出选项" onclick="toggleToolbar()">⋯</button>
+    <div class="toolbar-actions">
+      <button type="button" onclick="copyAsImage()">复制图片</button>
+      <button type="button" onclick="downloadPNG()">下载 PNG</button>
+      <button type="button" onclick="downloadPDF()">下载 PDF</button>
+    </div>
+  </div>
+  <div class="container" id="report-container">
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="1120" viewBox="0 0 1160 1120" role="img" aria-labelledby="report-title report-desc">
+  <title id="report-title">VitalMatrix 系统架构</title>
+  <desc id="report-desc">VitalMatrix 客户端、FastAPI 核心、服务层、数据层与外部服务架构图</desc>
+  <style>.report-title{fill:#f8fafc;font:700 30px "JetBrains Mono","Droid Sans",sans-serif}.report-sub{fill:#94a3b8;font:14px "JetBrains Mono","Droid Sans",sans-serif}.report-tag{fill:#22d3ee;font:12px "JetBrains Mono","Droid Sans",sans-serif;letter-spacing:.12em}.card-title{font:700 16px "JetBrains Mono","Droid Sans",sans-serif}.card-text{fill:#cbd5e1;font:12px "JetBrains Mono","Droid Sans",sans-serif}.footer-text{fill:#64748b;font:11px "JetBrains Mono","Droid Sans",sans-serif}</style>
+  <defs><pattern id="report-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern></defs>
+  <rect width="1160" height="1120" rx="18" fill="#020617"/>
+  <rect width="1160" height="1120" rx="18" fill="url(#report-grid)"/>
+  <text class="report-tag" x="38" y="42">VITALMATRIX / 系统架构</text>
+  <text class="report-title" x="38" y="82">个人健康智能平台</text>
+  <text class="report-sub" x="38" y="112">统一 FastAPI 核心连接多端客户端、健康数据服务、分阶段 AI 工作流与私有媒体存储。</text>
+  <g transform="translate(0 140)">
+
+  <style>text{font-family:"JetBrains Mono","SFMono-Regular",Consolas,"Droid Sans",sans-serif}.boundary{fill:#0f172a;fill-opacity:.38;stroke:#475569;stroke-width:1.5;stroke-dasharray:8 7}.boundary-label{fill:#94a3b8;font-size:12px;letter-spacing:.12em}.node{stroke-width:1.5}.node-title{fill:#f8fafc;font-size:13px;font-weight:700}.node-sub{fill:#94a3b8;font-size:10px}.label{fill:#cbd5e1;font-size:10px}.arrow{fill:none;stroke:#64748b;stroke-width:1.8;marker-end:url(#arrow)}.arrow-dashed{fill:none;stroke:#64748b;stroke-width:1.6;stroke-dasharray:6 5;marker-end:url(#arrow)}</style>
+  <defs><pattern id="preview-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern></defs>
+  <rect width="1160" height="760" rx="14" fill="#020617"/>
+  <rect width="1160" height="760" rx="14" fill="url(#preview-grid)"/>
         <title id="diagram-title">VitalMatrix system architecture</title><desc id="diagram-desc">Clients connect through Nginx to FastAPI APIs, services, data stores, and external health and AI providers.</desc>
         <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#64748b"/></marker></defs>
 
@@ -33,55 +46,70 @@
         <path class="arrow" d="M795 125H835V145H875"/><path class="arrow" d="M795 235H835V255H875"/><path class="arrow" d="M795 345H835V365H875"/><path class="arrow" d="M795 455H835V475H875"/>
         <path class="arrow" d="M795 125V88H1040V125H1070"/><path class="arrow" d="M795 345H820V205H1040V235H1070"/><path class="arrow" d="M590 145H610V188H1025V345H1070"/><path class="arrow-dashed" d="M1005 475H1040V455H1070"/>
 
-        <rect class="boundary" x="225" y="55" width="800" height="555" rx="18"/><text class="boundary-label" x="245" y="82">SERVER TRUST BOUNDARY</text>
+        <rect class="boundary" x="225" y="55" width="800" height="555" rx="18"/><text class="boundary-label" x="245" y="82">服务器信任边界</text>
 
-        <text class="boundary-label" x="35" y="95">CLIENTS</text>
-        <g><rect class="node" x="30" y="115" width="120" height="60" rx="10" fill="#082f49" stroke="#22d3ee"/><text class="node-title" x="45" y="140">React Web</text><text class="node-sub" x="45" y="158">Vite dashboard</text></g>
-        <g><rect class="node" x="30" y="235" width="120" height="60" rx="10" fill="#082f49" stroke="#22d3ee"/><text class="node-title" x="45" y="260">Mini Program</text><text class="node-sub" x="45" y="278">WeChat client</text></g>
-        <g><rect class="node" x="30" y="355" width="120" height="60" rx="10" fill="#082f49" stroke="#22d3ee"/><text class="node-title" x="45" y="380">Agent Client</text><text class="node-sub" x="45" y="398">MCP / OpenClaw</text></g>
+        <text class="boundary-label" x="35" y="95">客户端</text>
+        <g><rect class="node" x="30" y="115" width="120" height="60" rx="10" fill="#082f49" stroke="#22d3ee"/><text class="node-title" x="45" y="140">React Web</text><text class="node-sub" x="45" y="158">Vite 仪表盘</text></g>
+        <g><rect class="node" x="30" y="235" width="120" height="60" rx="10" fill="#082f49" stroke="#22d3ee"/><text class="node-title" x="45" y="260">微信小程序</text><text class="node-sub" x="45" y="278">微信客户端</text></g>
+        <g><rect class="node" x="30" y="355" width="120" height="60" rx="10" fill="#082f49" stroke="#22d3ee"/><text class="node-title" x="45" y="380">Agent 客户端</text><text class="node-sub" x="45" y="398">MCP / OpenClaw</text></g>
 
-        <g><rect class="node" x="245" y="239" width="130" height="70" rx="10" fill="#0f172a" stroke="#94a3b8"/><text class="node-title" x="263" y="266">Nginx Edge</text><text class="node-sub" x="263" y="284">TLS · static · proxy</text></g>
+        <g><rect class="node" x="245" y="239" width="130" height="70" rx="10" fill="#0f172a" stroke="#94a3b8"/><text class="node-title" x="263" y="266">Nginx 接入层</text><text class="node-sub" x="263" y="284">TLS · 静态资源 · 反向代理</text></g>
 
-        <text class="boundary-label" x="450" y="105">FASTAPI CORE</text>
-        <g><rect class="node" x="450" y="115" width="140" height="60" rx="10" fill="#4c0519" stroke="#fb7185"/><text class="node-title" x="468" y="140">Auth &amp; Policy</text><text class="node-sub" x="468" y="158">JWT · API key · limits</text></g>
-        <g><rect class="node" x="450" y="245" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="468" y="270">REST APIs</text><text class="node-sub" x="468" y="288">/api/v1/*</text></g>
-        <g><rect class="node" x="450" y="375" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="468" y="400">MCP Server</text><text class="node-sub" x="468" y="418">SSE + data tools</text></g>
-        <g><rect class="node" x="450" y="505" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="468" y="530">Scheduler</text><text class="node-sub" x="468" y="548">sync · digest · cleanup</text></g>
+        <text class="boundary-label" x="450" y="105">FASTAPI 核心</text>
+        <g><rect class="node" x="450" y="115" width="140" height="60" rx="10" fill="#4c0519" stroke="#fb7185"/><text class="node-title" x="468" y="140">认证与策略</text><text class="node-sub" x="468" y="158">JWT · API Key · 权限控制</text></g>
+        <g><rect class="node" x="450" y="245" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="468" y="270">REST API</text><text class="node-sub" x="468" y="288">/api/v1/*</text></g>
+        <g><rect class="node" x="450" y="375" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="468" y="400">MCP 服务</text><text class="node-sub" x="468" y="418">SSE · 数据工具</text></g>
+        <g><rect class="node" x="450" y="505" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="468" y="530">任务调度</text><text class="node-sub" x="468" y="548">同步 · 汇总 · 清理</text></g>
 
-        <text class="boundary-label" x="655" y="85">SERVICES</text>
-        <g><rect class="node" x="655" y="95" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="673" y="120">Health Domain</text><text class="node-sub" x="673" y="138">training · recovery</text></g>
-        <g><rect class="node" x="655" y="205" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="673" y="230">Nutrition Flow</text><text class="node-sub" x="673" y="248">core · advice · poster</text></g>
-        <g><rect class="node" x="655" y="315" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="673" y="340">AI Orchestrator</text><text class="node-sub" x="673" y="358">schema · retry · routing</text></g>
-        <g><rect class="node" x="655" y="425" width="140" height="60" rx="10" fill="#4c0519" stroke="#fb7185"/><text class="node-title" x="673" y="450">Private Media</text><text class="node-sub" x="673" y="468">signed access · expiry</text></g>
+        <text class="boundary-label" x="655" y="85">服务层</text>
+        <g><rect class="node" x="655" y="95" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="673" y="120">健康业务</text><text class="node-sub" x="673" y="138">训练 · 恢复</text></g>
+        <g><rect class="node" x="655" y="205" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="673" y="230">营养流程</text><text class="node-sub" x="673" y="248">本餐分析 · 三餐建议 · 海报</text></g>
+        <g><rect class="node" x="655" y="315" width="140" height="60" rx="10" fill="#022c22" stroke="#34d399"/><text class="node-title" x="673" y="340">AI 编排</text><text class="node-sub" x="673" y="358">Schema · 重试 · 路由</text></g>
+        <g><rect class="node" x="655" y="425" width="140" height="60" rx="10" fill="#4c0519" stroke="#fb7185"/><text class="node-title" x="673" y="450">私有媒体</text><text class="node-sub" x="673" y="468">签名访问 · 过期控制</text></g>
 
-        <text class="boundary-label" x="875" y="105">DATA</text>
-        <g><rect class="node" x="875" y="115" width="130" height="60" rx="10" fill="#2e1065" stroke="#a78bfa"/><text class="node-title" x="893" y="140">PostgreSQL</text><text class="node-sub" x="893" y="158">system of record</text></g>
-        <g><rect class="node" x="875" y="225" width="130" height="60" rx="10" fill="#2e1065" stroke="#a78bfa"/><text class="node-title" x="893" y="250">Redis</text><text class="node-sub" x="893" y="268">locks · rate · cache</text></g>
-        <g><rect class="node" x="875" y="335" width="130" height="60" rx="10" fill="#2e1065" stroke="#a78bfa"/><text class="node-title" x="893" y="360">File Storage</text><text class="node-sub" x="893" y="378">private originals</text></g>
-        <g><rect class="node" x="875" y="445" width="130" height="60" rx="10" fill="#0f172a" stroke="#94a3b8"/><text class="node-title" x="893" y="470">Operations</text><text class="node-sub" x="893" y="488">logs · health checks</text></g>
+        <text class="boundary-label" x="875" y="105">数据层</text>
+        <g><rect class="node" x="875" y="115" width="130" height="60" rx="10" fill="#2e1065" stroke="#a78bfa"/><text class="node-title" x="893" y="140">PostgreSQL</text><text class="node-sub" x="893" y="158">主数据存储</text></g>
+        <g><rect class="node" x="875" y="225" width="130" height="60" rx="10" fill="#2e1065" stroke="#a78bfa"/><text class="node-title" x="893" y="250">Redis</text><text class="node-sub" x="893" y="268">锁 · 限流 · 缓存</text></g>
+        <g><rect class="node" x="875" y="335" width="130" height="60" rx="10" fill="#2e1065" stroke="#a78bfa"/><text class="node-title" x="893" y="360">文件存储</text><text class="node-sub" x="893" y="378">私有原图</text></g>
+        <g><rect class="node" x="875" y="445" width="130" height="60" rx="10" fill="#0f172a" stroke="#94a3b8"/><text class="node-title" x="893" y="470">运行保障</text><text class="node-sub" x="893" y="488">日志 · 健康检查</text></g>
 
-        <text class="boundary-label" x="1070" y="85">EXTERNAL</text>
+        <text class="boundary-label" x="1070" y="85">外部服务</text>
         <g><rect class="node" x="1070" y="95" width="70" height="60" rx="10" fill="#451a03" stroke="#fbbf24"/><text class="node-title" x="1082" y="120">Polar</text><text class="node-sub" x="1082" y="138">Oura</text></g>
         <g><rect class="node" x="1070" y="205" width="70" height="60" rx="10" fill="#451a03" stroke="#fbbf24"/><text class="node-title" x="1082" y="230">Vertex</text><text class="node-sub" x="1082" y="248">Gemini</text></g>
-        <g><rect class="node" x="1070" y="315" width="70" height="60" rx="10" fill="#451a03" stroke="#fbbf24"/><text class="node-title" x="1082" y="340">WeChat</text><text class="node-sub" x="1082" y="358">Auth</text></g>
-        <g><rect class="node" x="1070" y="425" width="70" height="60" rx="10" fill="#451a03" stroke="#fbbf24"/><text class="node-title" x="1082" y="450">Alerts</text><text class="node-sub" x="1082" y="468">optional</text></g>
+        <g><rect class="node" x="1070" y="315" width="70" height="60" rx="10" fill="#451a03" stroke="#fbbf24"/><text class="node-title" x="1082" y="340">WeChat</text><text class="node-sub" x="1082" y="358">认证</text></g>
+        <g><rect class="node" x="1070" y="425" width="70" height="60" rx="10" fill="#451a03" stroke="#fbbf24"/><text class="node-title" x="1082" y="450">通知</text><text class="node-sub" x="1082" y="468">可选</text></g>
 
-        <g transform="translate(245 664)"><text class="boundary-label" x="0" y="0">LEGEND</text><rect x="0" y="18" width="12" height="12" rx="2" fill="#082f49" stroke="#22d3ee"/><text class="label" x="20" y="28">Frontend</text><rect x="110" y="18" width="12" height="12" rx="2" fill="#022c22" stroke="#34d399"/><text class="label" x="130" y="28">Backend</text><rect x="220" y="18" width="12" height="12" rx="2" fill="#2e1065" stroke="#a78bfa"/><text class="label" x="240" y="28">Data</text><rect x="310" y="18" width="12" height="12" rx="2" fill="#451a03" stroke="#fbbf24"/><text class="label" x="330" y="28">Cloud / external</text><rect x="475" y="18" width="12" height="12" rx="2" fill="#4c0519" stroke="#fb7185"/><text class="label" x="495" y="28">Security boundary</text></g>
-      </svg>
-    </section>
-    <section class="summary"><article class="card"><h3 class="c-front">ONE CORE, THREE CLIENTS</h3><p>Web, Mini Program, and MCP clients share the same authenticated service contracts and health data model.</p></article><article class="card"><h3 class="c-back">STAGED AI WORKFLOWS</h3><p>Structured analysis, recommendation, and poster rendering are separate bounded stages with persistence between them.</p></article><article class="card"><h3 class="c-security">PRIVATE BY DEFAULT</h3><p>Health records and uploaded media stay behind application authorization; public access uses short-lived signed routes.</p></article></section>
-    <footer><span>VitalMatrix architecture reference</span><span>Self-contained HTML · PNG / PDF export</span></footer>
-  </main>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <g transform="translate(245 664)"><text class="boundary-label" x="0" y="0">图例</text><rect x="0" y="18" width="12" height="12" rx="2" fill="#082f49" stroke="#22d3ee"/><text class="label" x="20" y="28">前端</text><rect x="110" y="18" width="12" height="12" rx="2" fill="#022c22" stroke="#34d399"/><text class="label" x="130" y="28">后端</text><rect x="220" y="18" width="12" height="12" rx="2" fill="#2e1065" stroke="#a78bfa"/><text class="label" x="240" y="28">数据</text><rect x="310" y="18" width="12" height="12" rx="2" fill="#451a03" stroke="#fbbf24"/><text class="label" x="330" y="28">云服务 / 外部服务</text><rect x="475" y="18" width="12" height="12" rx="2" fill="#4c0519" stroke="#fb7185"/><text class="label" x="495" y="28">安全边界</text></g>
+
+  </g>
+  <g transform="translate(30 935)">
+    <rect width="350" height="125" rx="12" fill="#0f172a" stroke="#164e63"/>
+    <circle cx="24" cy="25" r="5" fill="#22d3ee"/><text class="card-title" x="40" y="31" fill="#22d3ee">一个核心，三类客户端</text>
+    <text class="card-text" x="20" y="62"><tspan x="20" dy="0">Web、微信小程序和 MCP 客户端共享</tspan><tspan x="20" dy="22">统一认证、服务接口与健康数据模型。</tspan></text>
+  </g>
+  <g transform="translate(405 935)">
+    <rect width="350" height="125" rx="12" fill="#0f172a" stroke="#065f46"/>
+    <circle cx="24" cy="25" r="5" fill="#34d399"/><text class="card-title" x="40" y="31" fill="#34d399">分阶段 AI 工作流</text>
+    <text class="card-text" x="20" y="62"><tspan x="20" dy="0">结构化分析、三餐建议和海报生成相互</tspan><tspan x="20" dy="22">独立，每个阶段都会持久化并可追踪。</tspan></text>
+  </g>
+  <g transform="translate(780 935)">
+    <rect width="350" height="125" rx="12" fill="#0f172a" stroke="#881337"/>
+    <circle cx="24" cy="25" r="5" fill="#fb7185"/><text class="card-title" x="40" y="31" fill="#fb7185">默认私有</text>
+    <text class="card-text" x="20" y="62"><tspan x="20" dy="0">健康数据和上传媒体默认受应用授权保护，</tspan><tspan x="20" dy="22">对外访问只使用短时有效的签名地址。</tspan></text>
+  </g>
+  <text class="footer-text" x="30" y="1095">VitalMatrix 架构基线 · 2026-08-22</text>
+  <text class="footer-text" x="1130" y="1095" text-anchor="end">完整画布 · PNG / PDF 导出</text>
+</svg>
+  </div>
   <script>
-    const report=document.getElementById('report-container');
-    function toggleToolbar(){document.getElementById('toolbar').classList.toggle('open')}
-    async function capture(){const rect=report.getBoundingClientRect();return html2canvas(report,{backgroundColor:'#020617',scale:2,useCORS:true,width:rect.width,height:rect.height,windowWidth:document.documentElement.scrollWidth,windowHeight:document.documentElement.scrollHeight,x:rect.left+window.scrollX,y:rect.top+window.scrollY})}
-    async function copyDiagram(){const canvas=await capture();canvas.toBlob(async blob=>{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])},'image/png')}
-    async function downloadPng(){const canvas=await capture();const link=document.createElement('a');link.download='vitalmatrix-system-architecture.png';link.href=canvas.toDataURL('image/png');link.click()}
-    async function downloadPdf(){const canvas=await capture();const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:'landscape',unit:'px',format:[canvas.width,canvas.height],hotfixes:['px_scaling']});pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,canvas.width,canvas.height);pdf.save('vitalmatrix-system-architecture.pdf')}
-    document.addEventListener('click',event=>{const toolbar=document.getElementById('toolbar');if(!toolbar.contains(event.target))toolbar.classList.remove('open')});
+    const report=document.getElementById("report-container");
+    const padding=32;
+    function toggleToolbar(){document.getElementById("toolbar").classList.toggle("open")}
+    async function captureReport(){const rect=report.getBoundingClientRect();return html2canvas(document.body,{backgroundColor:"#020617",scale:2,x:rect.left+window.scrollX-padding,y:rect.top+window.scrollY-padding,width:rect.width+padding*2,height:rect.height+padding*2,windowWidth:document.documentElement.scrollWidth,windowHeight:document.documentElement.scrollHeight,ignoreElements:element=>element.classList&&element.classList.contains("toolbar")})}
+    async function copyAsImage(){const canvas=await captureReport();canvas.toBlob(async blob=>{if(!blob)return;await navigator.clipboard.write([new ClipboardItem({"image/png":blob})])},"image/png")}
+    async function downloadPNG(){const canvas=await captureReport();const link=document.createElement("a");link.download="vitalmatrix-system-architecture.png";link.href=canvas.toDataURL("image/png");link.click()}
+    async function downloadPDF(){const canvas=await captureReport();const {jsPDF}=window.jspdf;const orientation=canvas.width>=canvas.height?"landscape":"portrait";const pdf=new jsPDF({orientation,unit:"px",format:[canvas.width,canvas.height],hotfixes:["px_scaling"]});pdf.addImage(canvas.toDataURL("image/png"),"PNG",0,0,canvas.width,canvas.height);pdf.save("vitalmatrix-system-architecture.pdf")}
+    document.addEventListener("click",event=>{const toolbar=document.getElementById("toolbar");if(!toolbar.contains(event.target))toolbar.classList.remove("open")});
   </script>
 </body>
 </html>

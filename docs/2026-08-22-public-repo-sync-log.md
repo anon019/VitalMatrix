@@ -14,6 +14,7 @@ This sync updates the public `VitalMatrix` repository from the server-side worki
 - Nutrition poster V9 with deterministic text and verified nutrition layout
 - Exportable system architecture and nutrition-poster workflow diagrams
 - GitHub-renderable SVG previews embedded directly in README and architecture docs
+- Complete 1600px PNG exports with Chinese labels, summary cards, and corrected text fit
 - Database migrations, regression tests, and public documentation
 
 ## Explicitly Excluded
