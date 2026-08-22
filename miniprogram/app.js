@@ -10,7 +10,7 @@ App({
   },
 
   onLaunch() {
-    console.log('VitalMatrix 启动')
+    console.log('Health Assistant 启动')
 
     // 尝试从本地存储恢复登录状态
     this.restoreLoginState()
@@ -36,7 +36,7 @@ App({
   },
 
   /**
-   * 自动登录（单用户简易模式）
+   * 自动微信登录
    */
   async autoLogin() {
     if (this.loginPromise) {
@@ -62,8 +62,7 @@ App({
 
         console.log('✅ 自动登录成功!', {
           user_id: res.user_id,
-          is_new_user: res.is_new_user,
-          token: res.access_token.substring(0, 20) + '...'
+          is_new_user: res.is_new_user
         })
 
         // 登录成功后，通知所有页面刷新数据

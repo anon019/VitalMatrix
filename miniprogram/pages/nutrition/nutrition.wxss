@@ -246,7 +246,35 @@ page {
 }
 
 .upload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
   margin-bottom: 20rpx;
+}
+
+.coverage-chip {
+  flex: none;
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(46, 125, 50, 0.1);
+  color: #2E7D32;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.summary-scope {
+  display: block;
+  margin-top: 4rpx;
+  color: #78909C;
+  font-size: 22rpx;
+}
+
+.current-model {
+  display: block;
+  margin-top: 6rpx;
+  color: #78909C;
+  font-size: 20rpx;
 }
 
 .upload-title {
@@ -650,6 +678,14 @@ page {
   object-fit: cover;
 }
 
+.meal-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64rpx;
+  background: linear-gradient(135deg, #F2F7F3 0%, #E3EEE5 100%);
+}
+
 .meal-type-tag {
   position: absolute;
   bottom: 6rpx;
@@ -901,4 +937,120 @@ page {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* 两阶段上传：请求结束前保持操作锁定，视觉沿用 Natural Table。 */
+.capture-btn[disabled],
+.capture-btn.is-busy {
+  opacity: 0.68;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .steam,
+  .scan-ring,
+  .dot,
+  .anim-slide-up {
+    animation: none;
+  }
+}
+
+/* 0.3.6：上传链路说明、餐食列表可点击性与失效缩略图降级 */
+.upload-card {
+  border: 1rpx solid rgba(82, 105, 72, 0.12);
+  box-shadow: 0 14rpx 34rpx rgba(68, 54, 35, 0.08);
+}
+
+.capture-btn {
+  min-height: 84rpx;
+  transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.capture-btn:active {
+  transform: scale(0.985);
+  box-shadow: none;
+}
+
+.capture-helper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 9rpx;
+  margin-top: 16rpx;
+  padding: 0 12rpx;
+  color: #8D806F;
+  font-size: 19rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.capture-helper-dot {
+  flex: 0 0 auto;
+  width: 9rpx;
+  height: 9rpx;
+  margin-top: 9rpx;
+  border-radius: 50%;
+  background: #5C8C56;
+}
+
+.meal-pill {
+  min-height: 76rpx;
+  transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.meal-pill:active {
+  transform: scale(0.97);
+}
+
+.nutrition-overview {
+  border: 1rpx solid rgba(74, 92, 67, 0.10);
+  box-shadow: 0 12rpx 30rpx rgba(68, 54, 35, 0.07);
+}
+
+.meal-card {
+  border: 1rpx solid rgba(74, 92, 67, 0.10);
+  box-shadow: 0 9rpx 25rpx rgba(68, 54, 35, 0.06);
+  transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.meal-card-pressed {
+  transform: scale(0.985);
+  opacity: 0.88;
+  box-shadow: 0 4rpx 12rpx rgba(68, 54, 35, 0.05);
+}
+
+.meal-image-placeholder {
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.7), transparent 28%),
+    linear-gradient(145deg, #E6EFE7 0%, #D3E2D5 100%);
+  color: #456842;
+}
+
+.meal-image-placeholder.image-unavailable {
+  box-sizing: border-box;
+  align-items: flex-start;
+  padding: 20rpx 12rpx 34rpx;
+  background: linear-gradient(145deg, #F1F3F0 0%, #E3E8E3 100%);
+  color: #78827B;
+  font-size: 18rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.meal-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42rpx;
+  height: 42rpx;
+  margin-left: 8rpx;
+  padding: 0;
+  border-radius: 13rpx;
+  background: #F4F5F1;
+}
+
+.arrow-icon {
+  font-size: 30rpx;
+  color: #7A8578;
 }

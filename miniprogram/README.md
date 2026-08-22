@@ -2,13 +2,13 @@
 
 ## Version
 
-- Current version: `0.2.1`
+- Current version: `0.3.11`
 - Change history: `CHANGELOG.md`
-- Release notes: `docs/releases/2026-03-25-v0.2.1.md`
+- Release notes: `docs/releases/2026-08-22-v0.3.11.md`
 
 ## Scope
 
-This directory contains the WeChat mini program for VitalMatrix, including:
+This repository contains the WeChat mini program only.
 
 - daily dashboard
 - trends view
@@ -18,20 +18,108 @@ This directory contains the WeChat mini program for VitalMatrix, including:
 
 ## Local Development
 
-1. Open `miniprogram/` in WeChat DevTools.
-2. Copy `project.config.json.example` to a local `project.config.json`.
-3. Fill your own AppID locally via DevTools or the copied config file.
-4. Update `utils/config.js` with your deployment domain.
-5. If the backend enables `WEB_ACCESS_PASSWORD`, also set `SIMPLE_LOGIN_PASSWORD` in `utils/config.js`.
-6. Do not commit `project.config.json`, `project.private.config.json`, or any local-only IDE config.
-7. The mini program uses `/api/v1/auth/simple-login` by default, which is intended for single-user deployment.
-8. If the backend has multiple users, set `DEFAULT_USER_ID` in `backend/.env`.
+1. Open the current directory in WeChat DevTools.
+2. Keep `project.config.json` for local-only development.
+3. Use `project.config.json.example` when you need a shareable config template.
+4. Never commit `project.private.config.json`, `.claude/`, or any personal IDE config.
 
-## Recent Updates In 0.2.1
+## Recent Updates In 0.3.11
 
-- deduplicated page loading on first screen entry and page re-entry
-- improved 401 re-login handling and request feedback throttling
-- unified local-date generation to avoid wrong-day requests
-- deferred trends heart-rate recovery loading off the primary render path
-- fixed nutrition summary count and cache invalidation after upload/delete
-- aligned settings copy with the currently supported Polar flow
+- keep the poster-generation entry disabled until the future-three-meal recommendation reaches `completed`
+- refresh the short-lived signed poster URL through the ordinary cached-poster endpoint whenever the preview is reopened or a displayed URL fails
+- remount the poster image when `content_digest` changes, retain the 3:4 natural-ratio `widthFix` presentation, and reserve a safe-area action footer
+- save the original `poster_url` without Canvas processing, keep verified metrics accessibility-only, and expose `layout_version` for online-version diagnosis
+- preserve backend messages for poster HTTP 422, 429, and 502 responses instead of rewriting every error as a quota failure
+
+## Previous Updates In 0.3.10
+
+- restore high-contrast deep-green headers on the AI and settings pages after a partial CSS override made dark text disappear against dark backgrounds
+- refine nutrition-rating labels into consistently aligned status capsules with semantic color, inset highlight, and no displaced external shadow
+- replace the settings goal placeholder with the server-backed `health_goal` and `training_plan`, including a real edit-and-save flow used by AI and nutrition analysis
+- normalize the settings tab icon's optical size to the other four navigation icons while preserving the existing icon style
+- reintroduce friendly nutrition, recovery, activity, and knowledge symbols inside the cleaner AI recommendation hierarchy
+
+## Previous Updates In 0.3.9
+
+- disable page-level `requiredComponents` lazy loading after confirming the current WeChat DevTools could mount static page frames without creating Page instances
+- restore real dashboard, trends, nutrition, AI, and settings data rendering after developer-tool login recovery
+- verify the dashboard and nutrition pages against live API responses in WeChat DevTools instead of relying only on static checks
+
+## Previous Updates In 0.3.8
+
+- bypass the shared GET cache entirely for recommendation-status polling and explicitly force the final meal-detail refresh
+- align the pending and failed recommendation states with the two-stage backend flow, including recommendation-only retry
+- preserve and render all future-meal timing, flavor, experience, portion, protein, ingredient, and cooking-step fields
+- present every recommended dish as an independent recipe card and keep flavor notes and menu rationale at the meal-card footer
+- standardize failed detail images on the `imageLoadFailed` state while retaining the session-level missing-media circuit breaker
+
+## Previous Updates In 0.3.7
+
+- start recommendation-status polling two seconds after upload recognition completes, then force-refresh the meal detail when recommendations finish
+- render recipe ingredients as wrapping tags and cooking instructions as individually numbered steps instead of concatenated paragraphs
+- replace failed historical meal images with a stable “历史图片不可用” state and stop automatic 404 refresh loops
+
+## Previous Updates In 0.3.6
+
+- redesign the nutrition-detail hierarchy around one compact meal overview, clearer analysis sections, and a calmer future-24-hour recommendation flow
+- replace the repeated missing-recipe placeholders with one honest backend-availability note, while keeping all returned portions and nutrients visible
+- collapse failed meal photos into a compact fallback instead of leaving a large blank hero, and retain a single signed-media refresh attempt
+- refine the dashboard, trends, nutrition capture, AI guidance, and settings surfaces with consistent section rhythm, press feedback, consumer-facing copy, and softer data cards
+- remove model and backend URL details from consumer UI while preserving all underlying API adaptations
+
+## Previous Updates In 0.3.5
+
+- make future-meal tabs show concise breakfast, lunch, and dinner labels instead of squeezing full menu names into three narrow columns
+- keep the complete menu title in the selected meal card and expose backend-provided portion and protein values for each dish
+- hide empty ingredient, cooking-step, and health-benefit rows while clearly identifying recipe details that the backend did not provide
+- support additional compatible ingredient and cooking-step aliases when future backend responses include them
+
+## Previous Updates In 0.3.4
+
+- restore nutrition, training, sleep, activity, and recovery trends to one continuously scrollable page
+- add a non-exclusive trend index that jumps to each section without hiding or unloading the others
+- restore the nutrition page's Natural Table visual language, meal emojis, organic background, steam loading animation, and colorful nutrition accents
+- retain the v0.3.3 two-stage upload, recommendation polling, timeout recovery, and duplicate-submission protection
+- keep nutrition trend metrics full-width while restoring the richer surrounding trend presentation
+
+## Previous Updates In 0.3.3
+
+- show meal recognition and core nutrition results as soon as upload returns, without waiting for future-diet recommendations
+- poll recommendation status independently every two seconds, stop after 90 seconds, and clean up on page hide or unload
+- retry only the recommendation endpoint after recommendation failure; image upload and recognition are never repeated
+- recover ambiguous client upload timeouts by refreshing recent meals before asking the user to try again
+- remove user-confirmation questions while retaining confidence, portion assumptions, and uncertainty notes
+- support current and legacy recommendation shapes without treating temporarily empty recipe arrays as meal failures
+
+## Previous Updates In 0.3.2
+
+- unified all six pages around the established green health-product palette and a calmer data-first hierarchy
+- changed nutrition trends from two cards per row to one full-width metric per row
+- added trend-category switching so only the active group is rendered, with heart-rate detail deferred until sleep is opened
+- redesigned AI recommendations without the purple starfield, glow effects, or continuous decorative animation
+- simplified nutrition capture, nutrition detail, and settings into consistent white surfaces with restrained green accents
+- fixed the settings page remaining blank when login restoration completed after initial page creation
+
+## Previous Updates In 0.3.1
+
+- display every backend-provided follow-up meal instead of truncating the list to one recipe
+- add a compact meal switcher so lunch, dinner, snack, or next-day meals remain easy to scan
+- remove model names, legacy-analysis labels, and upgrade controls from consumer nutrition screens
+- turn the top-level analysis conclusion into a concise meal brief with the full analysis below
+- support additional dish calorie and content field aliases without rendering misleading `0 kcal` values
+- simplify poster status copy while retaining backend-verified nutrition metrics and full scrolling
+
+## Previous Updates In 0.3.0
+
+- switched mini program authentication to `/api/v1/auth/wechat-login`
+- preserved signed nutrition-media query strings and added bounded expired-link recovery
+- added dashboard nutrition priority cards, metric-specific source dates, and minute-based sedentary display
+- added five nutrition trend series with averages calculated only from recorded days
+- exposed the backend model, stale-source date, prompt version, and data completeness in AI guidance
+- adapted user profile reads and updates to `/api/v1/user/profile`
+- exposed profile and device settings through the main tab bar
+- moved nutrition posters to the on-demand backend generation flow
+- added full-height poster preview, safe-area actions, complete-image saving, and retry states
+- prioritized calorie ranges, confidence, confirmation questions, and concise health insights
+- switched next-meal content to `next_meal_recipes` and reduced it to one focused menu
+- reorganized AI recommendations into nutrition, recovery, activity, and health knowledge

@@ -1,18 +1,23 @@
 // pages/index/index.js
-const { getTodayTraining, getWeeklyTraining, getTrainingHistory, getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraSpo2, getOuraStress, getOuraHeartrateDetail, getDashboard } = require('../../utils/request.js')
+const { getTodayTraining, getWeeklyTraining, getTrainingHistory, getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraSpo2, getOuraStress, getOuraHeartrateDetail, getDashboard, getTodayRecommendation } = require('../../utils/request.js')
 const { formatLocalDate } = require('../../utils/date.js')
 
 Page({
   data: {
     loading: true,
+    healthLoading: true,
     todayDate: '',
     todayDateFull: '',  // 完整日期显示
     todayDateISO: '',   // ISO格式今日日期，用于比较 YYYY-MM-DD
 
     // 问候语
     greeting: '早上好',
-    greetingEmoji: '🌅',
     healthSummary: '',  // 健康状态一句话总结
+    nutritionToday: null,
+    nutritionYesterday: null,
+    todayAiActions: [],
+    aiIsStale: false,
+    aiSourceDate: '',
 
     // 日期显示
     trainingDate: '',
@@ -90,6 +95,7 @@ Page({
 
   onLoad() {
     console.log('今日页面加载')
+    this._isActive = true
     this._hasShownOnce = false
     this.setDates()
 
@@ -101,6 +107,10 @@ Page({
     } else {
       console.log('等待登录完成...')
     }
+  },
+
+  onUnload() {
+    this._isActive = false
   },
 
   onShow() {
@@ -150,6 +160,7 @@ Page({
       // 展开时延迟绘制雷达图（等待canvas创建）
       if (isExpanding) {
         setTimeout(() => {
+          if (!this._isActive) return
           this.drawRadarForCard(cardName)
         }, 100)
       }
@@ -253,25 +264,18 @@ Page({
     // 根据时间设置问候语
     const hour = today.getHours()
     let greeting = '早上好'
-    let greetingEmoji = '🌅'
     if (hour >= 5 && hour < 9) {
       greeting = '早上好'
-      greetingEmoji = '🌅'
     } else if (hour >= 9 && hour < 12) {
       greeting = '上午好'
-      greetingEmoji = '☀️'
     } else if (hour >= 12 && hour < 14) {
       greeting = '中午好'
-      greetingEmoji = '🌞'
     } else if (hour >= 14 && hour < 18) {
       greeting = '下午好'
-      greetingEmoji = '🌤️'
     } else if (hour >= 18 && hour < 22) {
       greeting = '晚上好'
-      greetingEmoji = '🌙'
     } else {
       greeting = '夜深了'
-      greetingEmoji = '🌃'
     }
 
     this.setData({
@@ -279,7 +283,6 @@ Page({
       todayDateFull: todayDateFull,
       todayDateISO: this.formatDateShort(today),  // YYYY-MM-DD格式
       greeting: greeting,
-      greetingEmoji: greetingEmoji,
       trainingDate: this.formatDateShort(yesterday),
       sleepDate: this.formatDateShort(today),
       readinessDate: this.formatDateShort(today),
@@ -336,7 +339,7 @@ Page({
     const shouldShowLoading = !this._hasLoadedOnce || !silent
 
     if (shouldShowLoading) {
-      this.setData({ loading: true })
+      this.setData({ loading: true, healthLoading: true })
     }
 
     const startTime = Date.now()
@@ -347,7 +350,7 @@ Page({
 
       // ========== 第一层：关键数据（首屏） ==========
       console.log('[Performance] 第一层加载开始')
-      const [dashboardResult, todayTrainingResult, trainingHistoryResult] = await Promise.all([
+      const [dashboardResult, todayTrainingResult, trainingHistoryResult, recommendationResult] = await Promise.all([
         getDashboard().catch(err => {
           console.warn('获取Dashboard数据失败:', err)
           return null
@@ -358,6 +361,10 @@ Page({
         }),
         getTrainingHistory({ days: 14 }).catch(err => {
           console.warn('获取训练历史数据失败:', err)
+          return null
+        }),
+        getTodayRecommendation().catch(err => {
+          console.warn('获取今日 AI 行动建议失败:', err)
           return null
         })
       ])
@@ -370,10 +377,16 @@ Page({
       }
 
       // 第一次 setData：首屏可见
+      if (!this._isActive) return
       this.setData({
         loading: false,
         trainingData,
-        trainingDate
+        trainingDate,
+        nutritionToday: this.processDashboardNutrition(dashboardResult?.nutrition_today),
+        nutritionYesterday: this.processDashboardNutrition(dashboardResult?.nutrition_yesterday),
+        todayAiActions: this.buildTodayAiActions(recommendationResult),
+        aiIsStale: recommendationResult?.is_stale === true,
+        aiSourceDate: recommendationResult?.source_date || ''
       })
       console.log(`[Performance] 第一层完成，耗时 ${Date.now() - startTime}ms`)
 
@@ -420,17 +433,18 @@ Page({
       const weeklyData = this.processWeeklyData(weeklyResult, trainingHistoryResult)
       const morningCheckData = this.computeMorningCheckData(sleepData, readinessData, sleepResult, readinessResult)
 
-      const sleepDate = sleepData && sleepData.day ? sleepData.day : this.data.sleepDate
+      const sleepDate = this.getDashboardMetricDate(dashboardResult, 'sleep_date', sleepData?.day || this.data.sleepDate)
       const spo2Date = spo2Data && spo2Data.day ? spo2Data.day : this.data.spo2Date
-      const readinessDate = readinessData && readinessData.day ? readinessData.day : this.data.readinessDate
-      const activityDate = activityData && activityData.day ? activityData.day : this.data.activityDate
-      const stressDate = stressData && stressData.day ? stressData.day : this.data.stressDate
+      const readinessDate = this.getDashboardMetricDate(dashboardResult, 'readiness_date', readinessData?.day || this.data.readinessDate)
+      const activityDate = this.getDashboardMetricDate(dashboardResult, 'activity_date', activityData?.day || this.data.activityDate)
+      const stressDate = this.getDashboardMetricDate(dashboardResult, 'stress_date', stressData?.day || this.data.stressDate)
       const stressDateDisplay = stressDate ? this.formatDateFriendly(stressDate) : ''
 
       const healthSummary = this.generateHealthSummary(sleepData, readinessData, activityData, trainingData)
       const alerts = this.generateAlerts(sleepData, readinessData, activityData, trainingData, stressData)
 
       // 一次性 setData（合并原来的第二次和第三次）
+      if (!this._isActive) return
       this.setData({
         // 核心数据
         sleepData,
@@ -460,13 +474,15 @@ Page({
         rhrDelta: morningCheckData.rhrDelta,
         deepDelta: morningCheckData.deepDelta,
         remDelta: morningCheckData.remDelta,
-        morningAlert: morningCheckData.morningAlert
+        morningAlert: morningCheckData.morningAlert,
+        healthLoading: false
       })
       this._hasLoadedOnce = true
       console.log(`[Performance] 第二层完成，总耗时 ${Date.now() - startTime}ms`)
 
       // 绘制图表（只绘制已展开的卡片的雷达图）
       setTimeout(() => {
+        if (!this._isActive) return
         const { expandedCards } = this.data
         if (expandedCards.sleep || expandedCards.readiness || expandedCards.activity) {
           this.drawRadarCharts()
@@ -484,8 +500,9 @@ Page({
       }
     } catch (error) {
       console.error('加载数据失败:', error)
+      if (!this._isActive) return
       if (shouldShowLoading) {
-        this.setData({ loading: false })
+        this.setData({ loading: false, healthLoading: false })
       }
 
       if (!silent || !this._hasLoadedOnce) {
@@ -495,6 +512,77 @@ Page({
         })
       }
     }
+  },
+
+  processDashboardNutrition(summary) {
+    if (!summary) return null
+    const mealsCount = Number(summary.meals_count ?? summary.meal_count) || 0
+    return {
+      mealsCount,
+      calories: Math.round(Number(summary.total_calories ?? summary.calories) || 0),
+      protein: Number(summary.total_protein ?? summary.protein_g ?? 0).toFixed(1),
+      partialDay: summary.flags?.partial_day === true,
+      scopeLabel: '已记录摄入'
+    }
+  },
+
+  getDashboardMetricDate(dashboard, field, fallback) {
+    return dashboard?.oura_today?.[field] || dashboard?.oura_yesterday?.[field] || fallback || ''
+  },
+
+  firstActionText(source) {
+    if (!source) return ''
+    if (typeof source === 'string') return source
+    const list = Array.isArray(source)
+      ? source
+      : (source.items || source.recommendations || source.actions || [])
+    const item = Array.isArray(list) ? list[0] : null
+    if (typeof item === 'string') return item
+    return item?.text || item?.content || item?.suggestion || item?.description || ''
+  },
+
+  buildTodayAiActions(recommendation) {
+    if (!recommendation) return []
+    const today = recommendation.today_recommendation || {}
+    const sources = [
+      ['饮食', recommendation.nutrition || recommendation.diet || today.nutrition],
+      ['睡眠恢复', recommendation.sleep_recovery || recommendation.recovery || today.sleep_recovery],
+      ['活动训练', recommendation.activity_training || recommendation.activity || today.activity_training]
+    ]
+    const categorizedActions = sources.map(([label, source]) => ({
+      label,
+      text: this.firstActionText(source)
+    })).filter(item => item.text)
+
+    if (categorizedActions.length) return categorizedActions
+
+    const legacyItems = Array.isArray(today)
+      ? today
+      : (today.items || today.recommendations || today.actions || [])
+    const legacyActions = legacyItems.map(item => ({
+      label: typeof item === 'string' ? '今日建议' : (item.label || item.title || '今日建议'),
+      text: typeof item === 'string'
+        ? item
+        : (item.text || item.content || item.suggestion || item.description || '')
+    })).filter(item => item.text).slice(0, 3)
+
+    if (legacyActions.length) return legacyActions
+    return recommendation.summary
+      ? [{ label: '今日建议', text: recommendation.summary }]
+      : []
+  },
+
+  openNutrition() {
+    wx.switchTab({ url: '/pages/nutrition/nutrition' })
+  },
+
+  openAi() {
+    wx.switchTab({ url: '/pages/ai/ai' })
+  },
+
+  normalizeActivityMinutes(value) {
+    const minutes = Number(value) || 0
+    return Math.round(minutes > 1440 ? minutes / 60 : minutes)
   },
 
   /**
@@ -1216,15 +1304,14 @@ Page({
     }
     if (!data) return null
 
-    // 活动时间（秒转分钟）
-    const highMin = data.high_activity_time ? Math.round(data.high_activity_time / 60) : 0
-    const mediumMin = data.medium_activity_time ? Math.round(data.medium_activity_time / 60) : 0
-    const lowMin = data.low_activity_time ? Math.round(data.low_activity_time / 60) : 0
+    // 最新契约统一返回分钟；仅对明显超过一天的旧秒值安全降级。
+    const highMin = this.normalizeActivityMinutes(data.high_activity_min ?? data.high_activity_time)
+    const mediumMin = this.normalizeActivityMinutes(data.medium_activity_min ?? data.medium_activity_time)
+    const lowMin = this.normalizeActivityMinutes(data.low_activity_min ?? data.low_activity_time)
     // 总活动时间：只计算中高强度（与Oura App一致）
     const totalActivityMin = highMin + mediumMin
 
-    // 久坐时间（秒转分钟）
-    const sedentaryMin = data.sedentary_time ? Math.round(data.sedentary_time / 60) : 0
+    const sedentaryMin = this.normalizeActivityMinutes(data.sedentary_min ?? data.sedentary_time)
 
     // 计算各指标颜色
     // 活动评分: ≥85好, 70-85正常, <70偏低
@@ -1297,7 +1384,7 @@ Page({
       target_calories: targetCalories,
       total_calories: data.total_calories || 0,
 
-      // 活动强度分布（秒转分钟）
+      // 活动强度分布（分钟）
       total_activity_min: totalActivityMin,
       totalActivityColor: totalActivityColor,
       high_min: highMin,
@@ -1306,12 +1393,12 @@ Page({
       mediumColor: mediumColor,
       low_min: lowMin,
 
-      // 时间分配（秒转分钟）
+      // 时间分配（分钟）
       sedentary_min: sedentaryMin,
       sedentary_hours: sedentaryHours,
       sedentaryColor: sedentaryColor,
-      rest_min: data.resting_time ? Math.round(data.resting_time / 60) : 0,
-      non_wear_min: data.non_wear_time ? Math.round(data.non_wear_time / 60) : 0,
+      rest_min: this.normalizeActivityMinutes(data.resting_min ?? data.resting_time),
+      non_wear_min: this.normalizeActivityMinutes(data.non_wear_min ?? data.non_wear_time),
 
       // 全天指标
       inactivity_alerts: inactivityAlerts,

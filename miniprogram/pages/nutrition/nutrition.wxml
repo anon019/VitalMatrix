@@ -36,6 +36,7 @@
     <view class="upload-card">
       <view class="upload-header">
         <text class="upload-title">记录这一餐</text>
+        <text class="coverage-chip">近7天记录 {{recordedDays}} / {{expectedDays}} 天</text>
       </view>
 
       <!-- 餐次选择 - 胶囊式设计 -->
@@ -63,19 +64,26 @@
       </view>
 
       <!-- 拍照按钮 -->
-      <button class="capture-btn" bindtap="takePhoto">
+      <button class="capture-btn {{submittingPhoto ? 'is-busy' : ''}}" bindtap="takePhoto" disabled="{{submittingPhoto}}">
         <view class="btn-icon-wrap">
           <text class="btn-icon">📷</text>
         </view>
-        <text class="btn-text">拍照记录</text>
+        <text class="btn-text">{{submittingPhoto ? '正在处理' : '拍照记录'}}</text>
         <view class="btn-arrow">→</view>
       </button>
+      <view class="capture-helper">
+        <view class="capture-helper-dot"></view>
+        <text>识别完成后立即展示本餐结果，饮食建议随后补全</text>
+      </view>
     </view>
 
     <!-- 今日营养概览 -->
     <view wx:if="{{todaySummary}}" class="summary-section">
       <view class="section-header">
-        <text class="section-title">今日营养</text>
+        <view>
+          <text class="section-title">今日营养</text>
+          <text class="summary-scope">{{summaryLabel}}</text>
+        </view>
         <view class="section-badge">
           <text class="badge-text">{{todaySummary.meals_count || 0}}餐</text>
         </view>
@@ -86,7 +94,7 @@
         <!-- 热量中心 -->
         <view class="calorie-center">
           <view class="calorie-ring">
-            <view class="ring-progress" style="--progress: {{calorieProgress}}deg;"></view>
+            <view wx:if="{{showDailyTargetProgress}}" class="ring-progress" style="--progress: {{calorieProgress}}deg;"></view>
             <view class="ring-inner">
               <text class="calorie-value">{{todaySummary.total_calories}}</text>
               <text class="calorie-unit">千卡</text>
@@ -99,7 +107,7 @@
         <view class="macro-grid">
           <view class="macro-item protein">
             <view class="macro-bar">
-              <view class="bar-fill" style="height: {{proteinProgress}}%;"></view>
+              <view wx:if="{{showDailyTargetProgress}}" class="bar-fill" style="height: {{proteinProgress}}%;"></view>
             </view>
             <view class="macro-info">
               <text class="macro-value">{{todaySummary.total_protein}}</text>
@@ -109,7 +117,7 @@
           </view>
           <view class="macro-item carbs">
             <view class="macro-bar">
-              <view class="bar-fill" style="height: {{carbsProgress}}%;"></view>
+              <view wx:if="{{showDailyTargetProgress}}" class="bar-fill" style="height: {{carbsProgress}}%;"></view>
             </view>
             <view class="macro-info">
               <text class="macro-value">{{todaySummary.total_carbs}}</text>
@@ -119,7 +127,7 @@
           </view>
           <view class="macro-item fat">
             <view class="macro-bar">
-              <view class="bar-fill" style="height: {{fatProgress}}%;"></view>
+              <view wx:if="{{showDailyTargetProgress}}" class="bar-fill" style="height: {{fatProgress}}%;"></view>
             </view>
             <view class="macro-info">
               <text class="macro-value">{{todaySummary.total_fat}}</text>
@@ -153,11 +161,17 @@
         <view wx:for="{{meals}}" wx:key="id"
               class="meal-card anim-slide-up"
               style="animation-delay: {{index * 60}}ms;"
-              data-meal-id="{{item.id}}" bindtap="viewMealDetail">
+              data-meal-id="{{item.id}}" bindtap="viewMealDetail"
+              hover-class="meal-card-pressed" hover-stay-time="80"
+              role="button" aria-label="查看{{item.meal_type_label}}详情">
 
           <!-- 餐食图片 -->
           <view class="meal-image-wrap">
-            <image class="meal-image" src="{{item.thumbnail_path}}" mode="aspectFill" lazy-load="true" />
+            <image wx:if="{{item.thumbnail_path}}" class="meal-image" src="{{item.thumbnail_path}}" mode="aspectFill" lazy-load="true" data-meal-id="{{item.id}}" binderror="onMealImageError" />
+            <view wx:elif="{{item.image_unavailable}}" class="meal-image meal-image-placeholder image-unavailable">
+              <text>历史图片不可用</text>
+            </view>
+            <view wx:else class="meal-image meal-image-placeholder">🍽️</view>
             <view class="meal-type-tag">{{item.meal_type_label}}</view>
           </view>
 
@@ -165,7 +179,6 @@
           <view class="meal-content">
             <view class="meal-top-row">
               <text class="meal-time">{{item.meal_time_formatted}}</text>
-              <text wx:if="{{item.model_name}}" class="ai-badge">{{item.model_name}}</text>
             </view>
 
             <!-- 营养数据 -->
@@ -184,10 +197,10 @@
             </view>
 
             <!-- 评分 -->
-            <view wx:if="{{item.gemini_analysis && item.gemini_analysis.nutrition_analysis}}" class="meal-rating-row">
+            <view wx:if="{{item.overall_rating}}" class="meal-rating-row">
               <view class="rating-chip {{item.ratingColorClass}}">
-                <text class="chip-label">{{item.gemini_analysis.nutrition_analysis.overall_rating}}</text>
-                <text class="chip-score">{{item.gemini_analysis.nutrition_analysis.overall_score}}分</text>
+                <text class="chip-label">{{item.overall_rating}}</text>
+                <text wx:if="{{item.overall_score !== undefined && item.overall_score !== null}}" class="chip-score">{{item.overall_score}}分</text>
               </view>
             </view>
           </view>
@@ -201,15 +214,15 @@
     </view>
   </view>
 
-  <!-- 分析中弹窗 -->
-  <view wx:if="{{analyzing}}" class="analyzing-overlay">
+  <!-- 图片选择、压缩和上传阶段；上传成功后立即关闭 -->
+  <view wx:if="{{submittingPhoto}}" class="analyzing-overlay">
     <view class="analyzing-modal">
       <view class="analyzing-animation">
         <view class="scan-ring"></view>
         <text class="scan-icon">🔍</text>
       </view>
-      <text class="analyzing-title">AI 分析中</text>
-      <text class="analyzing-subtitle">正在识别食物和营养成分...</text>
+      <text class="analyzing-title">{{uploadStatusText}}</text>
+      <text class="analyzing-subtitle">识图完成后会立即展示本餐核心分析</text>
       <view class="progress-dots">
         <view class="dot"></view>
         <view class="dot"></view>

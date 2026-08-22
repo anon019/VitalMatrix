@@ -1,124 +1,124 @@
 <!--pages/index/index.wxml-->
 <view class="container">
-  <!-- ========== 核心健康状态区 - 统一浅色风格 ========== -->
+  <!-- ========== 今日首屏：单一主状态 + 关键行动 ========== -->
   <view class="health-hero">
-    <!-- 顶部问候栏 -->
     <view class="hero-greeting">
-      <text class="greeting-emoji">{{greetingEmoji}}</text>
       <view class="greeting-info">
         <text class="greeting-text">{{greeting}}</text>
         <text class="greeting-date">{{todayDateFull}}</text>
       </view>
-    </view>
-
-    <!-- 双评分骨架屏 -->
-    <view class="dual-score-section skeleton-section" hidden="{{!loading}}">
-      <view class="score-card">
-        <view class="skeleton-ring skeleton-animate"></view>
-        <view class="score-info">
-          <view class="skeleton-text-md skeleton-animate"></view>
-          <view class="skeleton-badge skeleton-animate"></view>
-        </view>
-      </view>
-      <view class="score-divider"></view>
-      <view class="score-card">
-        <view class="skeleton-ring skeleton-animate"></view>
-        <view class="score-info">
-          <view class="skeleton-text-md skeleton-animate"></view>
-          <view class="skeleton-badge skeleton-animate"></view>
-        </view>
+      <view class="hero-sync-state">
+        <view class="sync-dot"></view>
+        <text>健康数据</text>
       </view>
     </view>
 
-    <!-- 双评分核心区 -->
-    <view class="dual-score-section" hidden="{{loading}}">
-      <!-- 准备度评分 -->
-      <view class="score-card readiness-card">
-        <view class="score-ring-wrap">
-          <view class="score-ring readiness-ring">
-            <view class="ring-track"></view>
-            <view class="ring-progress {{readinessLevel}}" style="--progress: {{readinessData.score || 0}};"></view>
-            <view class="ring-center">
-              <text class="ring-value">{{readinessData.score || '--'}}</text>
-            </view>
+    <!-- 状态骨架屏：形状与真实卡片一致，避免加载跳动 -->
+    <view class="today-status-card status-skeleton" hidden="{{!healthLoading}}">
+      <view class="status-skeleton-copy">
+        <view class="skeleton-line skeleton-line-short skeleton-animate"></view>
+        <view class="skeleton-line skeleton-line-title skeleton-animate"></view>
+        <view class="skeleton-line skeleton-line-body skeleton-animate"></view>
+      </view>
+      <view class="status-skeleton-score skeleton-animate"></view>
+      <view class="status-skeleton-metrics">
+        <view class="status-skeleton-metric skeleton-animate" wx:for="{{[1,2,3]}}" wx:key="index"></view>
+      </view>
+    </view>
+
+    <!-- 准备度是唯一主分数，睡眠与心率降级为判断依据 -->
+    <view class="today-status-card status-enter" hidden="{{healthLoading}}">
+      <view class="status-main-row">
+        <view class="status-copy">
+          <view class="status-kicker">
+            <view class="status-dot {{readinessLevel}}"></view>
+            <text>今日状态</text>
+          </view>
+          <text class="status-title">{{actionAdvice.title}}</text>
+          <text class="status-advice">{{actionAdvice.desc}}</text>
+          <text class="status-summary" wx:if="{{healthSummary}}">{{healthSummary}}</text>
+        </view>
+
+        <view class="primary-score" aria-label="准备度 {{readinessData.score || 0}} 分">
+          <view class="primary-score-track"></view>
+          <view class="primary-score-progress {{readinessLevel}}" style="--progress: {{readinessData.score || 0}};"></view>
+          <view class="primary-score-center">
+            <text class="primary-score-value">{{readinessData.score || '--'}}</text>
+            <text class="primary-score-label">准备度</text>
           </view>
         </view>
-        <view class="score-info">
-          <text class="score-label">准备度</text>
-          <text class="score-status {{readinessLevel}}">{{actionAdvice.title}}</text>
-        </view>
       </view>
 
-      <!-- 分隔线 -->
-      <view class="score-divider"></view>
-
-      <!-- 睡眠评分 -->
-      <view class="score-card sleep-card">
-        <view class="score-ring-wrap">
-          <view class="score-ring sleep-ring">
-            <view class="ring-track"></view>
-            <view class="ring-progress {{sleepLevel}}" style="--progress: {{sleepData.score || 0}};"></view>
-            <view class="ring-center">
-              <text class="ring-value">{{sleepData.score || '--'}}</text>
-            </view>
+      <view class="support-metrics">
+        <view class="support-metric">
+          <text class="support-label">睡眠</text>
+          <view class="support-value-row">
+            <text class="support-value support-value-duration">{{sleepData.total_duration || '--'}}</text>
           </view>
         </view>
-        <view class="score-info">
-          <text class="score-label">睡眠</text>
-          <text class="score-status {{sleepLevel}}">{{sleepAdvice.title}}</text>
+        <view class="support-divider"></view>
+        <view class="support-metric">
+          <text class="support-label">HRV</text>
+          <view class="support-value-row">
+            <text class="support-value">{{readinessData.hrv || '--'}}</text>
+            <text class="support-unit" wx:if="{{readinessData.hrv}}">ms</text>
+          </view>
+        </view>
+        <view class="support-divider"></view>
+        <view class="support-metric">
+          <text class="support-label">静息心率</text>
+          <view class="support-value-row">
+            <text class="support-value">{{readinessData.resting_hr || '--'}}</text>
+            <text class="support-unit" wx:if="{{readinessData.resting_hr}}">bpm</text>
+          </view>
         </view>
       </view>
     </view>
 
-    <!-- 四指标骨架屏 -->
-    <view class="metrics-row" hidden="{{!loading}}">
-      <view class="metric-item" wx:for="{{[1,2,3,4]}}" wx:key="index">
-        <view class="skeleton-icon-sm skeleton-animate"></view>
-        <view class="skeleton-text-sm skeleton-animate"></view>
-        <view class="skeleton-text-xs skeleton-animate"></view>
+    <!-- 首屏只显示最重要的一条异常，不重复堆叠提醒 -->
+    <view class="alert-banner {{alertType}} status-enter" wx:if="{{morningAlert && !healthLoading}}">
+      <view class="alert-symbol"><text>!</text></view>
+      <view class="alert-copy">
+        <text class="alert-label">需要注意</text>
+        <text class="alert-text">{{morningAlert.message}}</text>
       </view>
     </view>
 
-    <!-- 核心四指标 -->
-    <view class="metrics-row" hidden="{{loading}}">
-      <view class="metric-item">
-        <view class="metric-icon-wrap hrv-icon"><text class="metric-icon">💓</text></view>
-        <text class="metric-value">{{readinessData.hrv || '--'}}</text>
-        <text class="metric-label">HRV</text>
-        <view class="metric-delta {{hrvDelta.direction}}" wx:if="{{hrvDelta}}">
-          <text>{{hrvDelta.direction === 'up' ? '↑' : '↓'}}{{hrvDelta.value}}</text>
-        </view>
+    <!-- 饮食与 AI 归并为同一行动面板，避免与今日状态争夺主视觉 -->
+    <view class="today-focus-panel focus-enter" hidden="{{loading}}">
+      <view class="focus-panel-head">
+        <text class="focus-panel-title">今日重点</text>
+        <text class="focus-panel-caption">从这里开始</text>
       </view>
-      <view class="metric-item">
-        <view class="metric-icon-wrap rhr-icon"><text class="metric-icon">❤️</text></view>
-        <text class="metric-value">{{readinessData.resting_hr || '--'}}</text>
-        <text class="metric-label">静息心率</text>
-        <view class="metric-delta {{rhrDelta.direction}}" wx:if="{{rhrDelta}}">
-          <text>{{rhrDelta.direction === 'up' ? '↑' : '↓'}}{{rhrDelta.value}}</text>
-        </view>
-      </view>
-      <view class="metric-item">
-        <view class="metric-icon-wrap deep-icon"><text class="metric-icon">🌙</text></view>
-        <text class="metric-value">{{sleepData.deep_min || '--'}}</text>
-        <text class="metric-label">深睡眠</text>
-        <view class="metric-delta {{deepDelta.direction}}" wx:if="{{deepDelta}}">
-          <text>{{deepDelta.direction === 'up' ? '↑' : '↓'}}{{deepDelta.value}}</text>
-        </view>
-      </view>
-      <view class="metric-item">
-        <view class="metric-icon-wrap rem-icon"><text class="metric-icon">💤</text></view>
-        <text class="metric-value">{{sleepData.rem_min || '--'}}</text>
-        <text class="metric-label">REM</text>
-        <view class="metric-delta {{remDelta.direction}}" wx:if="{{remDelta}}">
-          <text>{{remDelta.direction === 'up' ? '↑' : '↓'}}{{remDelta.value}}</text>
-        </view>
-      </view>
-    </view>
 
-    <!-- 异常警报 -->
-    <view class="alert-banner {{alertType}}" wx:if="{{morningAlert}}">
-      <text class="alert-icon">{{morningAlert.icon}}</text>
-      <text class="alert-text">{{morningAlert.message}}</text>
+      <view class="focus-row" bindtap="openNutrition" role="button" aria-label="打开今日饮食记录" hover-class="focus-row-active" hover-stay-time="80">
+        <view class="focus-icon-box">
+          <image class="focus-icon" src="/images/tab-nutrition-active.png" mode="aspectFit"></image>
+        </view>
+        <view class="focus-copy">
+          <text class="focus-title">今日饮食</text>
+          <text class="focus-summary" wx:if="{{nutritionToday}}">已记录 {{nutritionToday.mealsCount}} 餐 · {{nutritionToday.calories}} 千卡 · 蛋白质 {{nutritionToday.protein}}g</text>
+          <text class="focus-summary" wx:else>今天还没有已记录摄入</text>
+        </view>
+        <text class="focus-action">记录</text>
+        <text class="focus-arrow">›</text>
+      </view>
+
+      <view class="focus-separator"></view>
+
+      <view class="focus-row" bindtap="openAi" role="button" aria-label="打开 AI 今日行动建议" hover-class="focus-row-active" hover-stay-time="80">
+        <view class="focus-icon-box">
+          <image class="focus-icon" src="/images/tab-ai-active.png" mode="aspectFit"></image>
+        </view>
+        <view class="focus-copy">
+          <text class="focus-title">AI 行动建议</text>
+          <text class="focus-summary focus-summary-single" wx:if="{{todayAiActions.length}}">{{todayAiActions[0].text}}</text>
+          <text class="focus-summary" wx:else>建议暂时不可用，稍后再试</text>
+          <text class="focus-meta" wx:if="{{aiIsStale}}">最近建议 · {{aiSourceDate}}</text>
+        </view>
+        <text class="focus-action" wx:if="{{todayAiActions.length}}">{{todayAiActions.length}} 项</text>
+        <text class="focus-arrow">›</text>
+      </view>
     </view>
   </view>
 
@@ -146,6 +146,13 @@
 
   <!-- 内容区域 -->
   <view class="content-area" hidden="{{loading}}">
+    <view class="data-section-heading">
+      <view>
+        <text class="data-section-kicker">HEALTH DETAILS</text>
+        <text class="data-section-title">今日健康详情</text>
+      </view>
+      <text class="data-section-hint">点击卡片查看全部指标</text>
+    </view>
 
     <!-- 数据异常提醒区 -->
     <view class="alerts-section card-appear" wx:if="{{alerts.length > 0}}" style="animation-delay: 0.15s">
@@ -157,7 +164,7 @@
 
     <!-- 训练数据卡片 - Polar -->
     <view class="card training-card glass-card card-appear" style="animation-delay: 0.2s">
-      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="training">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="training" hover-class="card-header-active" hover-stay-time="80">
         <view class="card-title-row">
           <view class="card-icon-wrapper training-icon-bg">
             <text class="card-icon">🏋️</text>
@@ -292,7 +299,7 @@
 
     <!-- 睡眠数据卡片 - Oura -->
     <view class="card sleep-card glass-card card-appear" style="animation-delay: 0.25s">
-      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="sleep">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="sleep" hover-class="card-header-active" hover-stay-time="80">
         <view class="card-title-row">
           <view class="card-icon-wrapper sleep-icon-bg">
             <text class="card-icon">😴</text>
@@ -579,7 +586,7 @@
 
     <!-- 准备度数据卡片 - Oura（含压力数据） -->
     <view class="card readiness-card glass-card card-appear" style="animation-delay: 0.3s">
-      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="readiness">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="readiness" hover-class="card-header-active" hover-stay-time="80">
         <view class="card-title-row">
           <view class="card-icon-wrapper readiness-icon-bg">
             <text class="card-icon">🔋</text>
@@ -764,7 +771,7 @@
 
     <!-- 活动数据卡片 - Oura -->
     <view class="card activity-card glass-card card-appear" style="animation-delay: 0.35s">
-      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="activity">
+      <view class="card-header card-header-clickable" bindtap="toggleCard" data-card="activity" hover-class="card-header-active" hover-stay-time="80">
         <view class="card-title-row">
           <view class="card-icon-wrapper activity-icon-bg">
             <text class="card-icon">🏃</text>

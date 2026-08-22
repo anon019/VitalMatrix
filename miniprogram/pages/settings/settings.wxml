@@ -8,29 +8,80 @@
 
   <!-- 加载状态 -->
   <view class="loading" wx:if="{{loading}}">
-    <text>加载中...</text>
+    <view class="settings-skeleton skeleton-heading"></view>
+    <view class="settings-skeleton skeleton-card"></view>
+    <view class="settings-skeleton skeleton-card short"></view>
   </view>
 
   <!-- 内容区域 -->
   <view wx:else>
-    <!-- 降脂目标卡片 -->
-    <view class="card goal-card">
-      <view class="card-header">
-        <text class="card-title">🎯 我的降脂目标</text>
+    <!-- 后端用户资料 -->
+    <view class="card profile-card">
+      <view class="profile-heading">
+        <view>
+          <text class="card-title profile-title">个人资料</text>
+          <text class="profile-caption">用于个性化营养与训练建议</text>
+        </view>
+        <button wx:if="{{!editingProfile}}" class="profile-edit" bindtap="startProfileEdit">编辑</button>
       </view>
 
-      <view class="goal-highlight">
-        <text class="goal-main">降脂降胆固醇</text>
-        <text class="goal-method">Zone2有氧训练为主，精准控制心率</text>
+      <view wx:if="{{!editingProfile}}" class="profile-summary">
+        <view class="profile-value"><text class="profile-label">性别</text><text>{{profileGender || '未填写'}}</text></view>
+        <view class="profile-value"><text class="profile-label">年龄</text><text>{{profileAgeText || '未填写'}}</text></view>
+        <view class="profile-value"><text class="profile-label">体重</text><text>{{weight ? weight + ' kg' : '未填写'}}</text></view>
+      </view>
+
+      <view wx:else class="profile-form">
+        <picker mode="selector" range="{{genderOptions}}" value="{{genderIndex}}" bindchange="onGenderChange">
+          <view class="form-row"><text>性别</text><text class="form-value">{{profileGender || '请选择'}}</text></view>
+        </picker>
+        <picker mode="date" fields="month" value="{{profileBirthDate}}" end="{{maxBirthDate}}" bindchange="onBirthDateChange">
+          <view class="form-row"><text>出生年月</text><text class="form-value">{{profileBirthDate || '请选择'}}</text></view>
+        </picker>
+        <view class="form-row">
+          <text>体重</text>
+          <view class="weight-input-wrap"><input class="weight-input" type="digit" value="{{profileWeight}}" bindinput="onWeightInput" placeholder="请输入" /><text>kg</text></view>
+        </view>
+        <view class="profile-actions">
+          <button class="profile-cancel" bindtap="cancelProfileEdit" disabled="{{savingProfile}}">取消</button>
+          <button class="profile-save" bindtap="saveProfile" disabled="{{savingProfile}}">{{savingProfile ? '保存中…' : '保存资料'}}</button>
+        </view>
+      </view>
+    </view>
+
+    <!-- 降脂目标卡片 -->
+    <view class="card goal-card">
+      <view class="card-header goal-card-header">
+        <view>
+          <text class="card-title">我的健康目标</text>
+          <text class="goal-sync-note">已同步至 AI 与营养分析</text>
+        </view>
+        <button wx:if="{{!editingGoal}}" class="profile-edit" bindtap="startGoalEdit">编辑</button>
+      </view>
+
+      <view wx:if="{{!editingGoal}}" class="goal-highlight">
+        <text class="goal-main">{{healthGoal}}</text>
+        <text class="goal-method">{{trainingPlan}}</text>
+      </view>
+
+      <view wx:else class="goal-form">
+        <text class="goal-field-label">健康目标</text>
+        <textarea class="goal-textarea" value="{{goalDraft}}" bindinput="onGoalInput" maxlength="120" placeholder="例如：降脂并改善胆固醇水平"></textarea>
+        <text class="goal-field-label">训练方案</text>
+        <textarea class="goal-textarea" value="{{planDraft}}" bindinput="onPlanInput" maxlength="160" placeholder="例如：Zone2 为主，每周 4–5 天"></textarea>
+        <view class="profile-actions goal-actions">
+          <button class="profile-cancel" bindtap="cancelGoalEdit" disabled="{{savingGoal}}">取消</button>
+          <button class="profile-save" bindtap="saveGoalSettings" disabled="{{savingGoal}}">{{savingGoal ? '同步中…' : '保存并同步'}}</button>
+        </view>
       </view>
 
       <view class="divider"></view>
 
       <view class="training-plan-section">
-        <text class="section-subtitle">📋 训练方案</text>
+        <text class="section-subtitle">训练方案</text>
         <view class="plan-box">
           <view class="plan-item">
-            <text class="plan-icon">🏃</text>
+            <text class="plan-icon">Z2</text>
             <view class="plan-content">
               <text class="plan-label">Zone2 低强度有氧</text>
               <text class="plan-value">55 <text class="plan-unit">分钟</text></text>
@@ -38,7 +89,7 @@
             </view>
           </view>
           <view class="plan-item">
-            <text class="plan-icon">⚡</text>
+            <text class="plan-icon">HI</text>
             <view class="plan-content">
               <text class="plan-label">Zone4-5 高强度刺激</text>
               <text class="plan-value">1-2 <text class="plan-unit">分钟</text></text>
@@ -49,7 +100,7 @@
       </view>
 
       <view class="goal-tips">
-        <text class="tip-icon">💡</text>
+        <text class="tip-icon">TIP</text>
         <text class="tip-text text-small">
           目标：每周4-5天训练，累计Zone2 200-300分钟，高强度&lt;30分钟
         </text>
@@ -58,32 +109,32 @@
 
     <!-- 个人数据卡片 -->
     <view class="card">
-      <view class="card-title">👤 个人数据</view>
+      <view class="card-title">个人数据</view>
 
       <view class="personal-grid">
         <view class="personal-item">
-          <text class="personal-icon">❤️</text>
+          <text class="personal-icon">MAX</text>
           <text class="personal-label">最大心率</text>
           <text class="personal-value text-primary">{{hrMax || 185}}</text>
           <text class="personal-unit">bpm</text>
         </view>
 
         <view class="personal-item">
-          <text class="personal-icon">💓</text>
+          <text class="personal-icon">RHR</text>
           <text class="personal-label">静息心率</text>
           <text class="personal-value">{{restingHr || '--'}}</text>
           <text class="personal-unit">bpm</text>
         </view>
 
         <view class="personal-item" wx:if="{{weight}}">
-          <text class="personal-icon">⚖️</text>
+          <text class="personal-icon">KG</text>
           <text class="personal-label">体重</text>
           <text class="personal-value">{{weight}}</text>
           <text class="personal-unit">kg</text>
         </view>
 
         <view class="personal-item" wx:if="{{vo2max}}">
-          <text class="personal-icon">🫁</text>
+          <text class="personal-icon">O2</text>
           <text class="personal-label">VO2max</text>
           <text class="personal-value">{{vo2max}}</text>
           <text class="personal-unit">ml/kg/min</text>
@@ -92,8 +143,8 @@
 
       <view class="divider"></view>
 
-      <view class="btn-secondary" bindtap="updateHrMax">
-        <text>✏️ 修改最大心率</text>
+      <view class="btn-secondary" bindtap="updateHrMax" hover-class="settings-action-pressed" role="button">
+        <text>修改最大心率</text>
       </view>
     </view>
 
@@ -103,7 +154,7 @@
 
       <view wx:if="{{polarAuth}}">
         <view class="auth-status">
-          <text class="status-icon">✅</text>
+          <text class="status-icon status-ok">ON</text>
           <view class="status-text">
             <text class="status-title">已授权</text>
             <text class="status-subtitle text-muted text-small">
@@ -114,14 +165,14 @@
 
         <view class="divider"></view>
 
-        <view class="btn-secondary" bindtap="syncPolarData">
-          <text>🔄 立即同步数据</text>
+        <view class="btn-secondary" bindtap="syncPolarData" hover-class="settings-action-pressed" role="button">
+          <text>立即同步数据</text>
         </view>
       </view>
 
       <view wx:else>
         <view class="auth-status">
-          <text class="status-icon">❌</text>
+          <text class="status-icon status-off">OFF</text>
           <view class="status-text">
             <text class="status-title">未授权</text>
             <text class="status-subtitle text-muted text-small">
@@ -132,15 +183,15 @@
 
         <view class="divider"></view>
 
-        <view class="btn-primary" bindtap="authorizePolar">
-          <text>ℹ️ 查看授权说明</text>
+        <view class="btn-primary" bindtap="authorizePolar" hover-class="settings-action-pressed" role="button">
+          <text>查看授权说明</text>
         </view>
       </view>
     </view>
 
     <!-- 心率区间卡片 -->
     <view class="card zone-boundaries-card">
-      <view class="card-title">📊 心率区间（基于HR Max {{hrMax || 185}}）</view>
+      <view class="card-title">心率区间 · HR Max {{hrMax || 185}}</view>
 
       <view class="zone-boundaries-list">
         <view class="zone-boundary-item zone1-bg">
@@ -154,7 +205,7 @@
 
         <view class="zone-boundary-item zone2-bg zone-highlight">
           <view class="zone-boundary-header">
-            <text class="zone-boundary-name">Zone 2 脂肪燃烧 🎯</text>
+            <text class="zone-boundary-name">Zone 2 脂肪燃烧</text>
             <text class="zone-boundary-percent text-small">60-70% HRmax</text>
           </view>
           <text class="zone-boundary-range">{{zoneRanges.zone2.min}}-{{zoneRanges.zone2.max}} bpm</text>
@@ -191,23 +242,22 @@
 
       <view class="zone-calc-note">
         <text class="text-small text-muted">
-          💡 心率区间根据 HRmax 自动计算，修改 HRmax 后区间会同步更新
+          心率区间根据 HRmax 自动计算，修改 HRmax 后区间会同步更新
         </text>
       </view>
     </view>
 
     <!-- 数据管理卡片 -->
-    <view class="card">
+    <view class="card management-card">
       <view class="card-title">数据管理</view>
+      <text class="card-caption">管理本机缓存与手动数据刷新</text>
 
-      <view class="btn-secondary" bindtap="clearCache">
-        <text>🗑️ 清除本地缓存</text>
+      <view class="management-action" bindtap="clearCache" hover-class="settings-action-pressed" role="button">
+        <view><text class="management-action-title">清除本地缓存</text><text class="management-action-copy">移除本机临时数据，不会删除云端记录</text></view><text class="management-arrow">›</text>
       </view>
 
-      <view class="divider"></view>
-
-      <view class="btn-secondary" bindtap="refreshAllData">
-        <text>🔄 刷新所有数据</text>
+      <view class="management-action" bindtap="refreshAllData" hover-class="settings-action-pressed" role="button">
+        <view><text class="management-action-title">刷新所有数据</text><text class="management-action-copy">重新拉取健康、训练和饮食数据</text></view><text class="management-arrow">›</text>
       </view>
     </view>
 
@@ -217,27 +267,27 @@
 
       <view class="info-item">
         <text class="info-label">应用名称</text>
-        <text class="info-value">VitalMatrix</text>
+        <text class="info-value">Health Assistant</text>
       </view>
 
       <view class="divider"></view>
 
       <view class="info-item">
         <text class="info-label">版本号</text>
-        <text class="info-value">v0.2.1</text>
+        <text class="info-value">v{{appVersion}}</text>
       </view>
 
       <view class="divider"></view>
 
       <view class="info-item">
-        <text class="info-label">后端服务</text>
-        <text class="info-value text-small">{{apiUrl}}</text>
+        <text class="info-label">服务状态</text>
+        <text class="info-value service-status">已连接</text>
       </view>
     </view>
 
     <!-- 退出登录按钮 -->
-    <view class="logout-btn" bindtap="logout">
-      <text>🚪 退出登录</text>
+    <view class="logout-btn" bindtap="logout" hover-class="settings-action-pressed" role="button">
+      <text>退出登录</text>
     </view>
   </view>
 </view>

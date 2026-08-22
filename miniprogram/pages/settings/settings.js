@@ -11,6 +11,21 @@ Page({
     restingHr: null,
     weight: null,
     vo2max: null,
+    genderOptions: ['男', '女', '其他'],
+    genderIndex: -1,
+    profileGender: '',
+    profileBirthDate: '',
+    maxBirthDate: '',
+    profileAgeText: '',
+    profileWeight: '',
+    editingProfile: false,
+    savingProfile: false,
+    healthGoal: '降脂心血管健康优化',
+    trainingPlan: 'Zone2 55分钟 + Zone4-5 2分钟',
+    goalDraft: '',
+    planDraft: '',
+    editingGoal: false,
+    savingGoal: false,
     zoneRanges: {
       zone1: { min: 93, max: 111 },
       zone2: { min: 111, max: 130 },
@@ -18,12 +33,16 @@ Page({
       zone4: { min: 148, max: 167 },
       zone5: { min: 167, max: 185 }
     },
-    apiUrl: config.API_BASE_URL
+    apiUrl: config.API_BASE_URL,
+    appVersion: config.APP_VERSION
   },
 
   onLoad() {
     console.log('设置页面加载')
+    this._isActive = true
     this._hasShownOnce = false
+    const now = new Date()
+    this.setData({ maxBirthDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}` })
 
     // 检查是否已登录
     const app = getApp()
@@ -35,6 +54,10 @@ Page({
   onShow() {
     if (!this._hasShownOnce) {
       this._hasShownOnce = true
+      const app = getApp()
+      if (!this._hasLoadedOnce && app.globalData.isLoggedIn) {
+        this.loadData({ silent: true })
+      }
       return
     }
 
@@ -44,6 +67,10 @@ Page({
     if (app.globalData.isLoggedIn && (!lastRefresh || now - lastRefresh > 5 * 60 * 1000)) {
       this.loadData({ silent: true })
     }
+  },
+
+  onUnload() {
+    this._isActive = false
   },
 
   /**
@@ -111,6 +138,12 @@ Page({
 
       const hrMax = userInfo?.hr_max || 185
       const zoneRanges = this.calculateZoneRanges(hrMax)
+      const gender = userInfo?.gender || ''
+      const birthDate = userInfo?.birth_year && userInfo?.birth_month
+        ? `${userInfo.birth_year}-${String(userInfo.birth_month).padStart(2, '0')}`
+        : ''
+      const healthGoal = userInfo?.health_goal || '降脂心血管健康优化'
+      const trainingPlan = userInfo?.training_plan || 'Zone2 55分钟 + Zone4-5 2分钟'
 
       this.setData({
         userInfo: userInfo || localUserInfo || {},
@@ -119,6 +152,15 @@ Page({
         restingHr: userInfo?.resting_hr || null,
         weight: userInfo?.weight || null,
         vo2max: userInfo?.vo2max || null,
+        genderIndex: this.data.genderOptions.indexOf(gender),
+        profileGender: gender,
+        profileBirthDate: birthDate,
+        profileAgeText: this.calculateAgeText(userInfo?.birth_year, userInfo?.birth_month),
+        profileWeight: userInfo?.weight != null ? String(userInfo.weight) : '',
+        healthGoal,
+        trainingPlan,
+        goalDraft: healthGoal,
+        planDraft: trainingPlan,
         zoneRanges,
         loading: false
       })
@@ -164,6 +206,149 @@ Page({
         min: Math.round(hrMax * 0.9),
         max: hrMax
       }
+    }
+  },
+
+  calculateAgeText(year, month) {
+    if (!year || !month) return ''
+    const now = new Date()
+    let age = now.getFullYear() - Number(year)
+    if (now.getMonth() + 1 < Number(month)) age -= 1
+    return age >= 0 ? `${age} 岁` : ''
+  },
+
+  startProfileEdit() {
+    this.setData({ editingProfile: true })
+  },
+
+  cancelProfileEdit() {
+    const userInfo = this.data.userInfo || {}
+    const gender = userInfo.gender || ''
+    this.setData({
+      editingProfile: false,
+      genderIndex: this.data.genderOptions.indexOf(gender),
+      profileGender: gender,
+      profileBirthDate: userInfo.birth_year && userInfo.birth_month
+        ? `${userInfo.birth_year}-${String(userInfo.birth_month).padStart(2, '0')}`
+        : '',
+      profileWeight: userInfo.weight != null ? String(userInfo.weight) : ''
+    })
+  },
+
+  onGenderChange(event) {
+    const genderIndex = Number(event.detail.value)
+    this.setData({
+      genderIndex,
+      profileGender: this.data.genderOptions[genderIndex] || ''
+    })
+  },
+
+  onBirthDateChange(event) {
+    this.setData({ profileBirthDate: event.detail.value })
+  },
+
+  onWeightInput(event) {
+    this.setData({ profileWeight: event.detail.value })
+  },
+
+  async saveProfile() {
+    if (this.data.savingProfile) return
+    const weight = Number(this.data.profileWeight)
+    if (!this.data.profileGender || !this.data.profileBirthDate || !weight) {
+      wx.showToast({ title: '请完整填写个人资料', icon: 'none' })
+      return
+    }
+    if (weight < 20 || weight > 300) {
+      wx.showToast({ title: '请输入 20–300 kg 的体重', icon: 'none' })
+      return
+    }
+
+    const [birthYear, birthMonth] = this.data.profileBirthDate.split('-').map(Number)
+    this.setData({ savingProfile: true })
+    try {
+      await updateUserInfo({
+        gender: this.data.profileGender,
+        birth_year: birthYear,
+        birth_month: birthMonth,
+        weight
+      })
+      clearCache('/api/v1/user/profile')
+      const userInfo = {
+        ...this.data.userInfo,
+        gender: this.data.profileGender,
+        birth_year: birthYear,
+        birth_month: birthMonth,
+        weight
+      }
+      this.setData({
+        userInfo,
+        weight,
+        profileAgeText: this.calculateAgeText(birthYear, birthMonth),
+        editingProfile: false,
+        savingProfile: false
+      })
+      wx.showToast({ title: '资料已保存', icon: 'success' })
+    } catch (error) {
+      console.error('保存个人资料失败:', error)
+      this.setData({ savingProfile: false })
+      wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
+    }
+  },
+
+  startGoalEdit() {
+    this.setData({
+      editingGoal: true,
+      goalDraft: this.data.healthGoal,
+      planDraft: this.data.trainingPlan
+    })
+  },
+
+  cancelGoalEdit() {
+    this.setData({
+      editingGoal: false,
+      goalDraft: this.data.healthGoal,
+      planDraft: this.data.trainingPlan
+    })
+  },
+
+  onGoalInput(event) {
+    this.setData({ goalDraft: event.detail.value })
+  },
+
+  onPlanInput(event) {
+    this.setData({ planDraft: event.detail.value })
+  },
+
+  async saveGoalSettings() {
+    if (this.data.savingGoal) return
+
+    const healthGoal = String(this.data.goalDraft || '').trim()
+    const trainingPlan = String(this.data.planDraft || '').trim()
+    if (!healthGoal || !trainingPlan) {
+      wx.showToast({ title: '请填写健康目标和训练方案', icon: 'none' })
+      return
+    }
+
+    this.setData({ savingGoal: true })
+    try {
+      await updateUserInfo({ health_goal: healthGoal, training_plan: trainingPlan })
+      clearCache('/api/v1/user/profile')
+      this.setData({
+        healthGoal,
+        trainingPlan,
+        editingGoal: false,
+        savingGoal: false,
+        userInfo: {
+          ...this.data.userInfo,
+          health_goal: healthGoal,
+          training_plan: trainingPlan
+        }
+      })
+      wx.showToast({ title: '目标已同步', icon: 'success' })
+    } catch (error) {
+      console.error('保存健康目标失败:', error)
+      this.setData({ savingGoal: false })
+      wx.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
     }
   },
 
