@@ -28,10 +28,13 @@ Page({
     proteinProgress: 0,
     carbsProgress: 0,
     fatProgress: 0,
+    calorieProgressText: '0%',
+    proteinProgressText: '0%',
+    carbsProgressText: '0%',
+    fatProgressText: '0%',
     recordedDays: 0,
     expectedDays: 7,
-    summaryLabel: '已记录摄入',
-    showDailyTargetProgress: false
+    summaryLabel: '已记录摄入'
   },
 
   /**
@@ -194,8 +197,11 @@ Page({
             proteinProgress: 0,
             carbsProgress: 0,
             fatProgress: 0,
-            summaryLabel: '暂无已记录摄入',
-            showDailyTargetProgress: false
+            calorieProgressText: '0%',
+            proteinProgressText: '0%',
+            carbsProgressText: '0%',
+            fatProgressText: '0%',
+            summaryLabel: '暂无已记录摄入'
           })
         }
         return
@@ -242,8 +248,11 @@ Page({
         proteinProgress: proteinProgress,
         carbsProgress: carbsProgress,
         fatProgress: fatProgress,
-        summaryLabel: summary.flags?.partial_day ? '已记录摄入（记录未满三餐）' : '已记录摄入',
-        showDailyTargetProgress: summary.flags?.partial_day !== true
+        calorieProgressText: `${Math.round((calorieProgress / 360) * 100)}%`,
+        proteinProgressText: `${Math.round(proteinProgress)}%`,
+        carbsProgressText: `${Math.round(carbsProgress)}%`,
+        fatProgressText: `${Math.round(fatProgress)}%`,
+        summaryLabel: summary.flags?.partial_day ? '已记录摄入 · 今日仍可继续补充' : '已记录摄入 · 日参考进度'
       })
 
       console.log('[Summary] Final todaySummary:', this.data.todaySummary)
@@ -256,7 +265,10 @@ Page({
         proteinProgress: 0,
         carbsProgress: 0,
         fatProgress: 0,
-        showDailyTargetProgress: false
+        calorieProgressText: '0%',
+        proteinProgressText: '0%',
+        carbsProgressText: '0%',
+        fatProgressText: '0%'
       })
     }
   },
@@ -605,7 +617,7 @@ Page({
     this.setData({ submittingPhoto: true, uploadStatusText: '正在上传并识别食物…' })
 
     const uploadPromise = uploadMeal(filePath, mealType, {
-      mealTime: new Date(this._uploadStartedAt).toISOString(),
+      mealTime: new Date(this._uploadStartedAt),
       notes: ''
     })
       .then(result => {

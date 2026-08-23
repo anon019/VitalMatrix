@@ -553,38 +553,49 @@ Page({
     }
   },
 
-  formatMealRecipeName(recipe = {}) {
+  formatMealRecipeName(recipe = {}, fallbackIndex = 0) {
     const mealName = String(recipe.meal_name || recipe.meal || '下一餐').trim()
-    const matched = mealName.match(/^((?:次日)?(?:早餐|午餐|晚餐|加餐|夜宵))\s*[：:]\s*(.+)$/)
+    const matched = mealName.match(/^((?:次日)?(?:早餐|午餐|晚餐|加餐|夜宵)|breakfast|lunch|dinner|snack)\s*[：:]\s*(.+)$/i)
     const rawMealLabel = matched?.[1] || String(recipe.meal_type || recipe.meal || '下一餐')
-    const mealLabel = rawMealLabel.includes('早餐')
-      ? '早餐'
-      : rawMealLabel.includes('午餐')
-        ? '午餐'
-        : rawMealLabel.includes('晚餐')
-          ? '晚餐'
-          : rawMealLabel.includes('加餐') || rawMealLabel.includes('夜宵')
-            ? '加餐'
-            : rawMealLabel
+    const identitySource = [rawMealLabel, recipe.meal_type, recipe.meal, mealName, recipe.timing]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    const fallbackTypes = ['breakfast', 'lunch', 'dinner', 'snack']
+    const mealType = /早餐|早饭|breakfast|morning/.test(identitySource)
+      ? 'breakfast'
+      : /午餐|午饭|lunch|midday/.test(identitySource)
+        ? 'lunch'
+        : /晚餐|晚饭|dinner|supper|evening/.test(identitySource)
+          ? 'dinner'
+          : /加餐|夜宵|点心|snack/.test(identitySource)
+            ? 'snack'
+            : (fallbackTypes[fallbackIndex] || 'snack')
+    const presentation = {
+      breakfast: { label: '早餐', icon: '🌅', theme: 'breakfast' },
+      lunch: { label: '午餐', icon: '☀️', theme: 'lunch' },
+      dinner: { label: '晚餐', icon: '🌙', theme: 'dinner' },
+      snack: { label: '加餐', icon: '🍎', theme: 'snack' }
+    }[mealType]
     const menuTitle = matched?.[2] || mealName
-    const icon = mealLabel.includes('早餐')
-      ? '🌅'
-      : mealLabel.includes('午餐')
-        ? '☀️'
-        : mealLabel.includes('晚餐')
-          ? '🌙'
-          : '🍎'
-    return { mealName, mealLabel, menuTitle, icon }
+    return {
+      mealName,
+      mealLabel: presentation.label,
+      menuTitle,
+      icon: presentation.icon,
+      theme: presentation.theme
+    }
   },
 
-  normalizeMealRecipe(recipe = {}) {
+  normalizeMealRecipe(recipe = {}, fallbackIndex = 0) {
     const dishes = Array.isArray(recipe.dishes) ? recipe.dishes.map(item => this.normalizeDish(item)) : []
-    const name = this.formatMealRecipeName(recipe)
+    const name = this.formatMealRecipeName(recipe, fallbackIndex)
     return {
       meal_name: name.mealName,
       meal_label: name.mealLabel,
       menu_title: name.menuTitle,
       meal_icon: name.icon,
+      meal_theme: name.theme,
       timing: recipe.timing || recipe.recommended_time || '',
       total_calories: Math.round(Number(recipe.total_calories) || dishes.reduce((sum, dish) => sum + dish.calories, 0)),
       dishes,
@@ -604,7 +615,7 @@ Page({
     const tipSource = Array.isArray(recommendations.next_meal_tips) ? recommendations.next_meal_tips : []
 
     return {
-      nextMealRecipes: recipeSource.map(recipe => this.normalizeMealRecipe(recipe)),
+      nextMealRecipes: recipeSource.map((recipe, index) => this.normalizeMealRecipe(recipe, index)),
       nextMealTips: tipSource.map(tip => typeof tip === 'string'
         ? { meal: '饮食提示', suggestion: tip, health_benefit: '' }
         : {

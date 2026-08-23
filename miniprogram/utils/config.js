@@ -34,5 +34,5 @@ module.exports = {
 
   // 应用信息
   APP_NAME: 'Health Assistant',
-  APP_VERSION: '0.3.11'
+  APP_VERSION: '0.3.12'
 }

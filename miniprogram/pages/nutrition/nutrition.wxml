@@ -94,46 +94,50 @@
         <!-- 热量中心 -->
         <view class="calorie-center">
           <view class="calorie-ring">
-            <view wx:if="{{showDailyTargetProgress}}" class="ring-progress" style="--progress: {{calorieProgress}}deg;"></view>
+            <view class="ring-progress" style="--progress: {{calorieProgress}}deg;"></view>
             <view class="ring-inner">
               <text class="calorie-value">{{todaySummary.total_calories}}</text>
               <text class="calorie-unit">千卡</text>
             </view>
           </view>
           <text class="calorie-label">总热量</text>
+          <text class="calorie-progress-copy">日参考 {{calorieProgressText}}</text>
         </view>
 
         <!-- 三大宏量元素 -->
         <view class="macro-grid">
           <view class="macro-item protein">
             <view class="macro-bar">
-              <view wx:if="{{showDailyTargetProgress}}" class="bar-fill" style="height: {{proteinProgress}}%;"></view>
+              <view class="bar-fill" style="height: {{proteinProgress}}%;"></view>
             </view>
             <view class="macro-info">
               <text class="macro-value">{{todaySummary.total_protein}}</text>
               <text class="macro-unit">g</text>
             </view>
             <text class="macro-label">蛋白质</text>
+            <text class="macro-progress-copy">{{proteinProgressText}}</text>
           </view>
           <view class="macro-item carbs">
             <view class="macro-bar">
-              <view wx:if="{{showDailyTargetProgress}}" class="bar-fill" style="height: {{carbsProgress}}%;"></view>
+              <view class="bar-fill" style="height: {{carbsProgress}}%;"></view>
             </view>
             <view class="macro-info">
               <text class="macro-value">{{todaySummary.total_carbs}}</text>
               <text class="macro-unit">g</text>
             </view>
             <text class="macro-label">碳水</text>
+            <text class="macro-progress-copy">{{carbsProgressText}}</text>
           </view>
           <view class="macro-item fat">
             <view class="macro-bar">
-              <view wx:if="{{showDailyTargetProgress}}" class="bar-fill" style="height: {{fatProgress}}%;"></view>
+              <view class="bar-fill" style="height: {{fatProgress}}%;"></view>
             </view>
             <view class="macro-info">
               <text class="macro-value">{{todaySummary.total_fat}}</text>
               <text class="macro-unit">g</text>
             </view>
             <text class="macro-label">脂肪</text>
+            <text class="macro-progress-copy">{{fatProgressText}}</text>
           </view>
         </view>
       </view>
