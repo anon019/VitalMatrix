@@ -326,18 +326,20 @@
                 <view
                   wx:for="{{nextMealRecipes}}"
                   wx:key="index"
-                  class="meal-plan-tab {{index == activeRecipeIndex ? 'active' : ''}}"
+                  class="meal-plan-tab meal-theme-{{item.meal_theme}} {{index == activeRecipeIndex ? 'active' : ''}}"
                   data-index="{{index}}"
                   bindtap="selectMealRecipe"
                   hover-class="meal-plan-tab-pressed"
                   aria-role="button"
                 >
-                  <text class="meal-plan-tab-icon">{{item.meal_icon}}</text>
+                  <view class="meal-plan-tab-icon-shell">
+                    <text class="meal-plan-tab-icon">{{item.meal_icon}}</text>
+                  </view>
                   <text class="meal-plan-tab-name">{{item.meal_label}}</text>
                   <text class="meal-plan-tab-cal">{{item.total_calories}} 千卡</text>
                 </view>
               </view>
-              <view wx:for="{{nextMealRecipes}}" wx:key="index" wx:if="{{index == activeRecipeIndex}}" class="next-meal-card">
+              <view wx:for="{{nextMealRecipes}}" wx:key="index" wx:if="{{index == activeRecipeIndex}}" class="next-meal-card meal-theme-{{item.meal_theme}}">
                 <view class="meal-card-header">
                   <view class="meal-title-stack">
                     <view class="meal-header-eyebrow">

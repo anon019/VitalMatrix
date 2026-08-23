@@ -18,6 +18,16 @@ function formatLocalDate(date = new Date()) {
   return `${targetDate.getFullYear()}-${padNumber(targetDate.getMonth() + 1)}-${padNumber(targetDate.getDate())}`
 }
 
+/**
+ * 将时间格式化为营养上传接口要求的本地时间，不转换为 UTC。
+ * 输出示例：2026-08-23 09:05
+ */
+function formatLocalDateTime(date = new Date()) {
+  const targetDate = date instanceof Date ? date : new Date(date)
+
+  return `${formatLocalDate(targetDate)} ${padNumber(targetDate.getHours())}:${padNumber(targetDate.getMinutes())}`
+}
+
 function getRecentLocalDates(days, endDate = new Date()) {
   const dates = []
 
@@ -40,6 +50,7 @@ function getMonday(date = new Date()) {
 module.exports = {
   addDays,
   formatLocalDate,
+  formatLocalDateTime,
   getRecentLocalDates,
   getMonday
 }

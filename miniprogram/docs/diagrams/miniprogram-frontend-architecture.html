@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Health 微信小程序前端架构图</title>
+  <link rel="icon" href="data:,">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; padding: 32px; color: #fff; background: #020617; font-family: 'JetBrains Mono', monospace; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { margin-bottom: 24px; }
+    .header-row { display: flex; align-items: center; gap: 12px; }
+    .pulse-dot { width: 12px; height: 12px; border-radius: 50%; background: #22d3ee; box-shadow: 0 0 18px rgba(34, 211, 238, .7); animation: pulse 2s infinite; }
+    @keyframes pulse { 50% { opacity: .45; transform: scale(.86); } }
+    h1 { font-size: 24px; letter-spacing: -.03em; }
+    .subtitle { margin: 8px 0 0 24px; color: #94a3b8; font-size: 13px; }
+    .diagram-container { overflow-x: auto; padding: 24px; border: 1px solid #1e293b; border-radius: 16px; background: rgba(15, 23, 42, .58); }
+    svg { display: block; width: 100%; min-width: 1060px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+    .card { padding: 20px; border: 1px solid #1e293b; border-radius: 12px; background: rgba(15, 23, 42, .58); }
+    .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .cyan { background: #22d3ee; } .emerald { background: #34d399; } .violet { background: #a78bfa; }
+    .card h3 { font-size: 14px; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 12px; line-height: 1.75; }
+    .footer { margin-top: 20px; color: #475569; text-align: center; font-size: 12px; }
+    .toolbar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .toolbar-actions { display: none; gap: 8px; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar button { cursor: pointer; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; color: #94a3b8; background: rgba(30, 41, 59, .85); font-family: inherit; font-size: 12px; }
+    .toolbar button:hover { color: #fff; border-color: #475569; }
+    .toolbar .toolbar-toggle { border: 0; padding: 4px 8px; font-size: 20px; background: transparent; }
+    @media (max-width: 900px) { body { padding: 16px; } .cards { grid-template-columns: 1fr; } }
+    @media print { body { padding: 16px; background: #020617; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Health 微信小程序 · 前端架构</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 复制</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="导出选项" aria-label="导出选项">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">基于 v0.3.12 代码梳理 · 页面层、应用运行时、请求缓存、媒体链路与后端服务边界</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1200 790" role="img" aria-label="Health 微信小程序前端架构图">
+        <defs>
+          <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#22d3ee"/></marker>
+          <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#34d399"/></marker>
+          <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#a78bfa"/></marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-width=".5"/></pattern>
+          <filter id="soft-glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <rect width="1200" height="790" fill="url(#grid)"/>
+
+        <!-- Connections render first so component surfaces mask them. -->
+        <path d="M92 348H126" fill="none" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow-cyan)"/>
+        <path d="M250 180V226" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+        <path d="M405 405H695V180H455" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+        <path d="M650 160H780" fill="none" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+        <path d="M940 195V226" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <path d="M940 390V575" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+        <path d="M780 310H715V615H650" fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="6,5" marker-end="url(#arrow-emerald)"/>
+
+        <text x="108" y="338" fill="#94a3b8" font-size="8" text-anchor="middle">交互</text>
+        <text x="715" y="151" fill="#94a3b8" font-size="8" text-anchor="middle">HTTPS + Bearer</text>
+        <text x="728" y="604" fill="#34d399" font-size="8" text-anchor="middle">签名媒体 URL</text>
+
+        <!-- User / platform -->
+        <rect x="10" y="310" width="82" height="76" rx="8" fill="#0f172a"/>
+        <rect x="10" y="310" width="82" height="76" rx="8" fill="rgba(30,41,59,.58)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="51" y="338" fill="#fff" font-size="11" font-weight="600" text-anchor="middle">用户</text>
+        <text x="51" y="355" fill="#94a3b8" font-size="8" text-anchor="middle">微信客户端</text>
+        <text x="51" y="370" fill="#94a3b8" font-size="8" text-anchor="middle">相机 · 相册</text>
+
+        <!-- Frontend boundary -->
+        <rect x="115" y="55" width="600" height="620" rx="14" fill="rgba(34,211,238,.025)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="132" y="77" fill="#22d3ee" font-size="10" font-weight="600">微信小程序前端 · miniprogram/</text>
+
+        <rect x="145" y="100" width="210" height="80" rx="8" fill="#0f172a"/>
+        <rect x="145" y="100" width="210" height="80" rx="8" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="250" y="124" fill="#fff" font-size="11" font-weight="600" text-anchor="middle">App Runtime</text>
+        <text x="250" y="143" fill="#94a3b8" font-size="8" text-anchor="middle">app.js · 登录恢复 · 页面通知</text>
+        <text x="250" y="158" fill="#94a3b8" font-size="8" text-anchor="middle">关键数据预加载 · globalData</text>
+
+        <rect x="405" y="100" width="245" height="80" rx="8" fill="#0f172a"/>
+        <rect x="405" y="100" width="245" height="80" rx="8" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="527" y="124" fill="#fff" font-size="11" font-weight="600" text-anchor="middle">请求与配置层</text>
+        <text x="527" y="143" fill="#94a3b8" font-size="8" text-anchor="middle">utils/request.js · config.js · date.js</text>
+        <text x="527" y="158" fill="#22d3ee" font-size="8" text-anchor="middle">鉴权 · 缓存 · 去重 · 超时 · URL 保真</text>
+
+        <rect x="145" y="225" width="540" height="350" rx="10" fill="rgba(2,6,23,.66)" stroke="#334155" stroke-width="1"/>
+        <text x="165" y="248" fill="#cbd5e1" font-size="10" font-weight="600">页面与视图模型</text>
+
+        <g>
+          <rect x="170" y="270" width="145" height="90" rx="7" fill="#0f172a"/><rect x="170" y="270" width="145" height="90" rx="7" fill="rgba(8,51,68,.36)" stroke="#22d3ee" stroke-width="1.3"/>
+          <text x="242" y="295" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">今日 Dashboard</text><text x="242" y="314" fill="#94a3b8" font-size="8" text-anchor="middle">准备度 · 睡眠 · 训练</text><text x="242" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">饮食优先级 · 活动</text>
+          <rect x="342" y="270" width="145" height="90" rx="7" fill="#0f172a"/><rect x="342" y="270" width="145" height="90" rx="7" fill="rgba(8,51,68,.36)" stroke="#22d3ee" stroke-width="1.3"/>
+          <text x="414" y="295" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">趋势 Trends</text><text x="414" y="314" fill="#94a3b8" font-size="8" text-anchor="middle">饮食 · 运动 · 睡眠</text><text x="414" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">活动 · 恢复</text>
+          <rect x="514" y="270" width="145" height="90" rx="7" fill="#0f172a"/><rect x="514" y="270" width="145" height="90" rx="7" fill="rgba(8,51,68,.36)" stroke="#22d3ee" stroke-width="1.3"/>
+          <text x="586" y="295" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">饮食 Nutrition</text><text x="586" y="314" fill="#94a3b8" font-size="8" text-anchor="middle">拍照 · 压缩 · 上传</text><text x="586" y="330" fill="#94a3b8" font-size="8" text-anchor="middle">当日总结 · 历史列表</text>
+          <rect x="170" y="395" width="145" height="90" rx="7" fill="#0f172a"/><rect x="170" y="395" width="145" height="90" rx="7" fill="rgba(8,51,68,.36)" stroke="#22d3ee" stroke-width="1.3"/>
+          <text x="242" y="420" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">餐食详情</text><text x="242" y="439" fill="#94a3b8" font-size="8" text-anchor="middle">核心营养 · 异步建议</text><text x="242" y="455" fill="#94a3b8" font-size="8" text-anchor="middle">海报预览 · 保存</text>
+          <rect x="342" y="395" width="145" height="90" rx="7" fill="#0f172a"/><rect x="342" y="395" width="145" height="90" rx="7" fill="rgba(8,51,68,.36)" stroke="#22d3ee" stroke-width="1.3"/>
+          <text x="414" y="420" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">AI 健康助理</text><text x="414" y="439" fill="#94a3b8" font-size="8" text-anchor="middle">营养 · 恢复 · 活动</text><text x="414" y="455" fill="#94a3b8" font-size="8" text-anchor="middle">健康知识建议</text>
+          <rect x="514" y="395" width="145" height="90" rx="7" fill="#0f172a"/><rect x="514" y="395" width="145" height="90" rx="7" fill="rgba(8,51,68,.36)" stroke="#22d3ee" stroke-width="1.3"/>
+          <text x="586" y="420" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">设置 Settings</text><text x="586" y="439" fill="#94a3b8" font-size="8" text-anchor="middle">用户资料 · 健康目标</text><text x="586" y="455" fill="#94a3b8" font-size="8" text-anchor="middle">设备授权 · 手动同步</text>
+        </g>
+
+        <rect x="145" y="595" width="235" height="52" rx="7" fill="#0f172a"/>
+        <rect x="145" y="595" width="235" height="52" rx="7" fill="rgba(76,29,149,.38)" stroke="#a78bfa" stroke-width="1.3"/>
+        <text x="262" y="617" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">本地状态与缓存</text>
+        <text x="262" y="634" fill="#94a3b8" font-size="8" text-anchor="middle">Storage · 内存缓存 · pending promise</text>
+
+        <rect x="415" y="595" width="235" height="52" rx="7" fill="#0f172a"/>
+        <rect x="415" y="595" width="235" height="52" rx="7" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.3"/>
+        <text x="532" y="617" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">微信原生媒体能力</text>
+        <text x="532" y="634" fill="#94a3b8" font-size="8" text-anchor="middle">uploadFile · downloadFile · 相册保存</text>
+
+        <!-- Backend boundary -->
+        <rect x="760" y="55" width="400" height="620" rx="14" fill="rgba(52,211,153,.025)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="778" y="77" fill="#34d399" font-size="10" font-weight="600">Health API · health.jackverse.cn</text>
+
+        <rect x="790" y="100" width="300" height="95" rx="8" fill="#0f172a"/>
+        <rect x="790" y="100" width="300" height="95" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="940" y="126" fill="#fff" font-size="11" font-weight="600" text-anchor="middle">FastAPI /api/v1</text>
+        <text x="940" y="146" fill="#94a3b8" font-size="8" text-anchor="middle">JWT 鉴权 · 业务路由 · 状态码与错误透传</text>
+        <text x="940" y="165" fill="#34d399" font-size="8" text-anchor="middle">dashboard · trends · nutrition · ai · user</text>
+
+        <g>
+          <rect x="790" y="230" width="135" height="70" rx="7" fill="#0f172a"/><rect x="790" y="230" width="135" height="70" rx="7" fill="rgba(136,19,55,.35)" stroke="#fb7185" stroke-width="1.3"/>
+          <text x="857" y="254" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Auth &amp; User</text><text x="857" y="272" fill="#94a3b8" font-size="8" text-anchor="middle">微信登录 · Profile</text>
+          <rect x="955" y="230" width="135" height="70" rx="7" fill="#0f172a"/><rect x="955" y="230" width="135" height="70" rx="7" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.3"/>
+          <text x="1022" y="254" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Dashboard / Trends</text><text x="1022" y="272" fill="#94a3b8" font-size="8" text-anchor="middle">聚合今日与时序数据</text>
+          <rect x="790" y="320" width="135" height="70" rx="7" fill="#0f172a"/><rect x="790" y="320" width="135" height="70" rx="7" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.3"/>
+          <text x="857" y="344" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Training &amp; Devices</text><text x="857" y="362" fill="#94a3b8" font-size="8" text-anchor="middle">Polar · Oura 同步</text>
+          <rect x="955" y="320" width="135" height="70" rx="7" fill="#0f172a"/><rect x="955" y="320" width="135" height="70" rx="7" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.3"/>
+          <text x="1022" y="344" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Nutrition</text><text x="1022" y="362" fill="#94a3b8" font-size="8" text-anchor="middle">识图 · 营养 · 三餐建议</text>
+          <rect x="790" y="410" width="135" height="70" rx="7" fill="#0f172a"/><rect x="790" y="410" width="135" height="70" rx="7" fill="rgba(6,78,59,.4)" stroke="#34d399" stroke-width="1.3"/>
+          <text x="857" y="434" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">AI Recommendation</text><text x="857" y="452" fill="#94a3b8" font-size="8" text-anchor="middle">健康建议生成</text>
+          <rect x="955" y="410" width="135" height="70" rx="7" fill="#0f172a"/><rect x="955" y="410" width="135" height="70" rx="7" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.3"/>
+          <text x="1022" y="434" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">Poster / Media</text><text x="1022" y="452" fill="#94a3b8" font-size="8" text-anchor="middle">V9 海报 · 签名 URL</text>
+        </g>
+
+        <rect x="790" y="575" width="135" height="72" rx="7" fill="#0f172a"/>
+        <rect x="790" y="575" width="135" height="72" rx="7" fill="rgba(76,29,149,.38)" stroke="#a78bfa" stroke-width="1.3"/>
+        <text x="857" y="601" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">业务数据</text>
+        <text x="857" y="620" fill="#94a3b8" font-size="8" text-anchor="middle">用户 · 餐食 · 健康指标</text>
+
+        <rect x="955" y="575" width="135" height="72" rx="7" fill="#0f172a"/>
+        <rect x="955" y="575" width="135" height="72" rx="7" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.3"/>
+        <text x="1022" y="601" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">外部能力</text>
+        <text x="1022" y="620" fill="#94a3b8" font-size="8" text-anchor="middle">AI · 对象存储 · 设备 API</text>
+
+        <!-- Legend below all boundaries -->
+        <text x="125" y="722" fill="#fff" font-size="10" font-weight="600">图例</text>
+        <rect x="175" y="712" width="18" height="12" rx="2" fill="rgba(8,51,68,.42)" stroke="#22d3ee"/><text x="201" y="722" fill="#94a3b8" font-size="8">小程序前端</text>
+        <rect x="290" y="712" width="18" height="12" rx="2" fill="rgba(6,78,59,.42)" stroke="#34d399"/><text x="316" y="722" fill="#94a3b8" font-size="8">后端服务</text>
+        <rect x="395" y="712" width="18" height="12" rx="2" fill="rgba(76,29,149,.38)" stroke="#a78bfa"/><text x="421" y="722" fill="#94a3b8" font-size="8">数据 / 状态</text>
+        <rect x="510" y="712" width="18" height="12" rx="2" fill="rgba(120,53,15,.32)" stroke="#fbbf24"/><text x="536" y="722" fill="#94a3b8" font-size="8">媒体 / 外部平台</text>
+        <rect x="660" y="712" width="18" height="12" rx="2" fill="rgba(136,19,55,.35)" stroke="#fb7185"/><text x="686" y="722" fill="#94a3b8" font-size="8">鉴权</text>
+        <text x="125" y="755" fill="#475569" font-size="8">实线：同步请求或数据流　　虚线：签名媒体地址 / 间接资源访问　　边界内后端结构依据当前 API 契约归类</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="card-header"><div class="card-dot cyan"></div><h3>前端职责</h3></div><ul><li>• 六个页面围绕统一请求层获取业务数据</li><li>• App Runtime 负责登录恢复、通知刷新和预加载</li><li>• 页面把后端响应归一化为稳定视图模型</li><li>• 微信原生能力处理图片上传、下载与相册保存</li></ul></div>
+      <div class="card"><div class="card-header"><div class="card-dot emerald"></div><h3>数据与性能</h3></div><ul><li>• GET 请求按接口 TTL 缓存并复用在途 Promise</li><li>• 状态轮询绕过缓存，完成后强制刷新详情</li><li>• Token、本地刷新标记与坏图熔断保存在客户端</li><li>• 签名 URL 保留原始 query，避免破坏鉴权参数</li></ul></div>
+      <div class="card"><div class="card-header"><div class="card-dot violet"></div><h3>关键边界</h3></div><ul><li>• 小程序只负责展示与交互，不参与海报内部排版</li><li>• 核心识图与异步未来三餐建议是两个独立状态</li><li>• 业务数据库、AI、设备 API 与对象存储位于后端侧</li><li>• 后端部署不属于本小程序仓库的发布范围</li></ul></div>
+    </div>
+    <p class="footer">Health Mini Program v0.3.12 · 更新于 2026-08-23 · Source: app.js / app.json / utils/request.js / pages/*</p>
+  </div>
+
+  <script>
+    async function capture() {
+      const el = document.getElementById('report-container'); const r = el.getBoundingClientRect(); const pad = 32;
+      return html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: e => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+    }
+    async function copyAsImage(btn) { const orig = btn.textContent; try { const canvas = await capture(); const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png')); await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); btn.textContent = '✓ 已复制'; } catch (e) { btn.textContent = '✗ 失败'; } setTimeout(() => { btn.textContent = orig; }, 2000); }
+    async function downloadPNG(btn) { const orig = btn.textContent; btn.textContent = '⏳'; try { const canvas = await capture(); const link = document.createElement('a'); link.download = 'health-miniprogram-frontend-architecture.png'; link.href = canvas.toDataURL('image/png'); link.click(); btn.textContent = '✓ 完成'; } catch (e) { btn.textContent = '✗ 失败'; } setTimeout(() => { btn.textContent = orig; }, 2000); }
+    async function downloadPDF(btn) { const orig = btn.textContent; btn.textContent = '⏳'; try { const canvas = await capture(); const { jsPDF } = window.jspdf; const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait'; const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] }); pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height); pdf.save('health-miniprogram-frontend-architecture.pdf'); btn.textContent = '✓ 完成'; } catch (e) { btn.textContent = '✗ 失败'; } setTimeout(() => { btn.textContent = orig; }, 2000); }
+  </script>
+</body>
+</html>

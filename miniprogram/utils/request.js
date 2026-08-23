@@ -3,7 +3,7 @@
  * 包含智能缓存层：请求去重 + 内存缓存 + 按接口配置过期时间
  */
 const config = require('./config.js')
-const { formatLocalDate } = require('./date.js')
+const { formatLocalDate, formatLocalDateTime } = require('./date.js')
 
 /**
  * 将后端返回的相对 API 地址补全为绝对地址。
@@ -558,7 +558,7 @@ function getTrainingTrends(days = 7) {
 function uploadMeal(filePath, mealType, options = {}) {
   return new Promise((resolve, reject) => {
     const token = wx.getStorageSync(config.TOKEN_KEY)
-    const mealTime = options.mealTime || new Date().toISOString()
+    const mealTime = formatLocalDateTime(options.mealTime || new Date())
     const notes = options.notes || ''
 
     wx.uploadFile({

@@ -2,9 +2,9 @@
 
 ## Version
 
-- Current version: `0.3.11`
+- Current version: `0.3.12`
 - Change history: `CHANGELOG.md`
-- Release notes: `docs/releases/2026-08-22-v0.3.11.md`
+- Release notes: `docs/releases/2026-08-23-v0.3.12.md`
 
 ## Scope
 
@@ -16,6 +16,11 @@ This repository contains the WeChat mini program only.
 - nutrition capture and analysis
 - settings and sync utilities
 
+## Architecture Diagrams
+
+- [Mini program frontend architecture](docs/diagrams/miniprogram-frontend-architecture.html)
+- [Nutrition analysis, asynchronous recommendations, and poster flow](docs/diagrams/nutrition-analysis-poster-flow.html)
+
 ## Local Development
 
 1. Open the current directory in WeChat DevTools.
@@ -23,7 +28,15 @@ This repository contains the WeChat mini program only.
 3. Use `project.config.json.example` when you need a shareable config template.
 4. Never commit `project.private.config.json`, `.claude/`, or any personal IDE config.
 
-## Recent Updates In 0.3.11
+## Recent Updates In 0.3.12
+
+- format nutrition upload `meal_time` as local `YYYY-MM-DD HH:mm`, matching the backend multipart contract
+- keep the selected meal time in the device timezone instead of converting it to UTC with `toISOString()`
+- centralize upload date-time formatting in the shared date utility and retain the existing single-upload guard
+- distinguish future breakfast, lunch, dinner, and snack recommendations with meal-specific symbols, muted tints, and active states, including English backend enum values
+- keep recorded calorie and macro intake visible for partial days, with semantic color fills and explicit reference-progress percentages
+
+## Previous Updates In 0.3.11
 
 - keep the poster-generation entry disabled until the future-three-meal recommendation reaches `completed`
 - refresh the short-lived signed poster URL through the ordinary cached-poster endpoint whenever the preview is reopened or a displayed URL fails

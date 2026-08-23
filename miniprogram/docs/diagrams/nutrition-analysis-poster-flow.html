@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Health 饮食识图、异步建议与海报流程图</title>
+  <link rel="icon" href="data:,">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; padding: 32px; color: #fff; background: #020617; font-family: 'JetBrains Mono', monospace; }
+    .container { max-width: 1450px; margin: 0 auto; }
+    .header { margin-bottom: 24px; }
+    .header-row { display: flex; align-items: center; gap: 12px; }
+    .pulse-dot { width: 12px; height: 12px; border-radius: 50%; background: #34d399; box-shadow: 0 0 18px rgba(52, 211, 153, .7); animation: pulse 2s infinite; }
+    @keyframes pulse { 50% { opacity: .45; transform: scale(.86); } }
+    h1 { font-size: 24px; letter-spacing: -.03em; }
+    .subtitle { margin: 8px 0 0 24px; color: #94a3b8; font-size: 13px; }
+    .diagram-container { overflow-x: auto; padding: 24px; border: 1px solid #1e293b; border-radius: 16px; background: rgba(15, 23, 42, .58); }
+    svg { display: block; width: 100%; min-width: 1120px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+    .card { padding: 20px; border: 1px solid #1e293b; border-radius: 12px; background: rgba(15, 23, 42, .58); }
+    .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .cyan { background: #22d3ee; } .amber { background: #fbbf24; } .rose { background: #fb7185; }
+    .card h3 { font-size: 14px; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 12px; line-height: 1.75; }
+    .footer { margin-top: 20px; color: #475569; text-align: center; font-size: 12px; }
+    .toolbar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .toolbar-actions { display: none; gap: 8px; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar button { cursor: pointer; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; color: #94a3b8; background: rgba(30, 41, 59, .85); font-family: inherit; font-size: 12px; }
+    .toolbar button:hover { color: #fff; border-color: #475569; }
+    .toolbar .toolbar-toggle { border: 0; padding: 4px 8px; font-size: 20px; background: transparent; }
+    @media (max-width: 900px) { body { padding: 16px; } .cards { grid-template-columns: 1fr; } }
+    @media print { body { padding: 16px; background: #020617; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>饮食识图 → 异步建议 → V9 海报</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 复制</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="导出选项" aria-label="导出选项">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">两阶段营养分析状态机 · 单次上传、防重复、2 秒轮询、90 秒降级、签名 URL 刷新与原图保存</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1240 940" role="img" aria-label="饮食图片上传、异步建议和海报生成流程图">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#64748b"/></marker>
+          <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#22d3ee"/></marker>
+          <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#34d399"/></marker>
+          <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#fbbf24"/></marker>
+          <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#fb7185"/></marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-width=".5"/></pattern>
+        </defs>
+        <rect width="1240" height="940" fill="url(#grid)"/>
+
+        <!-- Arrows first: upload stage -->
+        <line x1="180" y1="142" x2="218" y2="142" stroke="#22d3ee" stroke-width="1.7" marker-end="url(#arrow-cyan)"/>
+        <line x1="378" y1="142" x2="416" y2="142" stroke="#22d3ee" stroke-width="1.7" marker-end="url(#arrow-cyan)"/>
+        <line x1="586" y1="142" x2="624" y2="142" stroke="#34d399" stroke-width="1.7" marker-end="url(#arrow-green)"/>
+        <line x1="794" y1="142" x2="832" y2="142" stroke="#34d399" stroke-width="1.7" marker-end="url(#arrow-green)"/>
+        <line x1="1002" y1="142" x2="1040" y2="142" stroke="#fbbf24" stroke-width="1.7" marker-end="url(#arrow-amber)"/>
+        <path d="M704 187V238H520V278" fill="none" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow-rose)"/>
+        <text x="706" y="211" fill="#fb7185" font-size="8">客户端超时</text>
+        <text x="812" y="132" fill="#34d399" font-size="8" text-anchor="middle">HTTP 201</text>
+
+        <!-- Async recommendation stage arrows -->
+        <path d="M1120 187V330H188" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <line x1="258" y1="375" x2="296" y2="375" stroke="#fbbf24" stroke-width="1.7" marker-end="url(#arrow-amber)"/>
+        <line x1="456" y1="375" x2="494" y2="375" stroke="#fbbf24" stroke-width="1.7" marker-end="url(#arrow-amber)"/>
+        <line x1="664" y1="375" x2="702" y2="375" stroke="#34d399" stroke-width="1.7" marker-end="url(#arrow-green)"/>
+        <path d="M579 422V468H376V422" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow-amber)"/>
+        <path d="M579 422V490H984V422" fill="none" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow-rose)"/>
+        <line x1="862" y1="375" x2="900" y2="375" stroke="#fb7185" stroke-width="1.7" marker-end="url(#arrow-rose)"/>
+        <path d="M1068 422V470H1145V422" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="480" y="457" fill="#fbbf24" font-size="8">pending / processing · 继续轮询</text>
+        <text x="775" y="482" fill="#fb7185" font-size="8">failed</text>
+        <text x="682" y="365" fill="#34d399" font-size="8" text-anchor="middle">completed</text>
+
+        <!-- Poster stage arrows -->
+        <path d="M782 422V566H168" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+        <line x1="248" y1="620" x2="286" y2="620" stroke="#34d399" stroke-width="1.7" marker-end="url(#arrow-green)"/>
+        <line x1="456" y1="620" x2="494" y2="620" stroke="#34d399" stroke-width="1.7" marker-end="url(#arrow-green)"/>
+        <line x1="664" y1="620" x2="702" y2="620" stroke="#fbbf24" stroke-width="1.7" marker-end="url(#arrow-amber)"/>
+        <line x1="872" y1="620" x2="910" y2="620" stroke="#22d3ee" stroke-width="1.7" marker-end="url(#arrow-cyan)"/>
+        <path d="M990 675V730H584V675" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow-rose)"/>
+        <text x="790" y="719" fill="#fb7185" font-size="8" text-anchor="middle">图片 / 下载返回 403 → 普通接口刷新签名 URL（force=false）</text>
+
+        <!-- Stage boundaries -->
+        <rect x="25" y="45" width="1190" height="205" rx="14" fill="rgba(34,211,238,.02)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="45" y="68" fill="#22d3ee" font-size="10" font-weight="600">阶段一 · 单次上传与同步核心识图</text>
+
+        <rect x="25" y="275" width="1190" height="235" rx="14" fill="rgba(251,191,36,.02)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="45" y="298" fill="#fbbf24" font-size="10" font-weight="600">阶段二 · 未来 24 小时建议异步生成</text>
+
+        <rect x="25" y="540" width="1190" height="220" rx="14" fill="rgba(52,211,153,.02)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="45" y="563" fill="#34d399" font-size="10" font-weight="600">阶段三 · V9 海报生成、预览与保存</text>
+
+        <!-- Upload components -->
+        <g>
+          <rect x="40" y="95" width="140" height="94" rx="8" fill="#0f172a"/><rect x="40" y="95" width="140" height="94" rx="8" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="110" y="119" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">选择餐食图片</text><text x="110" y="138" fill="#94a3b8" font-size="8" text-anchor="middle">相机 / 相册</text><text x="110" y="156" fill="#22d3ee" font-size="8" text-anchor="middle">点击后立即禁用</text><text x="110" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">禁止重复提交</text>
+          <rect x="218" y="95" width="160" height="94" rx="8" fill="#0f172a"/><rect x="218" y="95" width="160" height="94" rx="8" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="298" y="119" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">客户端预处理</text><text x="298" y="138" fill="#94a3b8" font-size="8" text-anchor="middle">最长边 1920</text><text x="298" y="156" fill="#94a3b8" font-size="8" text-anchor="middle">JPEG 质量 80</text><text x="298" y="173" fill="#22d3ee" font-size="8" text-anchor="middle">不自动重传</text>
+          <rect x="416" y="95" width="170" height="94" rx="8" fill="#0f172a"/><rect x="416" y="95" width="170" height="94" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="501" y="119" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">POST /nutrition/upload</text><text x="501" y="138" fill="#94a3b8" font-size="8" text-anchor="middle">multipart · 120 秒</text><text x="501" y="156" fill="#94a3b8" font-size="8" text-anchor="middle">image · meal_type · notes</text><text x="501" y="173" fill="#34d399" font-size="8" text-anchor="middle">meal_time: YYYY-MM-DD HH:mm</text>
+          <rect x="624" y="95" width="170" height="94" rx="8" fill="#0f172a"/><rect x="624" y="95" width="170" height="94" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="709" y="119" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">后端同步识图</text><text x="709" y="138" fill="#94a3b8" font-size="8" text-anchor="middle">食物明细 · 热量</text><text x="709" y="156" fill="#94a3b8" font-size="8" text-anchor="middle">蛋白质 · 碳水 · 脂肪</text><text x="709" y="173" fill="#34d399" font-size="8" text-anchor="middle">核心营养评价完成</text>
+          <rect x="832" y="95" width="170" height="94" rx="8" fill="#0f172a"/><rect x="832" y="95" width="170" height="94" rx="8" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="917" y="119" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">立即进入详情</text><text x="917" y="138" fill="#22d3ee" font-size="8" text-anchor="middle">结束上传 Loading</text><text x="917" y="156" fill="#94a3b8" font-size="8" text-anchor="middle">展示本餐核心结果</text><text x="917" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">页面保持可操作</text>
+          <rect x="1040" y="95" width="150" height="94" rx="8" fill="#0f172a"/><rect x="1040" y="95" width="150" height="94" rx="8" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="1115" y="119" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">建议局部状态</text><text x="1115" y="138" fill="#fbbf24" font-size="8" text-anchor="middle">pending / processing</text><text x="1115" y="156" fill="#94a3b8" font-size="8" text-anchor="middle">识图完成</text><text x="1115" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">饮食建议生成中</text>
+        </g>
+
+        <!-- Timeout recovery -->
+        <rect x="430" y="278" width="180" height="72" rx="8" fill="#0f172a"/>
+        <rect x="430" y="278" width="180" height="72" rx="8" fill="rgba(136,19,55,.35)" stroke="#fb7185" stroke-width="1.3"/>
+        <text x="520" y="302" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">上传超时恢复</text>
+        <text x="520" y="320" fill="#94a3b8" font-size="8" text-anchor="middle">强刷今日餐食列表</text>
+        <text x="520" y="336" fill="#fb7185" font-size="8" text-anchor="middle">找到记录则直接进详情</text>
+
+        <!-- Async components -->
+        <g>
+          <rect x="88" y="330" width="170" height="92" rx="8" fill="#0f172a"/><rect x="88" y="330" width="170" height="92" rx="8" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="173" y="354" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">每 2 秒轮询</text><text x="173" y="373" fill="#94a3b8" font-size="8" text-anchor="middle">analysis-status</text><text x="173" y="391" fill="#fbbf24" font-size="8" text-anchor="middle">完全绕过 GET 缓存</text><text x="173" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">最长 90 秒</text>
+          <rect x="296" y="330" width="160" height="92" rx="8" fill="#0f172a"/><rect x="296" y="330" width="160" height="92" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="376" y="354" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">状态接口</text><text x="376" y="373" fill="#94a3b8" font-size="8" text-anchor="middle">analysis_status</text><text x="376" y="391" fill="#94a3b8" font-size="8" text-anchor="middle">recommendation_status</text><text x="376" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">analysis_error</text>
+          <polygon points="579,326 664,376 579,426 494,376" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="579" y="369" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">推荐状态？</text><text x="579" y="386" fill="#94a3b8" font-size="8" text-anchor="middle">pending / done / failed</text>
+          <rect x="702" y="330" width="160" height="92" rx="8" fill="#0f172a"/><rect x="702" y="330" width="160" height="92" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="782" y="354" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">完成后强刷详情</text><text x="782" y="373" fill="#34d399" font-size="8" text-anchor="middle">clearCache(mealId)</text><text x="782" y="391" fill="#94a3b8" font-size="8" text-anchor="middle">forceRefresh=true</text><text x="782" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">显示完整未来三餐</text>
+          <rect x="900" y="330" width="168" height="92" rx="8" fill="#0f172a"/><rect x="900" y="330" width="168" height="92" rx="8" fill="rgba(136,19,55,.35)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="984" y="354" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">建议失败</text><text x="984" y="373" fill="#94a3b8" font-size="8" text-anchor="middle">保留核心营养结果</text><text x="984" y="391" fill="#fb7185" font-size="8" text-anchor="middle">POST /recommendations</text><text x="984" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">普通重试 force=false</text>
+          <rect x="1098" y="330" width="92" height="92" rx="8" fill="#0f172a"/><rect x="1098" y="330" width="92" height="92" rx="8" fill="rgba(30,41,59,.58)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="1144" y="354" fill="#fff" font-size="9" font-weight="600" text-anchor="middle">90 秒</text><text x="1144" y="373" fill="#94a3b8" font-size="8" text-anchor="middle">停止轮询</text><text x="1144" y="391" fill="#94a3b8" font-size="8" text-anchor="middle">后台继续</text><text x="1144" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">稍后再看</text>
+        </g>
+        <text x="60" y="495" fill="#64748b" font-size="8">onHide / onUnload：清理 Timer，避免页面销毁后 setData；onShow：未超时且仍处理中则继续轮询</text>
+
+        <!-- Poster components -->
+        <g>
+          <rect x="88" y="575" width="160" height="100" rx="8" fill="#0f172a"/><rect x="88" y="575" width="160" height="100" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="168" y="599" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">生成门禁</text><text x="168" y="618" fill="#34d399" font-size="8" text-anchor="middle">recommendation_status</text><text x="168" y="635" fill="#34d399" font-size="8" text-anchor="middle">必须 completed</text><text x="168" y="654" fill="#94a3b8" font-size="8" text-anchor="middle">否则按钮禁用</text>
+          <rect x="286" y="575" width="170" height="100" rx="8" fill="#0f172a"/><rect x="286" y="575" width="170" height="100" rx="8" fill="rgba(6,78,59,.42)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="371" y="599" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">POST /poster</text><text x="371" y="618" fill="#94a3b8" font-size="8" text-anchor="middle">120 秒 · 防重复点击</text><text x="371" y="635" fill="#94a3b8" font-size="8" text-anchor="middle">普通生成 force=false</text><text x="371" y="654" fill="#fbbf24" font-size="8" text-anchor="middle">明确重生成才 force=true</text>
+          <rect x="494" y="575" width="170" height="100" rx="8" fill="#0f172a"/><rect x="494" y="575" width="170" height="100" rx="8" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="579" y="599" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">后端 V9 海报</text><text x="579" y="618" fill="#94a3b8" font-size="8" text-anchor="middle">标题 / 营养 / 结论</text><text x="579" y="635" fill="#94a3b8" font-size="8" text-anchor="middle">未来三餐已烧录</text><text x="579" y="654" fill="#fbbf24" font-size="8" text-anchor="middle">返回最新 poster_url</text>
+          <rect x="702" y="575" width="170" height="100" rx="8" fill="#0f172a"/><rect x="702" y="575" width="170" height="100" rx="8" fill="rgba(120,53,15,.32)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="787" y="599" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">完整等比预览</text><text x="787" y="618" fill="#94a3b8" font-size="8" text-anchor="middle">image mode=widthFix</text><text x="787" y="635" fill="#94a3b8" font-size="8" text-anchor="middle">3:4 自然比例 · 可滚动</text><text x="787" y="654" fill="#fbbf24" font-size="8" text-anchor="middle">digest 变化重新挂载</text>
+          <rect x="910" y="575" width="180" height="100" rx="8" fill="#0f172a"/><rect x="910" y="575" width="180" height="100" rx="8" fill="rgba(8,51,68,.42)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="1000" y="599" fill="#fff" font-size="10" font-weight="600" text-anchor="middle">下载并保存原图</text><text x="1000" y="618" fill="#94a3b8" font-size="8" text-anchor="middle">downloadFile(poster_url)</text><text x="1000" y="635" fill="#22d3ee" font-size="8" text-anchor="middle">不截图 · 不走 Canvas</text><text x="1000" y="654" fill="#94a3b8" font-size="8" text-anchor="middle">safe area 不遮海报</text>
+        </g>
+
+        <!-- Stable error handling strip -->
+        <rect x="55" y="795" width="1130" height="70" rx="9" fill="rgba(15,23,42,.82)" stroke="#334155"/>
+        <text x="78" y="819" fill="#cbd5e1" font-size="9" font-weight="600">稳定降级规则</text>
+        <text x="78" y="840" fill="#94a3b8" font-size="8">历史餐食图片 404：触发单记录熔断并显示“历史图片不可用”，同一会话不再重复请求。</text>
+        <text x="625" y="840" fill="#94a3b8" font-size="8">海报 403：只刷新短期签名 URL，不消耗重新生成额度；422 / 429 / 502 透传后端真实错误。</text>
+
+        <!-- Legend below all boundaries -->
+        <text x="60" y="905" fill="#fff" font-size="10" font-weight="600">图例</text>
+        <rect x="110" y="895" width="18" height="12" rx="2" fill="rgba(8,51,68,.42)" stroke="#22d3ee"/><text x="136" y="905" fill="#94a3b8" font-size="8">小程序交互</text>
+        <rect x="250" y="895" width="18" height="12" rx="2" fill="rgba(6,78,59,.42)" stroke="#34d399"/><text x="276" y="905" fill="#94a3b8" font-size="8">成功 / 后端接口</text>
+        <rect x="425" y="895" width="18" height="12" rx="2" fill="rgba(120,53,15,.32)" stroke="#fbbf24"/><text x="451" y="905" fill="#94a3b8" font-size="8">处理中 / 媒体</text>
+        <rect x="590" y="895" width="18" height="12" rx="2" fill="rgba(136,19,55,.35)" stroke="#fb7185"/><text x="616" y="905" fill="#94a3b8" font-size="8">失败 / 恢复分支</text>
+        <line x1="770" y1="901" x2="795" y2="901" stroke="#fbbf24" stroke-dasharray="5,4"/><text x="805" y="905" fill="#94a3b8" font-size="8">循环 / 刷新签名</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="card-header"><div class="card-dot cyan"></div><h3>用户立即得到什么</h3></div><ul><li>• 上传成功后立即结束全局 Loading</li><li>• 食物明细、热量和宏量营养马上可见</li><li>• 未来三餐只在建议区域显示独立进度</li><li>• 建议失败或超时不会把整餐标记为失败</li></ul></div>
+      <div class="card"><div class="card-header"><div class="card-dot amber"></div><h3>状态与缓存</h3></div><ul><li>• 每 2 秒请求一次无缓存状态接口</li><li>• 90 秒后停止前台轮询，服务端继续处理</li><li>• completed 清缓存并强制拉取最终详情</li><li>• 页面隐藏和销毁时必须清理定时器</li></ul></div>
+      <div class="card"><div class="card-header"><div class="card-dot rose"></div><h3>重试边界</h3></div><ul><li>• 上传超时先查记录，绝不自动重传图片</li><li>• 推荐失败只调用 recommendations 接口</li><li>• 海报 403 只刷新签名 URL，不强制重生成</li><li>• force=true 只由用户明确确认后触发</li></ul></div>
+    </div>
+    <p class="footer">Health Mini Program v0.3.12 · 更新于 2026-08-23 · Source: pages/nutrition/* / pages/nutrition-detail/* / utils/request.js</p>
+  </div>
+
+  <script>
+    async function capture() {
+      const el = document.getElementById('report-container'); const r = el.getBoundingClientRect(); const pad = 32;
+      return html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: e => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+    }
+    async function copyAsImage(btn) { const orig = btn.textContent; try { const canvas = await capture(); const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png')); await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); btn.textContent = '✓ 已复制'; } catch (e) { btn.textContent = '✗ 失败'; } setTimeout(() => { btn.textContent = orig; }, 2000); }
+    async function downloadPNG(btn) { const orig = btn.textContent; btn.textContent = '⏳'; try { const canvas = await capture(); const link = document.createElement('a'); link.download = 'nutrition-analysis-poster-flow.png'; link.href = canvas.toDataURL('image/png'); link.click(); btn.textContent = '✓ 完成'; } catch (e) { btn.textContent = '✗ 失败'; } setTimeout(() => { btn.textContent = orig; }, 2000); }
+    async function downloadPDF(btn) { const orig = btn.textContent; btn.textContent = '⏳'; try { const canvas = await capture(); const { jsPDF } = window.jspdf; const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait'; const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] }); pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height); pdf.save('nutrition-analysis-poster-flow.pdf'); btn.textContent = '✓ 完成'; } catch (e) { btn.textContent = '✗ 失败'; } setTimeout(() => { btn.textContent = orig; }, 2000); }
+  </script>
+</body>
+</html>

@@ -2,6 +2,24 @@
 
 All notable changes to this mini program will be documented in this file.
 
+## [0.3.12] - 2026-08-23
+
+### Changed
+- Give future breakfast, lunch, dinner, and snack tabs distinct symbols, muted tints, and active accents while retaining the existing nutrition-detail layout.
+- Show explicit calorie, protein, carbohydrate, and fat reference percentages in the daily nutrition summary.
+
+### Fixed
+- Format nutrition upload `meal_time` as local `YYYY-MM-DD HH:mm`, matching the backend's strict multipart parser.
+- Stop using `Date.prototype.toISOString()` for meal uploads so Singapore and other non-UTC device times are not shifted before submission.
+- Centralize the upload date-time formatter in `utils/date.js` and use it for both explicit and default upload timestamps.
+- Recognize English backend meal types such as `breakfast`, `lunch`, and `dinner` instead of falling back to the same apple symbol.
+- Keep recorded-intake rings and bars rendered when `partial_day=true`; partial-day state now changes the explanation instead of hiding the visualization.
+
+### Verified
+- Check local date-time formatting, zero padding, multipart field mapping, JavaScript syntax, and repository whitespace integrity.
+- Confirm the upload state machine still produces one guarded multipart request and does not retry automatically.
+- Confirm in WeChat DevTools that partial-day intake renders colored 34%–46% progress and future meals render as breakfast `🌅`, lunch `☀️`, and dinner `🌙`.
+
 ## [0.3.11] - 2026-08-22
 
 ### Changed
