@@ -15,6 +15,7 @@ from app.ai.base import (
     ChatResponse
 )
 from app.ai.prompt_loader import get_prompt_loader
+from app.ai.prompt_sections import build_oura_data_section, build_training_section
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -204,24 +205,10 @@ class DeepSeekProvider(AIProvider):
         user_profile = self._build_user_profile(user_context)
 
         # 构建 Oura 数据部分
-        oura_section = self._build_oura_data_section(training_data.oura_data)
+        oura_section = build_oura_data_section(training_data.oura_data)
 
         # 构建训练数据部分
-        training_section = f"""## 昨日训练数据
-- 总时长：{training_data.total_duration_min}分钟
-- Zone2时长：{training_data.zone2_min}分钟
-- 高强度（Zone4-5）：{training_data.hi_min}分钟
-- 训练负荷（TRIMP）：{training_data.trimp}
-- 平均心率：{training_data.avg_hr or 'N/A'}
-- 运动类型：{training_data.sport_type or '未知'}
-
-## 近7天训练汇总
-- 总时长：{training_data.weekly_total}分钟
-- Zone2累计：{training_data.weekly_zone2}分钟
-- 高强度累计：{training_data.weekly_hi}分钟
-- 周训练负荷：{training_data.weekly_trimp}
-- 训练天数：{training_data.training_days}天
-- 休息天数：{training_data.rest_days}天"""
+        training_section = build_training_section(training_data)
 
         # 构建风险标记
         risk_flags = []

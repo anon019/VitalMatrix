@@ -13,12 +13,15 @@ from app.ai.factory import AIProviderFactory
 from app.ai.base import (
     UserContext,
     TrainingData,
+    ExerciseSession,
     OuraData,
+    OuraDailyContext,
     NutritionData,
     NutritionDayRecord,
     RecentMealRecord,
 )
 from app.models.nutrition import MealRecord, NutritionDailySummary
+from app.models.polar import PolarExercise
 from app.models.user import User
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.ai import AIRecommendation
@@ -123,7 +126,9 @@ class AIService:
                     "has_sleep": bool(oura and oura.sleep_score is not None),
                     "has_readiness": bool(oura and oura.readiness_score is not None),
                     "has_activity": bool(oura and oura.activity_score is not None),
-                    "has_training": training_data.total_duration_min > 0,
+                    "has_training": bool(training_data.sessions),
+                    "training_sessions": len(training_data.sessions),
+                    "oura_context_days": len(oura.recent_days) if oura else 0,
                 },
             }
 
@@ -312,6 +317,41 @@ class AIService:
         )
         weekly_summary = result.scalar_one_or_none()
 
+        # 获取近7天每次训练明细。聚合指标用于判断总负荷，明细用于识别
+        # 不同运动类型、训练时间和每次训练的强度结构。
+        exercises_result = await self.db.execute(
+            select(PolarExercise)
+            .where(and_(
+                PolarExercise.user_id == user_id,
+                PolarExercise.start_time >= start_of_day_hk(target_date - timedelta(days=7)),
+                PolarExercise.start_time < start_of_day_hk(target_date),
+            ))
+            .order_by(PolarExercise.start_time)
+        )
+        exercises = exercises_result.scalars().all()
+        sessions = [
+            ExerciseSession(
+                date=format_hk(exercise.start_time, "%Y-%m-%d"),
+                start_time=format_hk(exercise.start_time, "%H:%M"),
+                end_time=format_hk(exercise.end_time, "%H:%M"),
+                sport_type=exercise.sport_type or "未知运动",
+                duration_min=max(1, round(exercise.duration_sec / 60)),
+                avg_hr=exercise.avg_hr,
+                max_hr=exercise.max_hr,
+                zone1_min=round((exercise.zone1_sec or 0) / 60),
+                zone2_min=round((exercise.zone2_sec or 0) / 60),
+                zone3_min=round((exercise.zone3_sec or 0) / 60),
+                zone4_min=round((exercise.zone4_sec or 0) / 60),
+                zone5_min=round((exercise.zone5_sec or 0) / 60),
+                calories=exercise.calories,
+                cardio_load=float(exercise.cardio_load) if exercise.cardio_load is not None else None,
+                distance_km=round(float(exercise.distance_meters) / 1000, 2)
+                if exercise.distance_meters is not None else None,
+            )
+            for exercise in exercises
+        ]
+        yesterday_sessions = [session for session in sessions if session.date == yesterday.isoformat()]
+
         # 构建训练数据
         if daily_summary:
             zone2_min = daily_summary.zone2_min
@@ -359,7 +399,10 @@ class AIService:
             total_duration_min=total_duration_min,
             trimp=trimp,
             avg_hr=avg_hr,
-            sport_type=None,  # 可以从最近一次训练中获取
+            sport_type="、".join(dict.fromkeys(
+                session.sport_type for session in yesterday_sessions
+            )) or None,
+            sessions=sessions,
             weekly_zone2=weekly_zone2,
             weekly_hi=weekly_hi,
             weekly_total=weekly_total,
@@ -380,6 +423,7 @@ class AIService:
         - 活动/压力：使用昨天的数据，因为需要评估昨天一整天的活动和压力状态
         """
         yesterday = target_date - timedelta(days=1)
+        context_start = target_date - timedelta(days=6)
 
         # 睡眠数据（今天的数据 = 昨晚睡到今早醒来的睡眠 + 午睡）
         # 策略：获取所有睡眠记录，累加时长，使用long_sleep的日汇总评分
@@ -387,14 +431,16 @@ class AIService:
             select(OuraSleep)
             .where(and_(
                 OuraSleep.user_id == user_id,
-                OuraSleep.day == target_date
+                OuraSleep.day >= context_start,
+                OuraSleep.day <= target_date,
             ))
             .order_by(
                 # long_sleep优先（它包含日汇总评分）
                 (OuraSleep.sleep_type == 'long_sleep').desc()
             )
         )
-        all_sleeps = sleep_result.scalars().all()
+        recent_sleeps = sleep_result.scalars().all()
+        all_sleeps = [record for record in recent_sleeps if record.day == target_date]
 
         # 初始化睡眠汇总数据
         sleep = None
@@ -449,34 +495,93 @@ class AIService:
             select(OuraDailyReadiness)
             .where(and_(
                 OuraDailyReadiness.user_id == user_id,
-                OuraDailyReadiness.day == target_date  # 使用今天的数据
+                OuraDailyReadiness.day >= context_start,
+                OuraDailyReadiness.day <= target_date,
             ))
         )
-        readiness = readiness_result.scalar_one_or_none()
+        recent_readiness = readiness_result.scalars().all()
+        readiness_by_day = {record.day: record for record in recent_readiness}
+        readiness = readiness_by_day.get(target_date)
 
         # 活动数据（昨天的完整数据 = 昨天一整天的活动统计）
         activity_result = await self.db.execute(
             select(OuraDailyActivity)
             .where(and_(
                 OuraDailyActivity.user_id == user_id,
-                OuraDailyActivity.day == yesterday  # 使用昨天的数据
+                OuraDailyActivity.day >= context_start,
+                OuraDailyActivity.day <= yesterday,
             ))
         )
-        activity = activity_result.scalar_one_or_none()
+        recent_activity = activity_result.scalars().all()
+        activity_by_day = {record.day: record for record in recent_activity}
+        activity = activity_by_day.get(yesterday)
 
         # 压力数据（昨天的完整数据 = 昨天一整天的压力统计）
         stress_result = await self.db.execute(
             select(OuraDailyStress)
             .where(and_(
                 OuraDailyStress.user_id == user_id,
-                OuraDailyStress.day == yesterday  # 使用昨天的数据
+                OuraDailyStress.day >= context_start,
+                OuraDailyStress.day <= yesterday,
             ))
         )
-        stress = stress_result.scalar_one_or_none()
+        recent_stress = stress_result.scalars().all()
+        stress_by_day = {record.day: record for record in recent_stress}
+        stress = stress_by_day.get(yesterday)
 
         # 如果所有数据都没有，返回 None
-        if not any([sleep, readiness, activity, stress]):
+        if not any([
+            sleep,
+            readiness,
+            activity,
+            stress,
+            recent_sleeps,
+            recent_readiness,
+            recent_activity,
+            recent_stress,
+        ]):
             return None
+
+        sleep_by_day = {}
+        for record in recent_sleeps:
+            # 每天优先保留 long_sleep；避免午睡覆盖主睡眠评分和恢复指标。
+            existing = sleep_by_day.get(record.day)
+            if existing is None or record.sleep_type == "long_sleep":
+                sleep_by_day[record.day] = record
+
+        recent_days = []
+        for current_day in (
+            context_start + timedelta(days=offset)
+            for offset in range((target_date - context_start).days + 1)
+        ):
+            daily_sleep = sleep_by_day.get(current_day)
+            daily_readiness = readiness_by_day.get(current_day)
+            daily_activity = activity_by_day.get(current_day)
+            daily_stress = stress_by_day.get(current_day)
+            if not any([daily_sleep, daily_readiness, daily_activity, daily_stress]):
+                continue
+            recent_days.append(OuraDailyContext(
+                date=current_day.isoformat(),
+                sleep_score=daily_sleep.sleep_score if daily_sleep else None,
+                total_sleep_hours=round(daily_sleep.total_sleep_duration / 3600, 1)
+                if daily_sleep and daily_sleep.total_sleep_duration else None,
+                average_hrv=daily_sleep.average_hrv if daily_sleep else None,
+                resting_heart_rate=daily_sleep.lowest_heart_rate if daily_sleep else None,
+                readiness_score=daily_readiness.score if daily_readiness else None,
+                activity_score=daily_activity.score if daily_activity else None,
+                steps=daily_activity.steps if daily_activity else None,
+                active_calories=daily_activity.active_calories if daily_activity else None,
+                high_activity_min=daily_activity.high_activity_time if daily_activity else None,
+                medium_activity_min=daily_activity.medium_activity_time if daily_activity else None,
+                low_activity_min=daily_activity.low_activity_time if daily_activity else None,
+                sedentary_min=daily_activity.sedentary_time if daily_activity else None,
+                inactivity_alerts=daily_activity.inactivity_alerts if daily_activity else None,
+                stress_high_min=round(daily_stress.stress_high / 60)
+                if daily_stress and daily_stress.stress_high else None,
+                recovery_high_min=round(daily_stress.recovery_high / 60)
+                if daily_stress and daily_stress.recovery_high else None,
+                day_summary=daily_stress.day_summary if daily_stress else None,
+            ))
 
         return OuraData(
             # 睡眠（使用累加后的时长数据）
@@ -499,6 +604,9 @@ class AIService:
             activity_score=activity.score if activity else None,
             steps=activity.steps if activity else None,
             active_calories=activity.active_calories if activity else None,
+            sedentary_min=activity.sedentary_time if activity else None,
+            inactivity_alerts=activity.inactivity_alerts if activity else None,
+            recent_days=recent_days,
         )
 
     async def _get_nutrition_data(self, user_id: uuid.UUID, target_date: date) -> Optional[NutritionData]:

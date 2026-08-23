@@ -57,6 +57,46 @@ class NutritionData(BaseModel):
     recent_meals: List[RecentMealRecord] = Field(default_factory=list)
 
 
+class ExerciseSession(BaseModel):
+    """单次训练明细，保留运动类型、时间和强度结构供模型判断。"""
+    date: str
+    start_time: str
+    end_time: str
+    sport_type: str
+    duration_min: int
+    avg_hr: Optional[int] = None
+    max_hr: Optional[int] = None
+    zone1_min: int = 0
+    zone2_min: int = 0
+    zone3_min: int = 0
+    zone4_min: int = 0
+    zone5_min: int = 0
+    calories: Optional[int] = None
+    cardio_load: Optional[float] = None
+    distance_km: Optional[float] = None
+
+
+class OuraDailyContext(BaseModel):
+    """近一段时间的 Oura 日级上下文。"""
+    date: str
+    sleep_score: Optional[int] = None
+    total_sleep_hours: Optional[float] = None
+    average_hrv: Optional[int] = None
+    resting_heart_rate: Optional[int] = None
+    readiness_score: Optional[int] = None
+    activity_score: Optional[int] = None
+    steps: Optional[int] = None
+    active_calories: Optional[int] = None
+    high_activity_min: Optional[int] = None
+    medium_activity_min: Optional[int] = None
+    low_activity_min: Optional[int] = None
+    sedentary_min: Optional[int] = None
+    inactivity_alerts: Optional[int] = None
+    stress_high_min: Optional[int] = None
+    recovery_high_min: Optional[int] = None
+    day_summary: Optional[str] = None
+
+
 class OuraData(BaseModel):
     """Oura数据（睡眠、准备度、压力）"""
     # 睡眠数据
@@ -82,6 +122,11 @@ class OuraData(BaseModel):
     activity_score: Optional[int] = None
     steps: Optional[int] = None
     active_calories: Optional[int] = None
+    sedentary_min: Optional[int] = None
+    inactivity_alerts: Optional[int] = None
+
+    # 近7天日级上下文（不是只看单日睡眠）
+    recent_days: List[OuraDailyContext] = Field(default_factory=list)
 
 
 class TrainingData(BaseModel):
@@ -93,6 +138,7 @@ class TrainingData(BaseModel):
     trimp: float
     avg_hr: Optional[int]
     sport_type: Optional[str]
+    sessions: List[ExerciseSession] = Field(default_factory=list)
 
     # 周数据
     weekly_zone2: int
