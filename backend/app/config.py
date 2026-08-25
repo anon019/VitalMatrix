@@ -97,6 +97,8 @@ class Settings(BaseSettings):
 
     # Web 前端访问密码（空字符串表示不需要密码）
     WEB_ACCESS_PASSWORD: str = ""
+    PRIMARY_USER_ID: str = ""
+    # 兼容旧部署；新部署应只配置 PRIMARY_USER_ID。
     DEFAULT_USER_ID: str = ""
     REQUIRE_WEB_ACCESS_PASSWORD: bool = True
 

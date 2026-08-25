@@ -8,7 +8,7 @@
 
 ### 鉴权
 
-- 小程序使用 `POST /api/v1/auth/wechat-login`，不要调用 Web 专用的 `/auth/simple-login`。
+- 小程序使用 `POST /api/v1/auth/miniprogram-login`，不要调用 Web 专用的 `/auth/simple-login`。旧 `/wechat-login` 暂时保留为同逻辑兼容别名，不再创建用户。
 - 所有业务接口继续传 `Authorization: Bearer <token>`。
 - Web 简易登录现在要求服务端配置访问密码；未配置时返回 503，不再允许无密码换取单用户 JWT。
 
@@ -102,7 +102,7 @@ POST /api/v1/nutrition/meals/{meal_id}/poster?force=true
 目标：按服务器 2026-08-21 最终契约完成一次可发布适配，信息优先级为饮食 > 睡眠/恢复 > 活动/训练。
 
 必须实现：
-1. 小程序登录只用 POST /api/v1/auth/wechat-login；业务请求继续 Bearer JWT，不用 /auth/simple-login。
+1. 小程序登录只用 POST /api/v1/auth/miniprogram-login；业务请求继续 Bearer JWT，不用 /auth/simple-login。旧 /wechat-login 仅为兼容别名。
 2. photo_path、thumbnail_path、poster_url 已是 1 小时有效的签名相对 URL /api/v1/nutrition/media?...。新增唯一的 resolveApiUrl 工具，补全域名并完整保留 query；图片 403 时刷新餐食/海报 URL，不长期缓存签名 URL。确认 downloadFile 合法域名配置。
 3. 餐食响应新增 current_ai_model 和 analysis_is_legacy。历史记录显示“历史分析 {ai_model}”，用户明确点击后才 POST /nutrition/meals/{id}/reanalyze；当前模型和 AI 页模型全部读后端，删除 Gemini 3 Flash Preview 等硬编码。
 4. daily nutrition 可返回 null；flags.partial_day=true 时只显示“已记录摄入”，不判断全天不足。weekly 使用 recorded_days/expected_days。trends 新增 nutrition 五个数组。activity.sedentary_min 已是分钟，移除旧的 /3600，显示小时只 /60。

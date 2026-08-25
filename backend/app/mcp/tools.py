@@ -11,6 +11,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import AsyncSessionLocal
+from app.api.dependencies import resolve_primary_user
 from app.models.polar import PolarExercise
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.oura import (
@@ -31,11 +32,7 @@ logger = logging.getLogger(__name__)
 
 async def get_default_user(db: AsyncSession) -> User:
     """获取默认用户（单用户模式）"""
-    result = await db.execute(select(User).limit(1))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise ValueError("未找到用户")
-    return user
+    return await resolve_primary_user(db)
 
 
 # ============ 业务逻辑 ============

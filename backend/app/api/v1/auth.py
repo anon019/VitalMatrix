@@ -3,20 +3,18 @@
 """
 import hmac
 import logging
-from typing import Optional
-from datetime import datetime, timedelta
+import hashlib
+from typing import Literal, Optional
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from jose import jwt
 import httpx
 
 from app.database.session import get_db
-from app.api.dependencies import resolve_default_user
-from app.models.user import User
+from app.api.dependencies import resolve_primary_user
 from app.config import settings
-from app.utils.datetime_helper import now_hk
 from app.utils.rate_limit import enforce_rate_limit
 
 router = APIRouter()
@@ -25,7 +23,17 @@ logger = logging.getLogger(__name__)
 
 class WeChatLoginRequest(BaseModel):
     """微信登录请求"""
+    model_config = ConfigDict(extra="forbid")
+
     code: str = Field(min_length=1, max_length=256)  # 微信登录code
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("code 不能为空")
+        return value
 
 
 class SimpleLoginRequest(BaseModel):
@@ -38,85 +46,85 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: str
-    is_new_user: bool
+    expires_in: int
+    auth_mode: Literal["fixed_miniprogram", "fixed_web"]
+    is_new_user: bool = False
 
 
-@router.post("/wechat-login", response_model=AuthResponse)
-async def wechat_login(
-    request: WeChatLoginRequest,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    微信小程序登录
-
-    流程:
-    1. 用code换取openid
-    2. 查询或创建用户
-    3. 生成JWT token
-    """
+async def exchange_wechat_code(code: str) -> str:
+    """使用一次性 code 换取 OpenID，不记录微信凭证或完整响应。"""
     try:
-        # 1. 调用微信API获取openid
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 "https://api.weixin.qq.com/sns/jscode2session",
                 params={
                     "appid": settings.WECHAT_APP_ID,
                     "secret": settings.WECHAT_APP_SECRET,
-                    "js_code": request.code,
+                    "js_code": code,
                     "grant_type": "authorization_code",
-                }
+                },
             )
+            response.raise_for_status()
             data = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("微信登录上游请求失败: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="微信认证服务暂时不可用",
+        ) from exc
 
-        if "errcode" in data and data["errcode"] != 0:
-            logger.error(f"微信登录失败: {data}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="微信登录失败，请重新授权"
-            )
-
-        openid = data.get("openid")
-        if not openid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="获取openid失败"
-            )
-
-        # 2. 查询或创建用户
-        result = await db.execute(
-            select(User).where(User.openid == openid)
+    if data.get("errcode", 0) != 0:
+        logger.info("微信登录 code 无效: errcode=%s", data.get("errcode"))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="微信登录凭证无效或已过期",
         )
-        user = result.scalar_one_or_none()
 
-        is_new_user = False
-        if not user:
-            # 创建新用户
-            user = User(
-                openid=openid,
-                created_at=now_hk(),
-                updated_at=now_hk(),
+    openid = data.get("openid")
+    if not isinstance(openid, str) or not openid.strip():
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="微信认证响应无效",
+        )
+    return openid.strip()
+
+
+@router.post("/miniprogram-login", response_model=AuthResponse)
+@router.post("/wechat-login", response_model=AuthResponse, deprecated=True)
+async def miniprogram_login(
+    request: WeChatLoginRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """微信静默认证：只允许绑定身份，并始终签发固定主用户 token。"""
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    await enforce_rate_limit(f"auth:miniprogram:{client_ip}", limit=20, window_seconds=900)
+
+    try:
+        user = await resolve_primary_user(db, require_configured=True)
+        openid = await exchange_wechat_code(request.code)
+        if not hmac.compare_digest(openid, user.openid):
+            fingerprint = hashlib.sha256(openid.encode("utf-8")).hexdigest()[:12]
+            logger.warning("未授权微信账号尝试登录: openid_fingerprint=%s", fingerprint)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="当前微信账号未获授权",
             )
-            db.add(user)
-            await db.commit()
-            await db.refresh(user)
-            is_new_user = True
-            logger.info(f"新用户注册: openid={openid}, user_id={user.id}")
-        else:
-            logger.info(f"用户登录: openid={openid}, user_id={user.id}")
 
-        # 3. 生成JWT token
-        access_token = create_access_token(user.id)
+        access_token = create_access_token(user.id, auth_mode="fixed_miniprogram")
+        logger.info("小程序固定用户登录成功: user_id=%s", user.id)
 
         return AuthResponse(
             access_token=access_token,
             user_id=str(user.id),
-            is_new_user=is_new_user
+            expires_in=settings.JWT_EXPIRE_MINUTES * 60,
+            auth_mode="fixed_miniprogram",
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"微信登录异常: {str(e)}")
+        logger.error("微信登录异常: %s", type(e).__name__, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="登录失败，请稍后重试"
@@ -130,7 +138,7 @@ async def simple_login(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    简易登录 - 适用于单用户场景（Web 前端 / 微信小程序）
+    简易登录 - 仅适用于 Web 前端
 
     如果配置了密码则验证，否则直接登录
     返回 7 天有效期的 token
@@ -154,17 +162,22 @@ async def simple_login(
         )
 
     try:
-        user = await resolve_default_user(db)
+        user = await resolve_primary_user(db)
 
         # 生成 7 天有效期的 token
-        access_token = create_access_token(user.id, expires_days=7)
+        access_token = create_access_token(
+            user.id,
+            expires_days=7,
+            auth_mode="fixed_web",
+        )
 
         logger.info(f"简易登录成功: user_id={user.id}")
 
         return AuthResponse(
             access_token=access_token,
             user_id=str(user.id),
-            is_new_user=False
+            expires_in=7 * 24 * 60 * 60,
+            auth_mode="fixed_web",
         )
 
     except HTTPException:
@@ -177,7 +190,11 @@ async def simple_login(
         )
 
 
-def create_access_token(user_id, expires_days: int = None) -> str:
+def create_access_token(
+    user_id,
+    expires_days: int = None,
+    auth_mode: Literal["fixed_miniprogram", "fixed_web"] | None = None,
+) -> str:
     """
     创建JWT访问令牌
 
@@ -193,12 +210,16 @@ def create_access_token(user_id, expires_days: int = None) -> str:
     else:
         expires_delta = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
 
-    expire = datetime.utcnow() + expires_delta
+    issued_at = datetime.now(timezone.utc)
+    expire = issued_at + expires_delta
 
     to_encode = {
         "sub": str(user_id),
         "exp": expire,
+        "iat": issued_at,
     }
+    if auth_mode is not None:
+        to_encode["auth_mode"] = auth_mode
 
     encoded_jwt = jwt.encode(
         to_encode,

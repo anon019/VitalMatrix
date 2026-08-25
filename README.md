@@ -97,11 +97,11 @@ cp .env.example .env
 
 - `backend/.env.example`
 
-如果你使用 Web Dashboard 或小程序里的 `simple-login`：
+固定单用户部署必须在 `backend/.env` 中配置 `PRIMARY_USER_ID`：
 
-- 单用户场景可直接使用
-- 如果数据库里存在多个用户，必须在 `backend/.env` 里配置 `DEFAULT_USER_ID`
-- 如果配置了 `WEB_ACCESS_PASSWORD`，Web 登录页会要求输入密码，小程序本地配置也需要填写同一密码
+- Web Dashboard 使用 `/api/v1/auth/simple-login` 和 `WEB_ACCESS_PASSWORD`
+- 微信小程序使用 `/api/v1/auth/miniprogram-login` 和 `wx.login` code
+- 小程序不得保存或提交 Web 访问密码
 
 ### 4. 初始化数据库
 
