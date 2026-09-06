@@ -218,23 +218,22 @@
         </view>
 
         <!-- 健康洞察卡片 -->
-        <view wx:if="{{visibleStrengths.length || visibleWeaknesses.length || riskFactors.length || uncertaintyNotes.length}}" class="card insights-card anim-slide-up" style="animation-delay: 240ms;">
+        <view wx:if="{{strengths.length || weaknesses.length || riskFactors.length || uncertaintyNotes.length}}" class="card insights-card anim-slide-up" style="animation-delay: 240ms;">
           <view class="card-header teal-theme">
             <text class="card-icon">💡</text>
             <text class="card-title">健康洞察</text>
-            <button wx:if="{{hasMoreInsights}}" class="insight-toggle" bindtap="toggleInsights">{{insightsExpanded ? '收起' : '展开'}}</button>
           </view>
           <view class="card-body">
-            <view wx:if="{{visibleStrengths.length}}" class="insight-group">
+            <view wx:if="{{strengths.length}}" class="insight-group">
               <view class="group-header good"><text class="group-icon">✅</text><text class="group-title">优点</text></view>
               <view class="insight-list">
-                <view wx:for="{{visibleStrengths}}" wx:key="index" class="insight-item good"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
+                <view wx:for="{{strengths}}" wx:key="index" class="insight-item good"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
               </view>
             </view>
-            <view wx:if="{{visibleWeaknesses.length}}" class="insight-group">
+            <view wx:if="{{weaknesses.length}}" class="insight-group">
               <view class="group-header warn"><text class="group-icon">💡</text><text class="group-title">需改进</text></view>
               <view class="insight-list">
-                <view wx:for="{{visibleWeaknesses}}" wx:key="index" class="insight-item warn"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
+                <view wx:for="{{weaknesses}}" wx:key="index" class="insight-item warn"><text class="insight-bullet">•</text><text class="insight-text">{{item}}</text></view>
               </view>
             </view>
             <view wx:if="{{riskFactors.length}}" class="insight-group">

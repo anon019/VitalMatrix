@@ -343,23 +343,6 @@
   line-height: 1.6;
 }
 
-/* 退出登录按钮 */
-.logout-btn {
-  margin: 40rpx 0;
-  padding: 24rpx;
-  background-color: #FFFFFF;
-  border: 2rpx solid #C62828;
-  border-radius: 12rpx;
-  text-align: center;
-  font-size: 28rpx;
-  color: #C62828;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
-}
-
-.logout-btn:active {
-  background-color: #FFEBEE;
-}
-
 /* 0.3.2：设置页改为清晰的资料与设备控制台 */
 .container {
   min-height: 100vh;
@@ -606,7 +589,6 @@
 
 .btn-primary,
 .btn-secondary,
-.logout-btn,
 .profile-cancel,
 .profile-save {
   transition: transform 160ms ease, opacity 160ms ease;
@@ -614,18 +596,10 @@
 
 .btn-primary:active,
 .btn-secondary:active,
-.logout-btn:active,
 .profile-cancel:active,
 .profile-save:active {
   transform: scale(0.98);
   opacity: 0.86;
-}
-
-.logout-btn {
-  margin: 28rpx 0 0;
-  border: 1rpx solid #E5C8C8;
-  border-radius: 18rpx;
-  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

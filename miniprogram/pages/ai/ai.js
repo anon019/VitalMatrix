@@ -4,6 +4,7 @@ const {
   clearCache
 } = require('../../utils/request.js')
 const { formatLocalDate } = require('../../utils/date.js')
+const { showPageAuthFailure, loadPageAfterAuthentication, retryPageAuthentication } = require('../../utils/page-auth.js')
 
 const SECTION_DEFINITIONS = [
   {
@@ -32,6 +33,7 @@ const SECTION_DEFINITIONS = [
 Page({
   data: {
     loading: true,
+    authError: '',
     regenerating: false,
     loadError: '',
     todayDate: '',
@@ -46,9 +48,6 @@ Page({
     aiProvider: '',
     aiModel: '',
     generatedTime: '',
-    yesterdayReview: null,
-    todayRecommendation: null,
-    healthEducation: null,
     recommendationSections: [],
     knowledgeSections: []
   },
@@ -57,8 +56,7 @@ Page({
     this._isActive = true
     this._hasShownOnce = false
     this.setDates()
-    const app = getApp()
-    if (app.globalData.isLoggedIn) this.loadData({ silent: true })
+    loadPageAfterAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   onUnload() {
@@ -79,7 +77,16 @@ Page({
   },
 
   onLoginSuccess() {
+    if (this._isActive) this.setData({ authError: '' })
     this.loadData({ silent: true })
+  },
+
+  onAuthFailure(error) {
+    showPageAuthFailure(this, error)
+  },
+
+  retryAuthentication() {
+    return retryPageAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   onPullDownRefresh() {
@@ -120,9 +127,10 @@ Page({
       const today = new Date()
       const todayStr = formatLocalDate(today)
       const recommendation = await getTodayRecommendation()
-      if (!this.hasValidData(recommendation)) throw new Error('AI 建议暂时不可用，请稍后重试')
-
-      const view = this.buildRecommendationView(recommendation)
+      const view = this.buildRecommendationView(recommendation || {})
+      if (!recommendation || !(recommendation.summary || view.recommendationSections.length || view.knowledgeSections.length)) {
+        throw new Error('AI 建议暂时不可用，请稍后重试')
+      }
       const sourceDate = recommendation.source_date || recommendation.requested_date || todayStr
       const isStale = recommendation.is_stale === true
       const metadata = recommendation.generation_metadata || {}
@@ -139,9 +147,6 @@ Page({
         isStale,
         promptVersion: metadata.prompt_version || '',
         dataCompleteness: this.buildDataCompleteness(metadata.data_completeness),
-        yesterdayReview: recommendation.yesterday_review || null,
-        todayRecommendation: recommendation.today_recommendation || null,
-        healthEducation: recommendation.health_education || null,
         recommendationSections: view.recommendationSections,
         knowledgeSections: view.knowledgeSections,
         loading: false,
@@ -243,12 +248,6 @@ Page({
     }
 
     return { recommendationSections, knowledgeSections }
-  },
-
-  hasValidData(data) {
-    if (!data) return false
-    const view = this.buildRecommendationView(data)
-    return Boolean(data.summary || view.recommendationSections.length || view.knowledgeSections.length)
   },
 
   async regenerate() {

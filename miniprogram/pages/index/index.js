@@ -1,11 +1,13 @@
 // pages/index/index.js
 const { getTodayTraining, getWeeklyTraining, getTrainingHistory, getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraSpo2, getOuraStress, getOuraHeartrateDetail, getDashboard, getTodayRecommendation } = require('../../utils/request.js')
 const { formatLocalDate } = require('../../utils/date.js')
+const { showPageAuthFailure, loadPageAfterAuthentication, retryPageAuthentication } = require('../../utils/page-auth.js')
 
 Page({
   data: {
     loading: true,
     healthLoading: true,
+    authError: '',
     todayDate: '',
     todayDateFull: '',  // 完整日期显示
     todayDateISO: '',   // ISO格式今日日期，用于比较 YYYY-MM-DD
@@ -99,14 +101,11 @@ Page({
     this._hasShownOnce = false
     this.setDates()
 
-    // 检查是否已登录
-    const app = getApp()
-    if (app.globalData.isLoggedIn) {
-      console.log('已登录，加载数据')
-      this.loadData({ silent: true })
-    } else {
-      console.log('等待登录完成...')
-    }
+    loadPageAfterAuthentication(
+      this,
+      () => this.loadData({ silent: true }),
+      { failureState: { healthLoading: false } }
+    )
   },
 
   onUnload() {
@@ -134,7 +133,23 @@ Page({
    */
   onLoginSuccess() {
     console.log('收到登录成功通知，重新加载数据')
+    if (this._isActive) this.setData({ authError: '' })
     this.loadData({ silent: true })
+  },
+
+  onAuthFailure(error) {
+    showPageAuthFailure(this, error, { healthLoading: false })
+  },
+
+  retryAuthentication() {
+    return retryPageAuthentication(
+      this,
+      () => this.loadData({ silent: true }),
+      {
+        loadingState: { healthLoading: true },
+        failureState: { healthLoading: false }
+      }
+    )
   },
 
   onPullDownRefresh() {
@@ -689,6 +704,8 @@ Page({
     const maxHr = data.max_hr || 0
     const zoneLimits = data.zone_limits || null
     const avgHrColor = this.getHrZoneColorByLimits(avgHr, zoneLimits, zone1Sec, zone2Sec, zone3Sec, zone4Sec, zone5Sec)
+    const zonePercents = [zone1Sec, zone2Sec, zone3Sec, zone4Sec, zone5Sec]
+      .map(seconds => totalZoneSec > 0 ? Math.round((seconds / totalZoneSec) * 100) : 0)
 
     return {
       // 脂肪燃烧（克）- 基于卡路里和心率区间的专业估算
@@ -711,11 +728,16 @@ Page({
       zone3_min: zone3Min,
       zone4_min: zone4Min,
       zone5_min: zone5Min,
-      zone1_percent: totalZoneSec > 0 ? Math.round((zone1Sec / totalZoneSec) * 100) : 0,
-      zone2_percent: totalZoneSec > 0 ? Math.round((zone2Sec / totalZoneSec) * 100) : 0,
-      zone3_percent: totalZoneSec > 0 ? Math.round((zone3Sec / totalZoneSec) * 100) : 0,
-      zone4_percent: totalZoneSec > 0 ? Math.round((zone4Sec / totalZoneSec) * 100) : 0,
-      zone5_percent: totalZoneSec > 0 ? Math.round((zone5Sec / totalZoneSec) * 100) : 0,
+      zone1_percent: zonePercents[0],
+      zone2_percent: zonePercents[1],
+      zone3_percent: zonePercents[2],
+      zone4_percent: zonePercents[3],
+      zone5_percent: zonePercents[4],
+      zone1_style: `width: ${zonePercents[0]}%;`,
+      zone2_style: `width: ${zonePercents[1]}%;`,
+      zone3_style: `width: ${zonePercents[2]}%;`,
+      zone4_style: `width: ${zonePercents[3]}%;`,
+      zone5_style: `width: ${zonePercents[4]}%;`,
       hi_min: hiMin,
       hi_ratio: durationSec > 0 ? Math.round((hiSec / durationSec) * 100) : 0,
       start_time: data.start_time ? this.formatTime(data.start_time) : '--',
@@ -1076,15 +1098,19 @@ Page({
       deep_min: deepMin,
       deepColor: deepColor,
       deepPercent: deepPercent,
+      deepStyle: `width: ${deepPercent}%;`,
       rem_min: remMin,
       remColor: remColor,
       remPercent: remPercent,
+      remStyle: `width: ${remPercent}%;`,
       light_min: lightMin,
       lightColor: lightColor,
       lightPercent: lightPercent,
+      lightStyle: `width: ${lightPercent}%;`,
       awake_min: awakeMin,
       awakeColor: awakeColor,
       awakePercent: awakePercent,
+      awakeStyle: `width: ${awakePercent}%;`,
 
       // 心率与HRV（带颜色标识）
       hrv: hrv || '--',
@@ -1252,6 +1278,7 @@ Page({
       // 基本数据
       day: data.day || '--',
       score: score,
+      scoreStyle: `--progress: ${score};`,
       baseScore: baseScore,
       napBoost: napBoost,
       hasNap: hasNap,
@@ -1374,6 +1401,7 @@ Page({
       steps: steps,
       stepsColor: stepsColor,
       stepsProgress: stepsProgress,
+      stepsStyle: `width: ${stepsProgress}%;`,
       stepsDisplay: stepsDisplay,
       stepsUnit: stepsUnit,
       distance: data.equivalent_walking_distance || 0,
@@ -1502,6 +1530,8 @@ Page({
       restored_display: formatDuration(restoredMin),
       stress_percent: stressPercent,
       recovery_percent: recoveryPercent,
+      stressStyle: `width: ${stressPercent}%;`,
+      recoveryStyle: `width: ${recoveryPercent}%;`,
       day_summary: summaryMap[validRecord.day_summary] || validRecord.day_summary || '--',
       summaryColor: summaryColorMap[validRecord.day_summary] || ''
     }
@@ -1619,6 +1649,7 @@ Page({
       total_min: totalMin,
       zone2_min: zone2Min,
       zone2_progress: zone2Progress,
+      zone2Style: `width: ${zone2Progress}%;`,
       hi_min: hiMin,
       weekly_trimp: typeof weeklyTrimp === 'number' ? weeklyTrimp.toFixed(1) : weeklyTrimp,
       avg_trimp: trainingDays > 0 ? (weeklyTrimp / trainingDays).toFixed(1) : 0,
@@ -2384,6 +2415,7 @@ Page({
       lowest_hr_time: lowestHrTime,
       sleep_phase: sleepPhase,
       sleep_progress_percent: sleepProgressPercent,
+      progressStyle: `left: ${sleepProgressPercent}%;`,
       progress_color: progressColor,
       hr_min: hrRange.min || '--',
       hr_avg: hrRange.avg || '--',

@@ -2,9 +2,9 @@
 
 ## Version
 
-- Current version: `0.3.12`
+- Current version: `0.3.15`
 - Change history: `CHANGELOG.md`
-- Release notes: `docs/releases/2026-08-23-v0.3.12.md`
+- Release notes: `docs/releases/2026-09-06-v0.3.15.md`
 
 ## Scope
 
@@ -28,7 +28,27 @@ This repository contains the WeChat mini program only.
 3. Use `project.config.json.example` when you need a shareable config template.
 4. Never commit `project.private.config.json`, `.claude/`, or any personal IDE config.
 
-## Recent Updates In 0.3.12
+## Recent Updates In 0.3.15
+
+- deduplicate concurrent requests, prevent stale cache writes, and append only unique new meal rows
+- preserve existing content on failed refresh, with a visible retry action
+- reduce AI view payloads and repeated normalization
+- read meal scores, identified foods, and future menus from `ai_analysis`
+- bypass meal list/detail caches, prepend uploaded records, and migrate local business caches once
+- read image-analysis model metadata from `current_ai_model`; retain signed image URLs
+
+## Previous Updates In 0.3.13
+
+- replace the nutrition trend number strip with five truthful seven-day small-multiple bar charts
+- keep daily values visible above each bar, label weekdays and dates directly, and mark missing days as `--`
+- show recorded-day averages separately, align all seven days to a stable per-metric scale, and omit decorative full-height gray tracks
+- render all health-insight items directly with no truncation or expand/collapse interaction
+- keep list and detail view models compact so full AI payloads are not repeatedly serialized through `setData`
+- use `/api/v1/auth/miniprogram-login` for silent fixed-user WeChat authentication with no password, login page, or logout workflow
+- migrate legacy empty-user tokens and known business caches through auth storage v2 without clearing pending local image drafts
+- serialize concurrent login and 401 refresh work, replay each business request at most once, and show an explicit retry state instead of an endless skeleton
+
+## Previous Updates In 0.3.12
 
 - format nutrition upload `meal_time` as local `YYYY-MM-DD HH:mm`, matching the backend multipart contract
 - keep the selected meal time in the device timezone instead of converting it to UTC with `toISOString()`

@@ -1,10 +1,13 @@
 // pages/settings/settings.js
 const { getUserInfo, updateUserInfo, getPolarAuthStatus, syncPolarData, clearAllCache, clearCache } = require('../../utils/request.js')
 const config = require('../../utils/config.js')
+const { clearPersistentBusinessCache } = require('../../utils/auth.js')
+const { showPageAuthFailure, loadPageAfterAuthentication, retryPageAuthentication } = require('../../utils/page-auth.js')
 
 Page({
   data: {
     loading: true,
+    authError: '',
     userInfo: {},
     polarAuth: null,
     hrMax: null,
@@ -44,11 +47,7 @@ Page({
     const now = new Date()
     this.setData({ maxBirthDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}` })
 
-    // 检查是否已登录
-    const app = getApp()
-    if (app.globalData.isLoggedIn) {
-      this.loadData({ silent: true })
-    }
+    loadPageAfterAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   onShow() {
@@ -78,7 +77,16 @@ Page({
    */
   onLoginSuccess() {
     console.log('设置页面：收到登录成功通知')
+    if (this._isActive) this.setData({ authError: '' })
     this.loadData({ silent: true })
+  },
+
+  onAuthFailure(error) {
+    showPageAuthFailure(this, error)
+  },
+
+  retryAuthentication() {
+    return retryPageAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   /**
@@ -119,22 +127,17 @@ Page({
     }
 
     try {
-      // 获取本地用户信息
-      const localUserInfo = wx.getStorageSync('userInfo')
-
       // 并行请求
       const [userInfo, polarAuth] = await Promise.all([
-        getUserInfo().catch(err => {
-          console.warn('获取用户信息失败:', err)
-          return null
-        }),
+        // 用户资料是设置页的核心数据，失败时不能用默认值伪装成真实配置。
+        getUserInfo(),
         getPolarAuthStatus().catch(err => {
           console.warn('获取Polar授权状态失败:', err)
           return null
         })
       ])
 
-      console.log('设置数据加载完成:', { userInfo, polarAuth })
+      console.log('设置数据加载完成')
 
       const hrMax = userInfo?.hr_max || 185
       const zoneRanges = this.calculateZoneRanges(hrMax)
@@ -145,8 +148,9 @@ Page({
       const healthGoal = userInfo?.health_goal || '降脂心血管健康优化'
       const trainingPlan = userInfo?.training_plan || 'Zone2 55分钟 + Zone4-5 2分钟'
 
+      if (!this._isActive) return
       this.setData({
-        userInfo: userInfo || localUserInfo || {},
+        userInfo: userInfo || {},
         polarAuth,
         hrMax,
         restingHr: userInfo?.resting_hr || null,
@@ -168,6 +172,7 @@ Page({
       wx.setStorageSync('settingsLastRefresh', Date.now())
     } catch (error) {
       console.error('加载数据失败:', error)
+      if (!this._isActive) return
       if (shouldShowLoading) {
         this.setData({ loading: false })
       }
@@ -393,7 +398,7 @@ Page({
     try {
       const syncResult = await syncPolarData(7)
 
-      console.log('Polar数据同步成功:', syncResult)
+      console.log('Polar数据同步成功')
       clearCache('/api/v1/polar/status')
       clearCache('/api/v1/training')
 
@@ -492,16 +497,8 @@ Page({
     }
 
     try {
-      // 保留token和用户信息
-      const token = wx.getStorageSync('token')
-      const userInfo = wx.getStorageSync('userInfo')
       clearAllCache()
-
-      wx.clearStorageSync()
-
-      // 恢复token和用户信息
-      if (token) wx.setStorageSync('token', token)
-      if (userInfo) wx.setStorageSync('userInfo', userInfo)
+      clearPersistentBusinessCache()
 
       wx.showToast({
         title: '缓存已清除',
@@ -542,45 +539,6 @@ Page({
         title: '刷新失败',
         icon: 'none'
       })
-    }
-  },
-
-  /**
-   * 退出登录
-   */
-  async logout() {
-    const result = await wx.showModal({
-      title: '退出登录',
-      content: '确定要退出登录吗？',
-      confirmText: '退出',
-      confirmColor: '#C62828',
-      cancelText: '取消'
-    })
-
-    if (!result.confirm) {
-      return
-    }
-
-    try {
-      // 清除登录信息
-      const app = getApp()
-      if (app && app.logout) {
-        app.logout()
-      }
-
-      wx.showToast({
-        title: '已退出登录',
-        icon: 'success'
-      })
-
-      // 延迟后重新登录
-      setTimeout(() => {
-        if (app && app.autoLogin) {
-          app.autoLogin()
-        }
-      }, 1500)
-    } catch (error) {
-      console.error('退出登录失败:', error)
     }
   }
 })

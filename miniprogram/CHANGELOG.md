@@ -2,6 +2,54 @@
 
 All notable changes to this mini program will be documented in this file.
 
+## [0.3.15] - 2026-09-06
+
+### Performance
+- Share cold concurrent GET requests and prevent invalidated responses from overwriting newer cache entries.
+- Encode query cache keys, guard pagination against duplicate and stale responses, and serialize only appended rows.
+- Normalize AI recommendations once and omit unused complete response objects from view state.
+
+### Fixed
+- Preserve the public client's polling retry after completed-status detail refresh failures and retain its contract tests.
+- Preserve existing nutrition content after network failures, expose retry, and avoid marking failed refreshes as fresh.
+- Refresh the displayed date on reentry and accept numeric nutrient strings.
+- Read meal analysis and scores from `ai_analysis`, prioritizing nested nutrition and recommendations over obsolete top-level placeholders.
+- Preserve all future-menu names, timing, calories, dishes, and menu rationale.
+- Bypass meal list/detail caches and prepend uploaded records immediately.
+- Clear known local business caches once on upgrade while preserving authentication and image drafts.
+- Read image-analysis model metadata from `current_ai_model`; preserve response-driven poster/recommendation models and signed image URLs.
+
+## [0.3.13] - 2026-08-25
+
+### Changed
+- Replace the nutrition trend's plain seven-day number row with one mobile-first bar-chart card per metric for calories, protein, carbohydrates, fat, and recorded meals.
+- Directly label every bar with its value, weekday, and date, while keeping the recorded-day average prominent in each card header.
+- Reuse the nutrition palette for metric identity and give every metric a stable reference scale that expands only when real values exceed it, so all seven days remain comparable without peak-relative distortion.
+- Render every health-insight item returned by the backend directly, without truncation, expand/collapse state, or an extra interaction.
+- Reduce list and detail `setData` payloads by retaining only template-facing meal fields and one normalized recipe collection.
+- Switch the personal mini program to silent WeChat authentication through `POST /api/v1/auth/miniprogram-login`, with no password or user-facing login flow.
+- Store token, expiry, auth mode, and login time atomically in an auth-storage v2 session and gate all business requests on that session.
+- Remove the user-facing logout action; API tokens remain an internal transport detail rather than a product login flow.
+
+### Fixed
+- Render missing nutrition days as explicit `--` states instead of making a sparse series look like a complete numeric trend.
+- Remove full-height gray nutrition bar tracks so bar height represents the value itself rather than progress inside a decorative background.
+- Stop masking a failed settings-profile request with default values, and stop logging full health-response payloads in the developer console.
+- Move inline Today-page style fallbacks into the existing normalized view model so the DevTools CSS analyzer no longer reports false syntax errors.
+- Restore the nutrition trend empty state when the backend has no recorded values instead of always creating five empty metric cards.
+- Migrate legacy empty-user tokens and known business caches once while preserving unrelated local state and pending image drafts.
+- Deduplicate concurrent authentication and 401 refreshes globally, replay each failed business request at most once, and stop immediately for 403, 422, 429, 500, 502, and 503 responses.
+- Replace indefinite authentication loading with a compact retry state across Today, Trends, Nutrition, AI, and Settings.
+
+### Verified
+- Check mixed, sparse, one-day, and empty seven-day nutrition payloads for stable-scale percentages, direct labels, and empty-state behavior.
+- Check that three or more health strengths and weaknesses are all retained and that no insight toggle exists.
+- Check JavaScript syntax, repository whitespace integrity, and confirm WeChat DevTools reports zero project-source problems after hot compilation.
+- Confirm first launch makes one `wx.login` and one `/miniprogram-login`, concurrent callers share one authentication Promise, invalid codes are retried once, concurrent 401 responses share one refresh, and second 401/403 responses do not loop.
+
+### Known validation limitation
+- Final live-data and physical-device checks are recorded after the backend `miniprogram-login` deployment is available in WeChat DevTools.
+
 ## [0.3.12] - 2026-08-23
 
 ### Changed

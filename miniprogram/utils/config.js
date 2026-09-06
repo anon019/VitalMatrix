@@ -31,8 +31,16 @@ module.exports = {
   // Token存储key
   TOKEN_KEY: 'token',
   USER_INFO_KEY: 'userInfo',
+  USER_ID_KEY: 'user_id',
+  AUTH_MODE_KEY: 'auth_mode',
+  LEGACY_AUTH_MODE_KEY: 'authMode',
+  AUTH_SESSION_KEY: 'authSessionV2',
+  AUTH_STORAGE_VERSION_KEY: 'authStorageVersion',
+  AUTH_STORAGE_VERSION: 2,
+  AUTH_MODE: 'fixed_miniprogram',
+  AUTH_EXPIRY_SKEW_MS: 30 * 1000,
 
   // 应用信息
   APP_NAME: 'Health Assistant',
-  APP_VERSION: '0.3.12'
+  APP_VERSION: '0.3.15'
 }

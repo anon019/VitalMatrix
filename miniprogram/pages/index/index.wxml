@@ -1,7 +1,14 @@
 <!--pages/index/index.wxml-->
 <view class="container">
+  <view class="auth-recovery" wx:if="{{authError}}">
+    <view class="auth-recovery-icon">↻</view>
+    <text class="auth-recovery-title">健康数据暂时无法连接</text>
+    <text class="auth-recovery-copy">{{authError}}</text>
+    <button class="auth-recovery-button" bindtap="retryAuthentication">重试</button>
+  </view>
+
   <!-- ========== 今日首屏：单一主状态 + 关键行动 ========== -->
-  <view class="health-hero">
+  <view class="health-hero" hidden="{{authError}}">
     <view class="hero-greeting">
       <view class="greeting-info">
         <text class="greeting-text">{{greeting}}</text>
@@ -41,7 +48,7 @@
 
         <view class="primary-score" aria-label="准备度 {{readinessData.score || 0}} 分">
           <view class="primary-score-track"></view>
-          <view class="primary-score-progress {{readinessLevel}}" style="--progress: {{readinessData.score || 0}};"></view>
+          <view class="primary-score-progress {{readinessLevel}}" style="{{readinessData.scoreStyle}}"></view>
           <view class="primary-score-center">
             <text class="primary-score-value">{{readinessData.score || '--'}}</text>
             <text class="primary-score-label">准备度</text>
@@ -124,7 +131,7 @@
 
 
   <!-- 骨架屏加载状态 -->
-  <view class="skeleton-container" hidden="{{!loading}}">
+  <view class="skeleton-container" hidden="{{!loading || authError}}">
     <view class="skeleton-card" wx:for="{{[1,2,3]}}" wx:key="index">
       <view class="skeleton-header">
         <view class="skeleton-icon skeleton-animate"></view>
@@ -145,7 +152,7 @@
   </view>
 
   <!-- 内容区域 -->
-  <view class="content-area" hidden="{{loading}}">
+  <view class="content-area" hidden="{{loading || authError}}">
     <view class="data-section-heading">
       <view>
         <text class="data-section-kicker">HEALTH DETAILS</text>
@@ -224,19 +231,19 @@
             <text class="zone-title">心率区间分布</text>
           </view>
           <view class="zone-stacked-bar animated-bar">
-            <view class="zone-bar-segment zone1-bar" style="width: {{trainingData.zone1_percent || 0}}%;" wx:if="{{trainingData.zone1_percent > 0}}">
+            <view class="zone-bar-segment zone1-bar" style="{{trainingData.zone1_style}}" wx:if="{{trainingData.zone1_percent > 0}}">
               <text class="bar-label" wx:if="{{trainingData.zone1_percent > 8}}">{{trainingData.zone1_min}}</text>
             </view>
-            <view class="zone-bar-segment zone2-bar" style="width: {{trainingData.zone2_percent || 0}}%;" wx:if="{{trainingData.zone2_percent > 0}}">
+            <view class="zone-bar-segment zone2-bar" style="{{trainingData.zone2_style}}" wx:if="{{trainingData.zone2_percent > 0}}">
               <text class="bar-label" wx:if="{{trainingData.zone2_percent > 8}}">{{trainingData.zone2_min}}</text>
             </view>
-            <view class="zone-bar-segment zone3-bar" style="width: {{trainingData.zone3_percent || 0}}%;" wx:if="{{trainingData.zone3_percent > 0}}">
+            <view class="zone-bar-segment zone3-bar" style="{{trainingData.zone3_style}}" wx:if="{{trainingData.zone3_percent > 0}}">
               <text class="bar-label" wx:if="{{trainingData.zone3_percent > 8}}">{{trainingData.zone3_min}}</text>
             </view>
-            <view class="zone-bar-segment zone4-bar" style="width: {{trainingData.zone4_percent || 0}}%;" wx:if="{{trainingData.zone4_percent > 0}}">
+            <view class="zone-bar-segment zone4-bar" style="{{trainingData.zone4_style}}" wx:if="{{trainingData.zone4_percent > 0}}">
               <text class="bar-label" wx:if="{{trainingData.zone4_percent > 8}}">{{trainingData.zone4_min}}</text>
             </view>
-            <view class="zone-bar-segment zone5-bar" style="width: {{trainingData.zone5_percent || 0}}%;" wx:if="{{trainingData.zone5_percent > 0}}">
+            <view class="zone-bar-segment zone5-bar" style="{{trainingData.zone5_style}}" wx:if="{{trainingData.zone5_percent > 0}}">
               <text class="bar-label" wx:if="{{trainingData.zone5_percent > 8}}">{{trainingData.zone5_min}}</text>
             </view>
           </view>
@@ -368,16 +375,16 @@
             <text class="zone-title">睡眠阶段</text>
           </view>
           <view class="sleep-stage-bar animated-bar">
-            <view class="sleep-bar-segment deep-bar" style="width: {{sleepData.deepPercent || 0}}%;" wx:if="{{sleepData.deepPercent > 0}}">
+            <view class="sleep-bar-segment deep-bar" style="{{sleepData.deepStyle}}" wx:if="{{sleepData.deepPercent > 0}}">
               <text class="bar-label" wx:if="{{sleepData.deepPercent > 10}}">{{sleepData.deep_min}}</text>
             </view>
-            <view class="sleep-bar-segment rem-bar" style="width: {{sleepData.remPercent || 0}}%;" wx:if="{{sleepData.remPercent > 0}}">
+            <view class="sleep-bar-segment rem-bar" style="{{sleepData.remStyle}}" wx:if="{{sleepData.remPercent > 0}}">
               <text class="bar-label" wx:if="{{sleepData.remPercent > 10}}">{{sleepData.rem_min}}</text>
             </view>
-            <view class="sleep-bar-segment light-bar" style="width: {{sleepData.lightPercent || 0}}%;" wx:if="{{sleepData.lightPercent > 0}}">
+            <view class="sleep-bar-segment light-bar" style="{{sleepData.lightStyle}}" wx:if="{{sleepData.lightPercent > 0}}">
               <text class="bar-label" wx:if="{{sleepData.lightPercent > 10}}">{{sleepData.light_min}}</text>
             </view>
-            <view class="sleep-bar-segment awake-bar" style="width: {{sleepData.awakePercent || 0}}%;" wx:if="{{sleepData.awakePercent > 0}}">
+            <view class="sleep-bar-segment awake-bar" style="{{sleepData.awakeStyle}}" wx:if="{{sleepData.awakePercent > 0}}">
               <text class="bar-label" wx:if="{{sleepData.awakePercent > 10}}">{{sleepData.awake_min}}</text>
             </view>
           </view>
@@ -511,8 +518,8 @@
               <view class="sleep-progress-track">
                 <view class="progress-zone zone-optimal"></view>
                 <view class="progress-zone zone-suboptimal"></view>
-                <view class="progress-marker-line {{heartrateDetail.progress_color}}" style="left: {{heartrateDetail.sleep_progress_percent}}%;"></view>
-                <view class="progress-marker-dot {{heartrateDetail.progress_color}}" style="left: {{heartrateDetail.sleep_progress_percent}}%;"></view>
+                <view class="progress-marker-line {{heartrateDetail.progress_color}}" style="{{heartrateDetail.progressStyle}}"></view>
+                <view class="progress-marker-dot {{heartrateDetail.progress_color}}" style="{{heartrateDetail.progressStyle}}"></view>
               </view>
               <view class="sleep-progress-zone-labels">
                 <text class="zone-name green">理想区</text>
@@ -690,8 +697,8 @@
 
           <!-- 底部平衡条 -->
           <view class="stress-balance-bar">
-            <view class="balance-segment stress-segment" style="width: {{stressData.stress_percent || 50}}%;"></view>
-            <view class="balance-segment recovery-segment" style="width: {{stressData.recovery_percent || 50}}%;"></view>
+            <view class="balance-segment stress-segment" style="{{stressData.stressStyle}}"></view>
+            <view class="balance-segment recovery-segment" style="{{stressData.recoveryStyle}}"></view>
           </view>
         </view>
 
@@ -820,7 +827,7 @@
         <!-- 步数进度条（紧凑版） -->
         <view class="activity-steps-progress">
           <view class="steps-bar-bg">
-            <view class="steps-bar-fill" style="width: {{activityData.stepsProgress > 100 ? 100 : activityData.stepsProgress || 0}}%;"></view>
+            <view class="steps-bar-fill" style="{{activityData.stepsStyle}}"></view>
           </view>
           <text class="steps-target-text">{{activityData.stepsProgress || 0}}%</text>
         </view>
@@ -920,7 +927,7 @@
           <text class="weekly-zone2-label">🎯 周累计Zone2燃脂时长</text>
           <view class="weekly-zone2-bar">
             <view class="zone2-bar-track-new">
-              <view class="zone2-bar-fill-new" style="width: {{weeklyData.zone2_progress > 100 ? 100 : weeklyData.zone2_progress || 0}}%;"></view>
+              <view class="zone2-bar-fill-new" style="{{weeklyData.zone2Style}}"></view>
             </view>
             <text class="zone2-percent">{{weeklyData.zone2_progress || 0}}%</text>
           </view>

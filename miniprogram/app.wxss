@@ -154,3 +154,60 @@ page {
 .empty-text {
   font-size: 28rpx;
 }
+/* 静默认证失败：统一的轻量恢复状态，不暴露密码或内部身份信息。 */
+.auth-recovery {
+  margin: 32rpx 24rpx;
+  padding: 52rpx 36rpx;
+  border: 1rpx solid rgba(55, 117, 86, 0.16);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16rpx 40rpx rgba(35, 73, 57, 0.08);
+  text-align: center;
+}
+
+.auth-recovery-icon {
+  width: 76rpx;
+  height: 76rpx;
+  margin: 0 auto 20rpx;
+  border-radius: 24rpx;
+  background: #E7F3EC;
+  color: #2F7D59;
+  font-size: 44rpx;
+  font-weight: 600;
+  line-height: 76rpx;
+}
+
+.auth-recovery-title,
+.auth-recovery-copy {
+  display: block;
+}
+
+.auth-recovery-title {
+  color: #183D30;
+  font-size: 32rpx;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.auth-recovery-copy {
+  margin-top: 12rpx;
+  color: #64766F;
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.auth-recovery-button {
+  width: 220rpx;
+  margin: 28rpx auto 0;
+  border: 0;
+  border-radius: 999rpx;
+  background: #2F7D59;
+  color: #FFFFFF;
+  font-size: 27rpx;
+  font-weight: 600;
+  line-height: 76rpx;
+}
+
+.auth-recovery-button::after {
+  border: 0;
+}

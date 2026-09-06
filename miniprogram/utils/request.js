@@ -4,6 +4,12 @@
  */
 const config = require('./config.js')
 const { formatLocalDate, formatLocalDateTime } = require('./date.js')
+const {
+  ensureAuthenticated,
+  getAccessToken,
+  clearAuthSession,
+  clearPersistentBusinessCache
+} = require('./auth.js')
 
 /**
  * 将后端返回的相对 API 地址补全为绝对地址。
@@ -40,14 +46,14 @@ const CACHE_CONFIG = {
 // 内存缓存存储
 const requestCache = {}
 const toastTimestamps = {}
-let reloginTimer = null
+let authenticationRefreshPromise = null
 
 /**
  * 生成缓存Key
  */
 function generateCacheKey(method, url, data) {
   const keys = Object.keys(data).sort()
-  const params = keys.length > 0 ? `?${keys.map(k => `${k}=${data[k]}`).join('&')}` : ''
+  const params = keys.length > 0 ? `?${keys.map(k => `${encodeURIComponent(k)}=${encodeURIComponent(data[k])}`).join('&')}` : ''
   return `${method}:${url}${params}`
 }
 
@@ -78,8 +84,7 @@ function isCacheValid(cacheKey, url) {
   const ttl = getCacheTTL(url)
   const isValid = Date.now() - cached.timestamp < ttl
 
-  if (!isValid) {
-    // 缓存过期，清理
+  if (!isValid && !cached.pending) {
     delete requestCache[cacheKey]
   }
 
@@ -122,37 +127,124 @@ function showThrottledToast(key, title, duration = 2000) {
   })
 }
 
-function scheduleAutoLogin() {
-  if (reloginTimer) {
-    return
-  }
-
-  reloginTimer = setTimeout(() => {
-    reloginTimer = null
-
+function syncAppAuthentication(session = null) {
+  try {
     const app = getApp()
-    if (app && app.autoLogin) {
-      app.autoLogin()
+    if (app && typeof app.applyAuthSession === 'function') {
+      app.applyAuthSession(session)
     }
-  }, 1500)
+  } catch (error) {
+    console.warn('[Auth] 同步全局认证状态失败:', error)
+  }
 }
 
-function handleUnauthorized() {
-  const app = getApp()
-  const isRelogging = !!(app && app.globalData && app.globalData.isLoggingIn)
-
-  if (!isRelogging) {
-    if (app && app.clearLoginState) {
-      app.clearLoginState()
-    } else {
-      wx.removeStorageSync(config.TOKEN_KEY)
-      wx.removeStorageSync(config.USER_INFO_KEY)
+function notifyAppAuthenticationFailure(error) {
+  try {
+    const app = getApp()
+    if (!app) return
+    app.globalData.authError = error?.message || '登录状态异常，请稍后重试'
+    if (typeof app.notifyAuthFailure === 'function') {
+      app.notifyAuthFailure(error)
     }
+  } catch (syncError) {
+    console.warn('[Auth] 同步认证失败状态异常:', syncError)
+  }
+}
 
-    scheduleAutoLogin()
+function createRequestError(response, authRetryCount = 0) {
+  const statusCode = response.statusCode
+  const data = response.data || {}
+  const backendMessage = data.detail || data.message || ''
+  const retryAfter = response.header?.['Retry-After'] || response.header?.['retry-after'] || ''
+  const rateLimitMessage = retryAfter
+    ? `操作过于频繁，请 ${retryAfter} 秒后重试`
+    : '操作过于频繁，请稍后重试'
+  const messages = {
+    401: authRetryCount > 0 ? '登录状态异常，请稍后重试' : '登录状态已失效，正在重新连接',
+    403: '当前微信账号未获授权',
+    422: '请求结构错误，请联系开发者',
+    429: rateLimitMessage,
+    500: '服务端异常，请稍后重试',
+    502: '微信认证服务暂时不可用',
+    503: '服务暂不可用'
   }
 
-  showThrottledToast('auth-expired', '登录已失效')
+  if (statusCode === 422) {
+    console.error('[API Contract Error]', data)
+  }
+
+  return {
+    code: statusCode,
+    statusCode,
+    data,
+    retryAfter,
+    message: messages[statusCode] || backendMessage || '请求失败'
+  }
+}
+
+function refreshAuthenticationAfter401(failedToken) {
+  const currentToken = getAccessToken()
+  if (currentToken && failedToken && currentToken !== failedToken) {
+    return Promise.resolve(currentToken)
+  }
+  if (authenticationRefreshPromise) return authenticationRefreshPromise
+
+  clearAuthSession()
+  clearAllCache()
+  clearPersistentBusinessCache()
+  syncAppAuthentication(null)
+
+  const promise = ensureAuthenticated({ force: true })
+    .then(session => {
+      syncAppAuthentication(session)
+      return session.accessToken
+    })
+    .catch(error => {
+      notifyAppAuthenticationFailure(error)
+      throw error
+    })
+    .finally(() => {
+      if (authenticationRefreshPromise === promise) authenticationRefreshPromise = null
+    })
+
+  authenticationRefreshPromise = promise
+  return promise
+}
+
+function sendRequest({ url, method, data, timeout, needAuth, authRetryCount }) {
+  const tokenUsed = needAuth ? getAccessToken() : ''
+  const header = { 'Content-Type': 'application/json' }
+  if (tokenUsed) header.Authorization = `Bearer ${tokenUsed}`
+
+  console.log(`[API Request] ${method} ${url}`)
+
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url: resolveApiUrl(url),
+      method,
+      data,
+      header,
+      timeout,
+      success(response) {
+        console.log(`[API Response] ${method} ${url}`, response.statusCode)
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          resolve(response.data)
+          return
+        }
+        reject({ ...createRequestError(response, authRetryCount), tokenUsed })
+      },
+      fail(error) {
+        console.error(`[API Error] ${method} ${url}`, error)
+        const isTimeout = /timeout/i.test(error.errMsg || '')
+        reject({
+          code: isTimeout ? 'TIMEOUT' : -1,
+          message: isTimeout ? '请求超时，请稍后重试' : '网络请求失败，请检查网络连接',
+          detail: error.errMsg || ''
+        })
+        showThrottledToast('network-error', '网络请求失败')
+      }
+    })
+  })
 }
 
 /**
@@ -164,75 +256,45 @@ function handleUnauthorized() {
  * @param {Boolean} options.needAuth 是否需要认证（默认true）
  * @returns {Promise}
  */
-function request(options) {
-  return new Promise((resolve, reject) => {
-    const {
+async function request(options) {
+  const {
+    url,
+    method = 'GET',
+    data = {},
+    needAuth = true,
+    timeout = config.REQUEST_TIMEOUT,
+    _authRetryCount = 0
+  } = options
+
+  if (needAuth) await ensureAuthenticated()
+
+  try {
+    return await sendRequest({
       url,
-      method = 'GET',
-      data = {},
-      needAuth = true,
-      timeout = config.REQUEST_TIMEOUT
-    } = options
-
-    // 构建完整URL
-    const fullUrl = resolveApiUrl(url)
-
-    // 构建请求头
-    const header = {
-      'Content-Type': 'application/json'
-    }
-
-    // 添加认证token
-    if (needAuth) {
-      const token = wx.getStorageSync(config.TOKEN_KEY)
-      if (token) {
-        header['Authorization'] = `Bearer ${token}`
-      } else {
-        console.warn('未找到登录token，可能需要重新登录')
-      }
-    }
-
-    console.log(`[API Request] ${method} ${url}`, data)
-
-    wx.request({
-      url: fullUrl,
       method,
       data,
-      header,
       timeout,
-      success(res) {
-        console.log(`[API Response] ${method} ${url}`, res.statusCode, res.data)
-
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(res.data)
-        } else if (res.statusCode === 401) {
-          reject({
-            code: 401,
-            message: '登录已失效，正在重新登录'
-          })
-          handleUnauthorized()
-        } else {
-          reject({
-            code: res.statusCode,
-            statusCode: res.statusCode,
-            data: res.data,
-            message: res.data?.detail || res.data?.message || '请求失败'
-          })
-        }
-      },
-      fail(err) {
-        console.error(`[API Error] ${method} ${url}`, err)
-
-        const isTimeout = /timeout/i.test(err.errMsg || '')
-        reject({
-          code: isTimeout ? 'TIMEOUT' : -1,
-          message: isTimeout ? '请求超时，请稍后重试' : '网络请求失败，请检查网络连接',
-          detail: err.errMsg || ''
-        })
-        showThrottledToast('network-error', '网络请求失败')
-      }
+      needAuth,
+      authRetryCount: _authRetryCount
     })
-  })
+  } catch (error) {
+    if (needAuth && error?.code === 401 && _authRetryCount === 0) {
+      await refreshAuthenticationAfter401(error.tokenUsed)
+      return request({ ...options, _authRetryCount: 1 })
+    }
+
+    if (error?.code === 401 && _authRetryCount > 0) {
+      clearAuthSession()
+      syncAppAuthentication(null)
+      error.message = '登录状态异常，请稍后重试'
+      notifyAppAuthenticationFailure(error)
+    }
+
+    if (error?.code === 403) {
+      showThrottledToast('auth-forbidden', '当前微信账号未获授权', 2600)
+    }
+    throw error
+  }
 }
 
 /**
@@ -243,6 +305,13 @@ function request(options) {
  * @param {Boolean} forceRefresh 是否强制刷新（跳过缓存）
  */
 function get(url, data = {}, needAuth = true, forceRefresh = false) {
+  if (needAuth) {
+    return ensureAuthenticated().then(() => getWithCache(url, data, needAuth, forceRefresh))
+  }
+  return getWithCache(url, data, needAuth, forceRefresh)
+}
+
+function getWithCache(url, data, needAuth, forceRefresh) {
   const cacheKey = generateCacheKey('GET', url, data)
 
   // 非强制刷新时，检查缓存
@@ -257,34 +326,29 @@ function get(url, data = {}, needAuth = true, forceRefresh = false) {
     return requestCache[cacheKey].pending
   }
 
-  // 发起新请求
+  // 以条目身份隔离失效前后的请求，旧响应不能重新填充已清理的缓存。
+  const entry = { ...requestCache[cacheKey] }
   const pending = request({
     url,
     method: 'GET',
     data,
     needAuth
   }).then(result => {
-    // 缓存成功的响应
-    requestCache[cacheKey] = {
-      data: result,
-      timestamp: Date.now(),
-      pending: null
+    if (requestCache[cacheKey] === entry) {
+      entry.data = result
+      entry.timestamp = Date.now()
+      entry.pending = null
     }
-    console.log(`[Cache Set] ${url}`)
     return result
   }).catch(err => {
-    // 请求失败，清除pending状态
-    if (requestCache[cacheKey]) {
-      requestCache[cacheKey].pending = null
+    if (requestCache[cacheKey] === entry) {
+      entry.pending = null
     }
     throw err
   })
 
-  // 记录pending请求
-  requestCache[cacheKey] = {
-    ...requestCache[cacheKey],
-    pending
-  }
+  entry.pending = pending
+  requestCache[cacheKey] = entry
 
   return pending
 }
@@ -298,30 +362,6 @@ function post(url, data = {}, needAuth = true) {
     method: 'POST',
     data,
     needAuth
-  })
-}
-
-/**
- * 微信小程序登录。只把 wx.login 获取的一次性 code 交给微信登录接口。
- */
-function login() {
-  return new Promise((resolve, reject) => {
-    wx.login({
-      success(result) {
-        if (!result.code) {
-          reject({ code: 'WECHAT_LOGIN_FAILED', message: '微信登录凭证获取失败' })
-          return
-        }
-        post('/api/v1/auth/wechat-login', { code: result.code }, false).then(resolve, reject)
-      },
-      fail(error) {
-        reject({
-          code: 'WECHAT_LOGIN_FAILED',
-          message: '微信登录失败，请检查网络后重试',
-          detail: error.errMsg || ''
-        })
-      }
-    })
   })
 }
 
@@ -555,9 +595,14 @@ function getTrainingTrends(days = 7) {
  * @param {String} mealType 餐次类型 breakfast/lunch/dinner/snack
  * @param {Object} options 餐食时间与备注
  */
-function uploadMeal(filePath, mealType, options = {}) {
+async function uploadMeal(filePath, mealType, options = {}) {
+  await ensureAuthenticated()
+  return performMealUpload(filePath, mealType, options, 0)
+}
+
+function performMealUpload(filePath, mealType, options, authRetryCount) {
   return new Promise((resolve, reject) => {
-    const token = wx.getStorageSync(config.TOKEN_KEY)
+    const tokenUsed = getAccessToken()
     const mealTime = formatLocalDateTime(options.mealTime || new Date())
     const notes = options.notes || ''
 
@@ -571,11 +616,11 @@ function uploadMeal(filePath, mealType, options = {}) {
         notes
       },
       header: {
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${tokenUsed}`
       },
       timeout: 120000, // 120秒超时，AI分析需要较长时间
       success(res) {
-        console.log('[Upload] Response:', res)
+        console.log('[Upload] Response status:', res.statusCode)
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             const data = JSON.parse(res.data)
@@ -583,16 +628,26 @@ function uploadMeal(filePath, mealType, options = {}) {
           } catch (e) {
             reject({ code: -1, message: '解析响应失败' })
           }
+        } else if (res.statusCode === 401 && authRetryCount === 0) {
+          refreshAuthenticationAfter401(tokenUsed)
+            .then(() => performMealUpload(filePath, mealType, options, 1))
+            .then(resolve, reject)
         } else if (res.statusCode === 401) {
-          handleUnauthorized()
-          reject({ code: 401, message: '登录已失效，正在重新登录' })
+          clearAuthSession()
+          syncAppAuthentication(null)
+          const error = { code: 401, message: '登录状态异常，请稍后重试' }
+          notifyAppAuthenticationFailure(error)
+          reject(error)
         } else {
-          let errorMsg = '上传失败'
+          let errorData = {}
           try {
-            const errData = JSON.parse(res.data)
-            errorMsg = errData.detail || errData.message || errorMsg
+            errorData = JSON.parse(res.data)
           } catch (e) {}
-          reject({ code: res.statusCode, message: errorMsg })
+          reject(createRequestError({
+            statusCode: res.statusCode,
+            data: errorData,
+            header: res.header || {}
+          }, authRetryCount))
         }
       },
       fail(err) {
@@ -623,15 +678,15 @@ function uploadMeal(filePath, mealType, options = {}) {
 /**
  * 获取饮食记录列表
  */
-function getMeals(params = {}, forceRefresh = false) {
-  return get('/api/v1/nutrition/meals', params, true, forceRefresh)
+function getMeals(params = {}) {
+  return request({ url: '/api/v1/nutrition/meals', method: 'GET', data: params, needAuth: true })
 }
 
 /**
  * 获取单条饮食记录详情
  */
-function getMealDetail(mealId, forceRefresh = false) {
-  return get(`/api/v1/nutrition/meals/${mealId}`, {}, true, forceRefresh)
+function getMealDetail(mealId) {
+  return request({ url: `/api/v1/nutrition/meals/${mealId}`, method: 'GET', data: {}, needAuth: true })
 }
 
 /**
@@ -718,7 +773,6 @@ module.exports = {
   request,
   get,
   post,
-  login,
   resolveApiUrl,
   // 缓存工具
   clearAllCache,

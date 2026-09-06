@@ -27,6 +27,7 @@ Page({
     imageLoadFailed: false,
     analysis: null,
     nutritionAnalysis: null,
+    currentAiModel: '',
     mealTypeLabel: '',
     mealTimeFormatted: '',
     calorieRangeText: '',
@@ -35,11 +36,9 @@ Page({
     confidenceClass: 'confidence-unknown',
     portionAssumption: '',
     uncertaintyNotes: [],
-    visibleStrengths: [],
-    visibleWeaknesses: [],
+    strengths: [],
+    weaknesses: [],
     riskFactors: [],
-    hasMoreInsights: false,
-    insightsExpanded: false,
     showAnalysisDetails: false,
     showRecipeDetails: false,
     nextMealRecipes: [],
@@ -158,18 +157,18 @@ Page({
     if (!this._isActive) return
 
     const rawAnalysis = meal.ai_analysis || meal.analysis || {}
-    const nutritionAnalysis = meal.nutrition_analysis || rawAnalysis.nutrition_analysis || null
+    const nutritionAnalysis = rawAnalysis.nutrition_analysis || meal.nutrition_analysis || null
     const nutritionSummary = rawAnalysis.nutrition_summary || {}
-    const quality = meal.analysis_quality || rawAnalysis.analysis_quality || {}
-    const insights = meal.health_insights || rawAnalysis.health_insights || {}
-    const identifiedFoods = Array.isArray(meal.identified_foods)
-      ? meal.identified_foods
-      : (Array.isArray(rawAnalysis.identified_foods) ? rawAnalysis.identified_foods : [])
-    const recommendationCandidate = meal.recommendations || rawAnalysis.recommendations
+    const quality = rawAnalysis.analysis_quality || meal.analysis_quality || {}
+    const insights = rawAnalysis.health_insights || meal.health_insights || {}
+    const identifiedFoods = Array.isArray(rawAnalysis.identified_foods)
+      ? rawAnalysis.identified_foods
+      : (Array.isArray(meal.identified_foods) ? meal.identified_foods : [])
+    const recommendationCandidate = rawAnalysis.recommendations || meal.recommendations
     const rawRecommendations = recommendationCandidate && typeof recommendationCandidate === 'object' && !Array.isArray(recommendationCandidate)
       ? recommendationCandidate
       : {}
-    const recipeSource = meal.next_meal_recipes ?? rawAnalysis.next_meal_recipes ?? rawRecommendations.next_meal_recipes
+    const recipeSource = rawRecommendations.next_meal_recipes ?? rawAnalysis.next_meal_recipes ?? meal.next_meal_recipes
     const tipSource = meal.next_meal_tips ?? rawAnalysis.next_meal_tips ?? rawRecommendations.next_meal_tips
     const actionItems = Array.isArray(rawRecommendations.action_items)
       ? rawRecommendations.action_items.map(item => typeof item === 'string'
@@ -183,13 +182,18 @@ Page({
       next_meal_recipes: Array.isArray(recipeSource) ? recipeSource : [],
       next_meal_tips: Array.isArray(tipSource) ? tipSource : []
     }
+    const recommendationView = this.processNextMealRecipes(recommendations)
+    // 只把模板实际使用的字段传入视图层，避免把完整模型响应和菜谱数组
+    // 重复序列化到 meal、analysis 与 nextMealRecipes 三份数据中。
     const analysis = {
-      ...rawAnalysis,
       nutrition_analysis: nutritionAnalysis,
       identified_foods: identifiedFoods,
-      recommendations
+      recommendations: {
+        summary: recommendations.summary,
+        action_items: recommendations.action_items,
+        hydration_reminder: recommendations.hydration_reminder || ''
+      }
     }
-    const recommendationView = this.processNextMealRecipes(recommendations)
     const confidence = this.formatConfidence(quality.overall_confidence)
     const strengths = Array.isArray(insights.strengths) ? insights.strengths : []
     const weaknesses = Array.isArray(insights.weaknesses) ? insights.weaknesses : []
@@ -218,12 +222,12 @@ Page({
       calorie_range_high: meal.calorie_range_high ?? rawAnalysis.calorie_range_high ?? nutritionSummary.calorie_range_high
     }
 
-    this._allStrengths = strengths
-    this._allWeaknesses = weaknesses
-
     this.setData({
       meal: {
-        ...meal,
+        id: meal.id,
+        meal_type: meal.meal_type,
+        meal_time: meal.meal_time,
+        notes: meal.notes || '',
         total_calories: Math.round(Number(meal.total_calories) || 0),
         total_protein: this.formatNutrient(meal.total_protein),
         total_carbs: this.formatNutrient(meal.total_carbs),
@@ -235,6 +239,7 @@ Page({
       imageLoadFailed,
       analysis,
       nutritionAnalysis,
+      currentAiModel: meal.current_ai_model || '',
       mealTypeLabel: MEAL_TYPE_LABELS[meal.meal_type] || meal.meal_type || '餐食',
       mealTimeFormatted: this.formatMealTime(meal.meal_time),
       calorieRangeText: this.formatCalorieRange(calorieSource, meal.total_calories),
@@ -246,11 +251,9 @@ Page({
       confidenceClass: confidence.className,
       portionAssumption: String(quality.portion_assumption || ''),
       uncertaintyNotes,
-      visibleStrengths: strengths.slice(0, 2),
-      visibleWeaknesses: weaknesses.slice(0, 2),
+      strengths,
+      weaknesses,
       riskFactors: Array.isArray(insights.risk_factors) ? insights.risk_factors : [],
-      hasMoreInsights: strengths.length > 2 || weaknesses.length > 2,
-      insightsExpanded: false,
       showAnalysisDetails: false,
       showRecipeDetails: false,
       nextMealRecipes: recommendationView.nextMealRecipes,
@@ -329,8 +332,9 @@ Page({
       if (!this._isActive || !this._isVisible) return
       const recommendationStatus = String(status?.recommendation_status || 'pending').toLowerCase()
       if (recommendationStatus === 'completed') {
-        // Only publish completion after the full analysis has been refreshed.
+        // 详情成功刷新后再展示完成；暂时失败继续轮询，保留原有超时上限。
         if (this._detailPromise) await this._detailPromise
+        if (!this._isActive || !this._isVisible) return
         const loaded = await this.loadMealDetail({ force: true, silent: true })
         if (loaded) return
         if (this._isActive && this._isVisible) this.scheduleRecommendationPoll()
@@ -628,15 +632,6 @@ Page({
             health_benefit: tip.health_benefit || ''
           })
     }
-  },
-
-  toggleInsights() {
-    const expanded = !this.data.insightsExpanded
-    this.setData({
-      insightsExpanded: expanded,
-      visibleStrengths: expanded ? this._allStrengths : this._allStrengths.slice(0, 2),
-      visibleWeaknesses: expanded ? this._allWeaknesses : this._allWeaknesses.slice(0, 2)
-    })
   },
 
   toggleAnalysisDetails() {

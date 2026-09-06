@@ -21,8 +21,15 @@
     </view>
   </view>
 
+  <view class="auth-recovery" wx:if="{{authError}}">
+    <view class="auth-recovery-icon">↻</view>
+    <text class="auth-recovery-title">AI 健康数据暂时无法连接</text>
+    <text class="auth-recovery-copy">{{authError}}</text>
+    <button class="auth-recovery-button" bindtap="retryAuthentication">重试</button>
+  </view>
+
   <!-- 加载状态 -->
-  <view class="loading-state" wx:if="{{loading}}">
+  <view class="loading-state" wx:if="{{loading && !authError}}">
     <view class="loading-pulse">
       <view class="loading-dot"></view>
       <view class="loading-dot"></view>
@@ -32,7 +39,7 @@
   </view>
 
   <!-- 内容区域 -->
-  <view class="content-area" wx:else>
+  <view class="content-area" wx:elif="{{!authError}}">
     <!-- 数据日期提示 -->
     <view class="date-notice glass-card" wx:if="{{isStale}}">
       <view class="notice-icon-wrap">

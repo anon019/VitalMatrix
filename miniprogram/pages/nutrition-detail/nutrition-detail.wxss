@@ -1421,18 +1421,6 @@
   line-height: 1.5;
 }
 
-.insight-toggle {
-  min-width: 92rpx;
-  margin-left: auto;
-  padding: 8rpx 18rpx;
-  color: #27766B;
-  background: rgba(39, 118, 107, 0.1);
-  border-radius: 999rpx;
-  font-size: 22rpx;
-  line-height: 1.4;
-}
-
-.insight-toggle::after,
 .poster-error-retry::after,
 .poster-header-close::after {
   border: none;
