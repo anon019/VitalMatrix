@@ -31,7 +31,7 @@ class AIRecommendation(Base):
 
     # AI提供商信息
     provider: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="AI提供商(deepseek/openai/claude)"
+        String(50), nullable=False, comment="AI提供商（当前为 codex）"
     )
     model: Mapped[Optional[str]] = mapped_column(String(100), comment="使用的模型")
 

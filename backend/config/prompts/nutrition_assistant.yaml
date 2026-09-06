@@ -1,4 +1,4 @@
-# 饮食图片分析配置：面向 Vertex AI Gemini 3.7 Flash 结构化输出
+# 饮食图片分析配置：面向 Codex Luna Medium 结构化输出
 version: nutrition-v3.0
 
 system_prompt: |

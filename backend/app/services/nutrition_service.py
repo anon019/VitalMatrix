@@ -12,10 +12,11 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, and_, desc, case, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from app.config import settings
 
 from app.models.nutrition import MealRecord, FoodItem, NutritionDailySummary, MealType
 from app.models.user import User
-from app.services.gemini_service import get_gemini_service
+from app.services.codex_nutrition_service import get_codex_nutrition_service
 from app.services.file_storage import get_file_storage
 from app.utils.datetime_helper import date_hk, format_hk, now_hk, today_hk, start_of_day_hk
 from app.utils.distributed_lock import distributed_lock
@@ -27,7 +28,7 @@ class NutritionService:
     """营养服务类"""
 
     def __init__(self):
-        self.gemini_service = get_gemini_service()
+        self.ai_service = get_codex_nutrition_service()
         self.file_storage = get_file_storage()
 
     @staticmethod
@@ -80,7 +81,7 @@ class NutritionService:
 
         完整流程：
         1. 保存照片文件（原图+缩略图）
-        2. 调用Gemini分析照片
+        2. 调用 Codex Luna 分析照片
         3. 保存餐次记录和食物明细到数据库
         4. 更新每日营养汇总
 
@@ -121,7 +122,7 @@ class NutritionService:
             )
             return {
                 "meal_id": str(duplicate.id),
-                "analysis": duplicate.gemini_analysis or {},
+                "analysis": duplicate.ai_analysis or {},
                 "meal_record": duplicate,
                 "deduplicated": True,
             }
@@ -155,10 +156,10 @@ class NutritionService:
             # 外部 AI 调用可能持续数分钟；先结束只读事务并释放连接。
             await db.commit()
 
-            # 3. 调用Gemini分析（带重试机制）
+            # 3. 调用 Codex Luna 分析（带重试机制）
             meal_time_str = format_hk(meal_time, "%Y-%m-%d %H:%M")
             ai_started = time.perf_counter()
-            analysis_result = await self.gemini_service.analyze_meal_photo_with_retry(
+            analysis_result = await self.ai_service.analyze_meal_photo_with_retry(
                 image_path=abs_photo_path,
                 meal_type=meal_type.value,
                 meal_time=meal_time_str,
@@ -222,7 +223,7 @@ class NutritionService:
         exclude_meal_id: Optional[uuid.UUID] = None,
         include_history: bool = True,
     ) -> Dict[str, Any]:
-        """获取用户画像和最近饮食上下文（用于 Gemini 分析与推荐）。"""
+        """获取用户画像和最近饮食上下文（用于 Codex 分析与推荐）。"""
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
 
@@ -284,7 +285,7 @@ class NutritionService:
                     f"{'、'.join(food_names)}"
                 )
 
-            recommendations = (meal.gemini_analysis or {}).get("recommendations") or {}
+            recommendations = (meal.ai_analysis or {}).get("recommendations") or {}
             recipes = recommendations.get("next_meal_recipes") or []
             for recipe in recipes[:1]:
                 for dish in (recipe.get("dishes") or [])[:4]:
@@ -334,7 +335,7 @@ class NutritionService:
             total_fat=nutrition_summary.get("total_fat"),
             total_fiber=nutrition_summary.get("total_fiber"),
             ai_model=ai_model,  # 保存AI模型名称
-            gemini_analysis=analysis_result,
+            ai_analysis=analysis_result,
             notes=notes,
             analysis_status="completed",
             recommendation_status="pending",
@@ -389,7 +390,9 @@ class NutritionService:
         from app.database.session import AsyncSessionLocal
 
         lock_key = f"nutrition-recommendations:{meal_id}"
-        async with distributed_lock(lock_key, ttl_seconds=180) as acquired:
+        async with distributed_lock(
+            lock_key, ttl_seconds=settings.NUTRITION_RECOMMENDATION_TIMEOUT_SECONDS + 60
+        ) as acquired:
             if not acquired:
                 logger.info("Recommendation task already running: meal_id=%s", meal_id)
                 return False
@@ -403,7 +406,7 @@ class NutritionService:
                     .with_for_update()
                 )
                 meal = result.scalar_one_or_none()
-                if not meal or not meal.gemini_analysis:
+                if not meal or not meal.ai_analysis:
                     return False
                 if meal.recommendation_status == "completed" and not force:
                     return True
@@ -412,7 +415,7 @@ class NutritionService:
                 meal.recommendation_attempts = int(meal.recommendation_attempts or 0) + 1
                 meal.analysis_error = None
                 meal.recommendation_updated_at = now_hk()
-                core_analysis = dict(meal.gemini_analysis)
+                core_analysis = dict(meal.ai_analysis)
                 meal_type = meal.meal_type.value
                 meal_time = meal.meal_time
                 user_context = await self._get_user_context(
@@ -424,7 +427,7 @@ class NutritionService:
                 await db.commit()
 
             try:
-                recommendations = await self.gemini_service.generate_recommendations(
+                recommendations = await self.ai_service.generate_recommendations(
                     core_analysis=core_analysis,
                     meal_type=meal_type,
                     meal_time=format_hk(meal_time, "%Y-%m-%d %H:%M"),
@@ -445,11 +448,11 @@ class NutritionService:
                         meal.recommendation_status = "failed"
                         meal.analysis_error = str(exc)[:500]
                         meal.recommendation_updated_at = now_hk()
-                        analysis = dict(meal.gemini_analysis or {})
+                        analysis = dict(meal.ai_analysis or {})
                         current = dict(analysis.get("recommendations") or {})
                         current["status"] = "failed"
                         analysis["recommendations"] = current
-                        meal.gemini_analysis = analysis
+                        meal.ai_analysis = analysis
                         await db.commit()
                 return False
 
@@ -462,9 +465,9 @@ class NutritionService:
                 meal = result.scalar_one_or_none()
                 if not meal:
                     return False
-                analysis = dict(meal.gemini_analysis or {})
+                analysis = dict(meal.ai_analysis or {})
                 analysis["recommendations"] = recommendations
-                meal.gemini_analysis = analysis
+                meal.ai_analysis = analysis
                 meal.recommendation_status = "completed"
                 meal.analysis_error = None
                 meal.recommendation_updated_at = now_hk()
@@ -903,10 +906,10 @@ class NutritionService:
         # 外部模型调用前释放只读事务和连接；ORM 配置为 expire_on_commit=False。
         await db.commit()
 
-        # 重新调用Gemini分析（带重试）
+        # 重新调用 Codex Luna 分析（带重试）
         analysis_started_at = now_hk()
         meal_time_str = format_hk(meal.meal_time, "%Y-%m-%d %H:%M")
-        analysis_result = await self.gemini_service.analyze_meal_photo_with_retry(
+        analysis_result = await self.ai_service.analyze_meal_photo_with_retry(
             image_path=abs_photo_path,
             meal_type=meal.meal_type.value,
             meal_time=meal_time_str,
@@ -925,7 +928,7 @@ class NutritionService:
         meal.total_fat = nutrition_summary.get("total_fat")
         meal.total_fiber = nutrition_summary.get("total_fiber")
         meal.ai_model = ai_model
-        meal.gemini_analysis = analysis_result
+        meal.ai_analysis = analysis_result
         meal.analysis_status = "completed"
         meal.recommendation_status = "pending"
         meal.recommendation_attempts = 0

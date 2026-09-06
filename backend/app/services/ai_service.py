@@ -209,7 +209,7 @@ class AIService:
         Args:
             user_id: 用户ID
             target_date: 目标日期
-            provider_name: AI Provider名称（可切换模型）
+            provider_name: AI Provider名称（当前仅支持 codex）
 
         Returns:
             新的AI建议记录

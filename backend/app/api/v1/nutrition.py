@@ -77,7 +77,7 @@ async def upload_and_analyze_meal(
 
     完整流程：
     1. 上传照片
-    2. Gemini自动分析
+    2. Codex Luna 自动分析
     3. 保存餐次记录和食物明细
     4. 更新每日营养汇总
 

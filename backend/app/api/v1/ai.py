@@ -3,7 +3,7 @@ AI建议API
 """
 import logging
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +43,7 @@ def _recommendation_response(recommendation, requested_date: date) -> Recommenda
 class RegenerateRequest(BaseModel):
     """重新生成请求"""
     date: date
-    provider: Optional[str] = None  # 可选：切换AI模型
+    provider: Literal["codex"] = "codex"
 
 
 @router.get("/recommendation/today", response_model=Optional[RecommendationResponse])
@@ -125,7 +125,7 @@ async def regenerate_recommendation(
     """
     重新生成AI建议
 
-    可选：切换AI模型
+    固定使用 Codex CLI
 
     Args:
         request: 重新生成请求

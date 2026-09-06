@@ -103,9 +103,9 @@ class MealRecord(Base):
 
     # AI分析相关
     ai_model: Mapped[Optional[str]] = mapped_column(
-        String(100), comment="使用的AI模型名称（如 gemini-3.7-flash）"
+        String(100), comment="使用的AI模型名称（如 gpt-5.6-luna）"
     )
-    gemini_analysis: Mapped[Optional[dict]] = mapped_column(
+    ai_analysis: Mapped[Optional[dict]] = mapped_column(
         JSONB, comment="AI完整输出（包含分析、建议等）"
     )
     analysis_status: Mapped[str] = mapped_column(

@@ -3,13 +3,14 @@
 """
 from typing import Tuple
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
     """应用配置"""
 
     # 应用配置
-    APP_NAME: str = "VitalMatrix"
+    APP_NAME: str = "Health Assistant"
     APP_VERSION: str = "0.2.0"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
@@ -38,37 +39,22 @@ class Settings(BaseSettings):
     OURA_DATA_STALE_ALERT_DAYS: int = 1
     SERVER_ALERT_SCRIPT: str = ""
 
-    # AI配置
-    AI_PROVIDER: str = "gemini"  # gemini | qwen | deepseek | openai | claude
-    GEMINI_MODEL: str = "gemini-3.7-flash"
-    GEMINI_VISION_MODEL: str = "gemini-3.7-flash"
-    GEMINI_POSTER_MODEL: str = "gemini-3.1-flash-image"
+    # AI配置：所有文本、视觉和图片任务统一经 Codex CLI 调用。
+    AI_PROVIDER: str = "codex"
+    CODEX_CLI_PATH: str = "codex"
+    CODEX_MODEL: str = "gpt-5.6-luna"
+    CODEX_REASONING_EFFORT: str = "medium"
+    CODEX_VISION_REASONING_EFFORT: str = "medium"
+    CODEX_TEXT_REASONING_EFFORT: str = "low"
+    CODEX_IMAGE_AGENT_REASONING_EFFORT: str = "low"
+    CODEX_IMAGE_MODEL: str = "gpt-image-2"
+    CODEX_MAX_CONCURRENCY: int = Field(2, ge=1, le=8)
     # 1K 足以满足手机端分享，同时显著降低图片模型耗时和海报传输体积；
     # 如需印刷级导出可通过环境变量切回 2K。
     POSTER_IMAGE_SIZE: str = "1K"
 
-    # 通义千问 Qwen
-    QWEN_API_KEY: str = ""
-
-    # DeepSeek
-    DEEPSEEK_API_KEY: str = ""
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
-
-    # OpenAI (备选)
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4-turbo-preview"
-
-    # Claude (备选)
-    CLAUDE_API_KEY: str = ""
-    CLAUDE_MODEL: str = "claude-3-5-sonnet-20241022"
-
     # MCP API配置
     MCP_API_KEY: str = ""  # 用于本地MCP服务器访问
-
-    # OpenRouter 请求标识（公开仓库默认占位值）
-    OPENROUTER_HTTP_REFERER: str = "https://your-domain.example.com"
-    OPENROUTER_APP_TITLE: str = "VitalMatrix"
 
     # 微信小程序
     WECHAT_APP_ID: str
@@ -87,7 +73,7 @@ class Settings(BaseSettings):
 
     # 服务器环境配置
     TZ: str = "Asia/Hong_Kong"
-    NO_PROXY: str = "localhost,127.0.0.1,::1"
+    NO_PROXY: str = "localhost,127.0.0.1,::1,169.254.0.0/16,.tencentyun.com,*.tencentyun.com"
 
     # CORS配置
     ALLOWED_ORIGINS: list = [
@@ -104,11 +90,11 @@ class Settings(BaseSettings):
 
     # 私有媒体与生成任务
     MEDIA_URL_TTL_SECONDS: int = 3600
-    GEMINI_REQUEST_TIMEOUT_SECONDS: int = 120
-    NUTRITION_CORE_TIMEOUT_SECONDS: int = 60
-    NUTRITION_CORE_TOTAL_TIMEOUT_SECONDS: int = 100
-    NUTRITION_RECOMMENDATION_TIMEOUT_SECONDS: int = 70
-    POSTER_REQUEST_TIMEOUT_SECONDS: int = 90
+    CODEX_REQUEST_TIMEOUT_SECONDS: int = Field(130, gt=0)
+    NUTRITION_CORE_TIMEOUT_SECONDS: int = Field(60, gt=0)
+    NUTRITION_CORE_TOTAL_TIMEOUT_SECONDS: int = Field(130, gt=0)
+    NUTRITION_RECOMMENDATION_TIMEOUT_SECONDS: int = Field(180, gt=0)
+    POSTER_REQUEST_TIMEOUT_SECONDS: int = Field(110, gt=0)
     POSTER_DAILY_LIMIT: int = 5
 
     # 日志配置

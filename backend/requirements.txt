@@ -21,11 +21,7 @@ bcrypt==4.2.0
 python-multipart==0.0.6
 pyjwt==2.8.0
 
-# AI服务
-openai>=1.10.0
-# anthropic==0.18.0  # 暂时移除，可后续添加
-google-auth>=2.56.0  # Vertex AI ADC 认证
-google-genai>=1.0.0  # Gemini / Vertex AI SDK
+# AI 服务统一通过服务器已认证的 Codex CLI 调用
 httpx>=0.25.0
 
 # 任务调度

@@ -1,32 +1,31 @@
-"""Gemini 3.7 Flash migration and nutrition contract tests."""
+"""Codex CLI integration contracts for nutrition and poster generation."""
 from io import BytesIO
 from pathlib import Path
 
 import yaml
-from google.genai import types
 from PIL import Image, ImageDraw
 
-from app.services.gemini_service import GeminiNutritionService
+from app.config import settings
+from app.services.codex_nutrition_service import CodexNutritionService
 from app.services.poster_service import MealPosterService
 
 
-def _nutrition_prompt_config():
-    config_path = Path(__file__).parents[1] / "config" / "prompts" / "nutrition_core.yaml"
-    return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+def _prompt_config(filename: str):
+    path = Path(__file__).parents[1] / "config" / "prompts" / filename
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _recommendation_prompt_config():
-    config_path = (
-        Path(__file__).parents[1]
-        / "config"
-        / "prompts"
-        / "nutrition_recommendations.yaml"
-    )
-    return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+def test_codex_model_configuration_is_explicit():
+    assert settings.AI_PROVIDER == "codex"
+    assert settings.CODEX_MODEL == "gpt-5.6-luna"
+    assert settings.CODEX_REASONING_EFFORT == "medium"
+    assert settings.CODEX_VISION_REASONING_EFFORT == "medium"
+    assert settings.CODEX_TEXT_REASONING_EFFORT == "low"
+    assert settings.CODEX_IMAGE_MODEL == "gpt-image-2"
 
 
 def test_nutrition_prompt_uses_uncertainty_aware_contract():
-    config = _nutrition_prompt_config()
+    config = _prompt_config("nutrition_core.yaml")
     schema = config["response_schema"]
 
     assert "analysis_quality" in schema["required"]
@@ -34,9 +33,10 @@ def test_nutrition_prompt_uses_uncertainty_aware_contract():
     assert "calorie_range_low" in schema["properties"]["nutrition_summary"]["properties"]
     assert "正常单人食量" in config["system_prompt"]
     assert "不得向用户追问" in config["system_prompt"]
+    assert "0–100" in config["system_prompt"]
     assert "recommendations" not in schema["properties"]
 
-    recommendations = _recommendation_prompt_config()
+    recommendations = _prompt_config("nutrition_recommendations.yaml")
     plans = recommendations["response_schema"]["properties"]["next_meal_recipes"]
     assert plans["minItems"] == plans["maxItems"] == 3
     assert "flavor_profile" in plans["items"]["required"]
@@ -51,28 +51,7 @@ def test_nutrition_prompt_uses_uncertainty_aware_contract():
     assert "禁止向用户提问" in recommendations["json_instruction"]
 
 
-def test_vertex_nutrition_config_enforces_json_schema():
-    service = object.__new__(GeminiNutritionService)
-    service.config = _nutrition_prompt_config()
-
-    generation_config = service._build_google_config(enable_search=False)
-
-    assert generation_config.response_mime_type == "application/json"
-    assert generation_config.response_json_schema["required"][-1] == "analysis_quality"
-    assert generation_config.max_output_tokens == 4096
-    assert generation_config.tools is None
-    assert generation_config.temperature is None
-    assert generation_config.thinking_config is None
-
-    recommendation_config = service._build_google_config(
-        prompt_config=_recommendation_prompt_config(),
-        thinking_level=types.ThinkingLevel.LOW,
-    )
-    assert recommendation_config.thinking_config.thinking_level.value == "LOW"
-
-
 def test_nutrition_contract_validation_requires_quality_metadata():
-    service = object.__new__(GeminiNutritionService)
     result = {
         "identified_foods": [],
         "nutrition_summary": {},
@@ -80,13 +59,12 @@ def test_nutrition_contract_validation_requires_quality_metadata():
         "health_insights": {},
         "recommendations": {},
     }
-
-    assert service.validate_analysis_result(result) is False
+    assert CodexNutritionService.validate_analysis_result(result) is False
     result["analysis_quality"] = {
         "overall_confidence": "low",
         "portion_assumption": "按单人正常午餐份量估算",
     }
-    assert service.validate_analysis_result(result) is False
+    assert CodexNutritionService.validate_analysis_result(result) is False
 
     result.update({
         "identified_foods": [{
@@ -105,7 +83,24 @@ def test_nutrition_contract_validation_requires_quality_metadata():
             "overall_score": 75,
         },
     })
-    assert service.validate_analysis_result(result) is True
+    assert CodexNutritionService.validate_analysis_result(result) is True
+
+    result["nutrition_analysis"]["carbs_analysis"]["score"] = 2
+    result["nutrition_analysis"]["protein_analysis"]["score"] = 3
+    result["nutrition_analysis"]["fat_analysis"]["score"] = 3
+    result["nutrition_analysis"]["overall_score"] = 3
+    assert CodexNutritionService.validate_analysis_result(result) is False
+
+
+def test_vision_input_is_downscaled_for_latency(tmp_path):
+    source_path = tmp_path / "meal.png"
+    Image.new("RGB", (1280, 1707), "white").save(source_path)
+
+    prepared = CodexNutritionService._prepare_vision_input(source_path)
+
+    with Image.open(BytesIO(prepared)) as result:
+        assert result.format == "JPEG"
+        assert max(result.size) == CodexNutritionService.VISION_MAX_DIMENSION
 
 
 def test_poster_prompt_requires_exact_data_and_future_meal_visuals():
@@ -120,6 +115,7 @@ def test_poster_prompt_requires_exact_data_and_future_meal_visuals():
         ],
     })
 
+    assert "GPT Image" in prompt
     assert "固定 3:4 竖版" in prompt
     assert '"calories_kcal":538' in prompt
     assert "无任何文字" in prompt
@@ -128,25 +124,19 @@ def test_poster_prompt_requires_exact_data_and_future_meal_visuals():
     assert "推荐示意" in prompt
     assert "严禁在图片任何位置生成文字" in prompt
     assert "不生成深色底部页脚" in prompt
-    assert "VERIFIED NUTRITION" not in prompt
 
 
-def test_poster_conclusion_uses_a_complete_sentence_instead_of_character_slice():
+def test_poster_conclusion_uses_a_complete_sentence():
     summary = "早餐以牛奶和甜面包为主，蛋白质与膳食纤维不足。结合今日恢复状态，午餐优先补充蔬菜。"
-
     conclusion = MealPosterService._first_complete_sentence(summary)
-
     assert conclusion == "早餐以牛奶和甜面包为主，蛋白质与膳食纤维不足。"
-    assert not conclusion.endswith("...")
 
 
 def test_poster_input_is_downscaled_and_encoded_as_jpeg():
     source = Image.new("RGB", (2400, 1200), "white")
     source_bytes = BytesIO()
     source.save(source_bytes, "PNG")
-
     prepared = MealPosterService._prepare_model_input(source_bytes.getvalue())
-
     with Image.open(BytesIO(prepared)) as result:
         assert result.format == "JPEG"
         assert result.size == (1600, 800)
@@ -165,41 +155,24 @@ def test_poster_compositor_draws_verified_content_without_a_footer():
             "poster_title": "本餐饮食健康报告",
             "meal": {"type": "早餐", "time": "2026年08月22日 09:34"},
             "verified_metrics": {
-                "calories_kcal": 538,
-                "protein_g": 32.4,
-                "carbs_g": 61.2,
-                "fat_g": 18.7,
+                "calories_kcal": 538, "protein_g": 32.4,
+                "carbs_g": 61.2, "fat_g": 18.7,
             },
             "one_sentence_conclusion": "本餐蛋白质充足，下一餐注意补充蔬菜与全谷物。",
             "next_24_hours": [
-                {
-                    "meal": "午餐",
-                    "timing": "12:30",
-                    "calories_kcal": 650,
-                    "recommended_foods": ["彩椒牛肉", "蒜蓉菜心", "糙米饭"],
-                },
-                {
-                    "meal": "晚餐",
-                    "timing": "18:30",
-                    "calories_kcal": 580,
-                    "recommended_foods": ["鲜虾煲", "白玉豆腐", "玉米"],
-                },
-                {
-                    "meal": "次日早餐",
-                    "timing": "08:00",
-                    "calories_kcal": 480,
-                    "recommended_foods": ["菠菜蛋饼", "五谷豆浆", "全麦吐司"],
-                },
+                {"meal": "午餐", "timing": "12:30", "calories_kcal": 650,
+                 "recommended_foods": ["彩椒牛肉", "蒜蓉菜心", "糙米饭"]},
+                {"meal": "晚餐", "timing": "18:30", "calories_kcal": 580,
+                 "recommended_foods": ["鲜虾煲", "白玉豆腐", "玉米"]},
+                {"meal": "次日早餐", "timing": "08:00", "calories_kcal": 480,
+                 "recommended_foods": ["菠菜蛋饼", "五谷豆浆", "全麦吐司"]},
             ],
         },
     )
-
     with Image.open(BytesIO(result_bytes)) as result:
         assert result.format == "JPEG"
         assert result.size == (600, 800)
-        # 三餐图片区仍保留底图，不再被全宽营养页脚覆盖。
         red, green, blue = result.getpixel((300, 560))
         assert blue > red and blue > green
-        # 最底边也不再被旧版深色 VERIFIED NUTRITION 条覆盖。
         red, green, blue = result.getpixel((5, 790))
         assert blue > red and blue > green

@@ -75,7 +75,7 @@ class MealRecordBase(BaseModel):
 
 class MealRecordCreate(MealRecordBase):
     """创建餐次记录Schema（用于确认保存）"""
-    gemini_analysis: Dict[str, Any] = Field(..., description="Gemini完整分析结果")
+    ai_analysis: Dict[str, Any] = Field(..., description="AI完整分析结果")
     food_items: List[FoodItemCreate] = Field(..., description="食物明细列表")
 
 
@@ -91,7 +91,7 @@ class MealRecordResponse(MealRecordBase):
     total_fat: Optional[float]
     total_fiber: Optional[float]
     ai_model: Optional[str] = Field(None, description="使用的AI模型名称")
-    gemini_analysis: Optional[Dict[str, Any]]
+    ai_analysis: Optional[Dict[str, Any]]
     analysis_status: str = Field("completed", description="核心识图状态")
     recommendation_status: str = Field("completed", description="扩展建议状态")
     recommendation_attempts: int = Field(0, description="扩展建议已尝试次数")
@@ -106,12 +106,12 @@ class MealRecordResponse(MealRecordBase):
     @computed_field
     @property
     def current_ai_model(self) -> str:
-        return settings.GEMINI_VISION_MODEL
+        return settings.CODEX_MODEL
 
     @computed_field
     @property
     def analysis_is_legacy(self) -> bool:
-        return bool(self.ai_model and self.ai_model != settings.GEMINI_VISION_MODEL)
+        return bool(self.ai_model and self.ai_model != settings.CODEX_MODEL)
 
     @field_serializer('photo_path', 'thumbnail_path')
     def _normalize_path(self, path: Optional[str]) -> Optional[str]:
@@ -146,7 +146,7 @@ class AnalyzeMealRequest(BaseModel):
 
 class AnalyzeMealResponse(BaseModel):
     """分析餐食照片响应Schema"""
-    analysis: Dict[str, Any] = Field(..., description="Gemini完整分析结果")
+    analysis: Dict[str, Any] = Field(..., description="AI完整分析结果")
     parsed_data: Dict[str, Any] = Field(..., description="解析后的结构化数据")
     temp_image_path: Optional[str] = Field(None, description="临时图片路径")
 

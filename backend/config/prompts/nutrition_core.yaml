@@ -5,6 +5,7 @@ system_prompt: |
   图片分析是估算。无论照片是一人餐、一桌家常菜还是多人聚餐，都必须结合用户年龄、身高、体重、餐次和正常单人食量，自主估算该用户实际可能摄入的份额；营养合计只计算单人摄入，不按整桌总量计算。
   不得向用户追问“几人分食”“吃了几根”“实际吃了多少”等问题，也不要要求二次确认。看不清的内容用保守的单人份中位估计处理，并在 portion_assumption 中用一句话说明依据。
   合计值要与食物项大致一致，建议简短具体。不要生成食谱、未来餐单、烹饪步骤或长篇科普。
+  所有 score 和 overall_score 都必须使用 0–100 整数制，分数越高表示越健康、越均衡；严禁使用 1–5 分制或 1–10 分制。
 
 user_prompt_template: |
   分析这张【{meal_type}】照片，用餐时间为 {meal_time}。
@@ -25,7 +26,7 @@ response_schema:
         type: object
         required: [name, category, weight_g, calories, protein, carbs, fat, confidence]
         properties:
-          name: {type: string}
+          name: {type: string, maxLength: 40}
           category:
             type: string
             enum: [staple, protein, vegetable, fruit, dairy, fat, beverage, snack, other]
@@ -37,7 +38,7 @@ response_schema:
           fiber: {type: number}
           sodium: {type: number}
           confidence: {type: string, enum: [high, medium, low]}
-          notes: {type: string}
+          notes: {type: string, maxLength: 80}
     nutrition_summary:
       type: object
       required: [total_calories, total_protein, total_carbs, total_fat, total_fiber, total_weight]
@@ -50,7 +51,7 @@ response_schema:
         total_weight: {type: number}
         calorie_range_low: {type: number}
         calorie_range_high: {type: number}
-        estimate_note: {type: string}
+        estimate_note: {type: string, maxLength: 100}
     nutrition_analysis:
       type: object
       required: [carbs_analysis, protein_analysis, fat_analysis, sodium_warning, overall_rating, overall_score]
@@ -60,42 +61,42 @@ response_schema:
           required: [rating, score, comment]
           properties:
             rating: {type: string, enum: [充足, 适中, 不足, 过量]}
-            score: {type: integer}
-            comment: {type: string}
+            score: {type: integer, minimum: 0, maximum: 100, description: "0–100整数，越高越均衡；禁止1–5分制"}
+            comment: {type: string, maxLength: 80}
         protein_analysis:
           type: object
           required: [rating, score, comment]
           properties:
             rating: {type: string, enum: [充足, 适中, 不足, 过量]}
-            score: {type: integer}
-            comment: {type: string}
+            score: {type: integer, minimum: 0, maximum: 100, description: "0–100整数，越高越均衡；禁止1–5分制"}
+            comment: {type: string, maxLength: 80}
         fat_analysis:
           type: object
           required: [rating, score, comment]
           properties:
             rating: {type: string, enum: [合理, 偏高, 偏低, 过高]}
-            score: {type: integer}
-            comment: {type: string}
+            score: {type: integer, minimum: 0, maximum: 100, description: "0–100整数，越高越均衡；禁止1–5分制"}
+            comment: {type: string, maxLength: 80}
         sodium_warning: {type: boolean}
-        sodium_comment: {type: string}
+        sodium_comment: {type: string, maxLength: 80}
         overall_rating: {type: string, enum: [优秀, 良好, 一般, 需改善]}
-        overall_score: {type: integer}
-        overall_comment: {type: string}
+        overall_score: {type: integer, minimum: 0, maximum: 100, description: "0–100整数综合健康分；禁止1–5分制"}
+        overall_comment: {type: string, maxLength: 120}
     health_insights:
       type: object
       required: [strengths, weaknesses, risk_level, risk_factors, uncertainty_notes]
       properties:
-        strengths: {type: array, items: {type: string}, maxItems: 3}
-        weaknesses: {type: array, items: {type: string}, maxItems: 3}
+        strengths: {type: array, items: {type: string, maxLength: 60}, maxItems: 3}
+        weaknesses: {type: array, items: {type: string, maxLength: 60}, maxItems: 3}
         risk_level: {type: string, enum: [low, medium, high]}
-        risk_factors: {type: array, items: {type: string}, maxItems: 3}
-        uncertainty_notes: {type: array, items: {type: string}, maxItems: 3}
+        risk_factors: {type: array, items: {type: string, maxLength: 60}, maxItems: 3}
+        uncertainty_notes: {type: array, items: {type: string, maxLength: 60}, maxItems: 3}
     analysis_quality:
       type: object
       required: [overall_confidence, portion_assumption]
       properties:
         overall_confidence: {type: string, enum: [high, medium, low]}
-        portion_assumption: {type: string}
+        portion_assumption: {type: string, maxLength: 100}
 
 user_context_template: |
   用户资料：性别 {gender}；年龄 {age}；体重 {weight}kg；身高 {height}cm；健康目标 {health_goal}；训练计划 {training_plan}。
@@ -107,4 +108,4 @@ meal_types:
   snack: 加餐
 
 json_instruction: |
-  直接返回符合约定结构的 JSON，不要包含 Markdown。营养数值使用数字，文字字段保持简短。禁止向用户提问。
+  直接返回符合约定结构的 JSON，不要包含 Markdown。营养数值使用数字，文字字段保持简短。评分一律为 0–100 整数。禁止向用户提问。

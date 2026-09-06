@@ -7,6 +7,7 @@ system_prompt: |
   评价本餐时，只能引用“本餐核心分析”中明确出现的食物名、营养数值和判断；不得把“小菜”臆测成小鱼干等具体食物，不得编造图片中没有的配料。
   只有本餐核心分析已明确给出相应结论时，才能声称高钠、高脂、蛋白质不足等问题；不确定时使用中性表述。
   不重新识图，不重复本餐分析，不向用户追问。每道菜必须给出精简但可执行的食材用量和做法，历史未记录不等于没有吃。
+  为控制等待时间，每顿默认给 2 道菜，每道菜默认 2–3 项主要食材和 2 条做法；只有营养搭配确有必要时才增加第 3 道菜。
 
 user_prompt_template: |
   当前餐次：{meal_type}，用餐时间：{meal_time}。
@@ -18,7 +19,7 @@ response_schema:
   type: object
   required: [summary, next_meal_recipes, action_items]
   properties:
-    summary: {type: string}
+    summary: {type: string, maxLength: 120}
     next_meal_recipes:
       type: array
       minItems: 3
@@ -27,8 +28,8 @@ response_schema:
         type: object
         required: [meal_name, timing, total_calories, dishes, flavor_profile, experience_note, why_this_menu]
         properties:
-          meal_name: {type: string}
-          timing: {type: string}
+          meal_name: {type: string, maxLength: 40}
+          timing: {type: string, maxLength: 20}
           total_calories: {type: number}
           dishes:
             type: array
@@ -38,8 +39,8 @@ response_schema:
               type: object
               required: [name, portion, calories, protein, ingredients, cooking_steps]
               properties:
-                name: {type: string}
-                portion: {type: string}
+                name: {type: string, maxLength: 30}
+                portion: {type: string, maxLength: 30}
                 calories: {type: number}
                 protein: {type: number}
                 ingredients:
@@ -52,9 +53,9 @@ response_schema:
                   minItems: 2
                   maxItems: 3
                   items: {type: string, maxLength: 40}
-          flavor_profile: {type: string}
-          experience_note: {type: string}
-          why_this_menu: {type: string}
+          flavor_profile: {type: string, maxLength: 40}
+          experience_note: {type: string, maxLength: 60}
+          why_this_menu: {type: string, maxLength: 80}
     action_items:
       type: array
       minItems: 1
@@ -64,8 +65,8 @@ response_schema:
         required: [priority, action, rationale]
         properties:
           priority: {type: string, enum: [high, medium, low]}
-          action: {type: string}
-          rationale: {type: string}
+          action: {type: string, maxLength: 60}
+          rationale: {type: string, maxLength: 80}
 
 meal_types:
   breakfast: 早餐

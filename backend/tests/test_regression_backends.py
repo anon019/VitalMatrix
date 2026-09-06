@@ -277,7 +277,7 @@ async def test_analysis_status_query_does_not_load_json_or_food_items():
 
     sql = str(db.statement.compile()).lower()
     assert status_result["analysis_status"] == "completed"
-    assert "gemini_analysis" not in sql
+    assert "ai_analysis" not in sql
     assert "food_items" not in sql
 
 

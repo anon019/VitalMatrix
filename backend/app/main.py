@@ -75,9 +75,9 @@ async def lifespan(app: FastAPI):
     await AIProviderFactory.close_all()
 
     # 关闭营养分析与 Redis 的共享客户端
-    from app.services.gemini_service import get_gemini_service
+    from app.services.codex_nutrition_service import get_codex_nutrition_service
     from app.utils.redis_client import RedisClient
-    await get_gemini_service().close()
+    await get_codex_nutrition_service().close()
     await RedisClient.close()
 
     # 关闭数据库连接

@@ -10,11 +10,11 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict
+from weakref import WeakValueDictionary
 
-from google.genai import types
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from app.ai.providers.gemini_client import get_client
+from app.ai.codex_cli import get_codex_cli_runner
 from app.config import settings
 from app.models.nutrition import MealRecord, MealType
 from app.services.file_storage import get_file_storage
@@ -25,12 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class MealPosterService:
-    """用 Nano Banana 2 将餐食照片和结构化内容生成固定比例海报。"""
+    """通过 Codex CLI 和 GPT Image 生成固定比例餐食海报。"""
 
     STYLE_VERSION = "nutrition-poster-v9"
     INPUT_MAX_DIMENSION = 1600
     JPEG_QUALITY = 90
-    _generation_locks: dict[str, asyncio.Lock] = {}
+    _generation_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
     MEAL_LABELS = {
         MealType.BREAKFAST: "早餐",
         MealType.LUNCH: "午餐",
@@ -39,9 +39,9 @@ class MealPosterService:
     }
 
     def __init__(self) -> None:
-        self.client = get_client()
+        self.runner = get_codex_cli_runner()
         self.storage = get_file_storage()
-        self.model_name = settings.GEMINI_POSTER_MODEL
+        self.model_name = settings.CODEX_IMAGE_MODEL
 
     @staticmethod
     def _number(value: Any, digits: int = 0) -> float | int | None:
@@ -51,7 +51,7 @@ class MealPosterService:
         return int(number) if digits == 0 else number
 
     def _verified_metrics(self, meal: MealRecord) -> Dict[str, Any]:
-        analysis = meal.gemini_analysis or {}
+        analysis = meal.ai_analysis or {}
         nutrition = analysis.get("nutrition_summary") or {}
         quality = analysis.get("analysis_quality") or {}
         return {
@@ -75,7 +75,7 @@ class MealPosterService:
         return match.group(0).strip() if match else text
 
     def _build_content_template(self, meal: MealRecord) -> Dict[str, Any]:
-        analysis = meal.gemini_analysis or {}
+        analysis = meal.ai_analysis or {}
         nutrition_analysis = analysis.get("nutrition_analysis") or {}
         recommendations = analysis.get("recommendations") or {}
 
@@ -116,7 +116,7 @@ class MealPosterService:
 
     def _build_prompt(self, content: Dict[str, Any]) -> str:
         exact_json = json.dumps(content, ensure_ascii=False, separators=(",", ":"))
-        return f"""你是 Nano Banana 2 的资深健康生活方式摄影指导。请以输入的真实餐食照片作为“本餐”主视觉，创作一张固定 3:4 竖版、无任何文字的健康杂志式餐食拼贴底图。后端会在固定区域排版全部中文和营养数字，因此你只负责照片、色彩、光影和背景。
+        return f"""你是 GPT Image 的资深健康生活方式摄影指导。请以输入的真实餐食照片作为“本餐”主视觉，创作一张固定 3:4 竖版、无任何文字的健康杂志式餐食拼贴底图。后端会在固定区域排版全部中文和营养数字，因此你只负责照片、色彩、光影和背景。
 
 核心视觉叙事：
 - 上方 34% 使用原始餐食照片作为本餐的大幅主视觉，允许自然裁切、局部放大、景深延展和柔和色彩统一，但不得改变食物种类与数量。
@@ -468,31 +468,11 @@ class MealPosterService:
             source_bytes = await asyncio.to_thread(source_path.read_bytes)
             image_bytes = await asyncio.to_thread(self._prepare_model_input, source_bytes)
 
-            async with asyncio.timeout(settings.POSTER_REQUEST_TIMEOUT_SECONDS):
-                response = await self.client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=[
-                        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                        prompt,
-                    ],
-                    config=types.GenerateContentConfig(
-                        response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
-                        candidate_count=1,
-                        image_config=types.ImageConfig(
-                            aspect_ratio="3:4",
-                            image_size=settings.POSTER_IMAGE_SIZE,
-                            output_mime_type="image/jpeg",
-                        ),
-                    ),
-                )
-
-            parts = response.candidates[0].content.parts if response.candidates else []
-            generated_bytes = next(
-                (part.inline_data.data for part in parts if part.inline_data and part.inline_data.data),
-                None,
+            generated_bytes = await self.runner.generate_image(
+                prompt,
+                reference_image_bytes=image_bytes,
+                timeout_seconds=settings.POSTER_REQUEST_TIMEOUT_SECONDS,
             )
-            if not generated_bytes:
-                raise ValueError("海报模型未返回图片，请稍后重试")
 
             composed_bytes = await asyncio.to_thread(
                 self._compose_poster,

@@ -1,12 +1,8 @@
-"""
-AI Provider工厂 - 支持动态切换AI模型
-"""
+"""AI Provider factory backed exclusively by Codex CLI."""
 import logging
 from typing import Dict, Type
 from app.ai.base import AIProvider
-from app.ai.providers.deepseek import DeepSeekProvider
-from app.ai.providers.qwen import QwenProvider
-from app.ai.providers.gemini import GeminiProvider
+from app.ai.providers.codex import CodexProvider
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -16,12 +12,7 @@ class AIProviderFactory:
     """AI Provider工厂"""
 
     _providers: Dict[str, Type[AIProvider]] = {
-        "deepseek": DeepSeekProvider,
-        "qwen": QwenProvider,
-        "gemini": GeminiProvider,
-        # 未来可扩展
-        # "openai": OpenAIProvider,
-        # "claude": ClaudeProvider,
+        "codex": CodexProvider,
     }
 
     _instance: Dict[str, AIProvider] = {}
