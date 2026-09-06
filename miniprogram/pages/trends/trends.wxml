@@ -40,8 +40,15 @@
     </scroll-view>
   </view>
 
+  <view class="auth-recovery" wx:if="{{authError}}">
+    <view class="auth-recovery-icon">↻</view>
+    <text class="auth-recovery-title">趋势数据暂时无法连接</text>
+    <text class="auth-recovery-copy">{{authError}}</text>
+    <button class="auth-recovery-button" bindtap="retryAuthentication">重试</button>
+  </view>
+
   <!-- 加载状态 -->
-  <view class="loading-state" wx:if="{{loading}}">
+  <view class="loading-state" wx:if="{{loading && !authError}}">
     <view class="loading-spinner">
       <view class="spinner-ring"></view>
       <view class="spinner-ring"></view>
@@ -51,7 +58,7 @@
   </view>
 
   <!-- 内容区域 -->
-  <view class="content-area" wx:else>
+  <view class="content-area" wx:elif="{{!authError}}">
     <!-- 后端 nutrition 五数组：均值只按真实记录日计算 -->
     <view id="trend-nutrition" class="section-group nutrition-trend-section">
       <view class="section-header">
@@ -62,13 +69,32 @@
         </view>
       </view>
       <view class="nutrition-trend-grid" wx:if="{{nutritionTrendCards.length}}">
-        <view class="nutrition-trend-card" wx:for="{{nutritionTrendCards}}" wx:key="field">
-          <text class="nutrition-trend-label">{{item.label}}</text>
-          <view><text class="nutrition-trend-value">{{item.average}}</text><text class="nutrition-trend-unit">{{item.unit}}</text></view>
-          <text class="nutrition-trend-caption">{{item.recordedCount}} 个记录日</text>
-          <view class="nutrition-series">
-            <view class="nutrition-series-item" wx:for="{{item.values}}" wx:for-item="point" wx:key="date">
-              <text>{{point.display}}</text><text>{{point.dayLabel}}</text>
+        <view class="nutrition-trend-card nutrition-tone-{{item.tone}}" wx:for="{{nutritionTrendCards}}" wx:key="field">
+          <view class="nutrition-trend-head">
+            <view class="nutrition-trend-title-group">
+              <text class="nutrition-trend-label">{{item.label}}</text>
+              <text class="nutrition-trend-caption">{{item.recordedCount}} 个记录日 · {{item.scaleLabel}}</text>
+            </view>
+            <view class="nutrition-trend-average">
+              <text class="nutrition-average-label">记录日均</text>
+              <view><text class="nutrition-trend-value">{{item.average}}</text><text class="nutrition-trend-unit">{{item.unit}}</text></view>
+            </view>
+          </view>
+          <view class="nutrition-mini-chart" aria-role="img" aria-label="{{item.ariaLabel}}">
+            <view class="nutrition-chart-gridline gridline-top"></view>
+            <view class="nutrition-chart-gridline gridline-middle"></view>
+            <view class="nutrition-chart-gridline gridline-base"></view>
+            <view class="nutrition-average-line" wx:if="{{item.hasAverage}}" style="bottom: {{item.averageLineBottom}}rpx;"></view>
+            <view class="nutrition-series">
+              <view class="nutrition-series-item {{point.isEmpty ? 'is-empty' : ''}}" wx:for="{{item.values}}" wx:for-item="point" wx:key="date">
+                <text class="nutrition-point-value">{{point.display}}</text>
+                <view class="nutrition-bar-column">
+                  <view wx:if="{{!point.isEmpty}}" class="nutrition-bar-fill" style="height: {{point.percent}}%;"></view>
+                  <text wx:else class="nutrition-empty-mark">—</text>
+                </view>
+                <text class="nutrition-point-day">{{point.dayLabel}}</text>
+                <text class="nutrition-point-date">{{point.dateLabel}}</text>
+              </view>
             </view>
           </view>
         </view>

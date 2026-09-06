@@ -832,11 +832,50 @@
 }
 
 .nutrition-trend-card {
-  padding: 22rpx;
+  --nutrition-accent: #3D755D;
+  --nutrition-accent-top: #76A88F;
+  padding: 24rpx;
   border-radius: 22rpx;
   background: #FFFFFF;
   border: 1rpx solid rgba(46, 125, 50, 0.12);
   box-shadow: 0 8rpx 24rpx rgba(38, 50, 56, 0.05);
+}
+
+.nutrition-tone-calories {
+  --nutrition-accent: #C96B2C;
+  --nutrition-accent-top: #E6A269;
+}
+
+.nutrition-tone-protein {
+  --nutrition-accent: #786595;
+  --nutrition-accent-top: #A393BC;
+}
+
+.nutrition-tone-carbs {
+  --nutrition-accent: #B38732;
+  --nutrition-accent-top: #D7B86A;
+}
+
+.nutrition-tone-fat {
+  --nutrition-accent: #4D8668;
+  --nutrition-accent-top: #82B497;
+}
+
+.nutrition-tone-meals {
+  --nutrition-accent: #527180;
+  --nutrition-accent-top: #88A2AD;
+}
+
+.nutrition-trend-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.nutrition-trend-title-group {
+  min-width: 0;
+  flex: 1;
 }
 
 .nutrition-trend-label,
@@ -847,7 +886,7 @@
 }
 
 .nutrition-trend-value {
-  color: #2E7D32;
+  color: var(--nutrition-accent);
   font-size: 38rpx;
   font-weight: 800;
 }
@@ -858,24 +897,146 @@
   font-size: 20rpx;
 }
 
+.nutrition-trend-average {
+  flex-shrink: 0;
+  min-width: 150rpx;
+  text-align: right;
+}
+
+.nutrition-average-label {
+  display: block;
+  margin-bottom: 2rpx;
+  color: #89958F;
+  font-size: 18rpx;
+}
+
+.nutrition-mini-chart {
+  position: relative;
+  height: 260rpx;
+  margin-top: 20rpx;
+  padding: 0 6rpx;
+  overflow: hidden;
+  border: 1rpx solid #E7EEEA;
+  border-radius: 18rpx;
+  background: #F8FAF9;
+}
+
+.nutrition-chart-gridline,
+.nutrition-average-line {
+  position: absolute;
+  right: 10rpx;
+  left: 10rpx;
+  height: 0;
+  pointer-events: none;
+}
+
+.nutrition-chart-gridline {
+  border-top: 1rpx solid rgba(58, 91, 76, 0.08);
+}
+
+.nutrition-chart-gridline.gridline-top {
+  top: 22rpx;
+}
+
+.nutrition-chart-gridline.gridline-middle {
+  top: 96rpx;
+}
+
+.nutrition-chart-gridline.gridline-base {
+  top: 168rpx;
+}
+
+.nutrition-average-line {
+  z-index: 1;
+  border-top: 2rpx dashed var(--nutrition-accent);
+  opacity: 0.34;
+}
+
 .nutrition-series {
   display: flex;
-  gap: 6rpx;
-  margin-top: 14rpx;
+  position: absolute;
+  inset: 12rpx 6rpx 8rpx;
+  z-index: 2;
+  align-items: flex-end;
+  gap: 4rpx;
 }
 
 .nutrition-series-item {
   flex: 1;
   min-width: 0;
   text-align: center;
-  color: #90A4AE;
-  font-size: 16rpx;
+  color: #7C8B84;
+  font-size: 17rpx;
 }
 
-.nutrition-series-item text {
+.nutrition-series-item > text {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.nutrition-point-value {
+  height: 28rpx;
+  color: #53665D;
+  font-size: 17rpx;
+  font-weight: 650;
+  line-height: 28rpx;
+  white-space: nowrap;
+}
+
+.nutrition-bar-column {
+  display: flex;
+  position: relative;
+  align-items: flex-end;
+  justify-content: center;
+  width: 46rpx;
+  height: 146rpx;
+  margin: 0 auto;
+}
+
+.nutrition-bar-fill {
+  width: 34rpx;
+  min-height: 4rpx;
+  border-radius: 8rpx 8rpx 3rpx 3rpx;
+  background: linear-gradient(180deg, var(--nutrition-accent-top) 0%, var(--nutrition-accent) 100%);
+  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.30);
+  transform-origin: 50% 100%;
+  animation: nutrition-bar-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nutrition-empty-mark {
+  margin-bottom: 8rpx;
+  color: #A7B1AC;
+  font-size: 18rpx;
+}
+
+.nutrition-point-day {
+  margin-top: 7rpx;
+  color: #53665D;
+  font-weight: 600;
+}
+
+.nutrition-point-date {
+  margin-top: 1rpx;
+  color: #9AA6A0;
+  font-size: 15rpx;
+}
+
+.nutrition-series-item.is-empty .nutrition-point-value,
+.nutrition-series-item.is-empty .nutrition-point-day,
+.nutrition-series-item.is-empty .nutrition-point-date {
+  color: #9EAAA4;
+}
+
+@keyframes nutrition-bar-rise {
+  from {
+    opacity: 0.35;
+    transform: scaleY(0.08);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
 }
 
 /* 饮食趋势保持单列，其他运动、睡眠、活动与恢复趋势恢复连续展示。 */
@@ -1015,13 +1176,19 @@
 }
 
 .nutrition-trend-value {
-  color: #245E48;
+  color: var(--nutrition-accent);
   font-variant-numeric: tabular-nums;
 }
 
 .nutrition-series {
-  padding-top: 14rpx;
-  border-top: 1rpx solid #E7EEEA;
+  padding-top: 0;
+  border-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nutrition-bar-fill {
+    animation: none;
+  }
 }
 
 .empty {

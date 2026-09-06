@@ -8,8 +8,15 @@
     <view class="bg-circle circle-3"></view>
   </view>
 
+  <view class="auth-recovery nutrition-auth-recovery" wx:if="{{authError}}">
+    <view class="auth-recovery-icon">↻</view>
+    <text class="auth-recovery-title">饮食数据暂时无法连接</text>
+    <text class="auth-recovery-copy">{{authError}}</text>
+    <button class="auth-recovery-button" bindtap="retryAuthentication">重试</button>
+  </view>
+
   <!-- 加载状态 -->
-  <view hidden="{{!loading}}" class="loading-container">
+  <view hidden="{{!loading || authError}}" class="loading-container">
     <view class="loading-bowl">
       <view class="bowl-body"></view>
       <view class="steam steam-1"></view>
@@ -19,7 +26,11 @@
     <text class="loading-text">正在准备...</text>
   </view>
 
-  <view hidden="{{loading}}" class="content">
+  <view hidden="{{loading || authError}}" class="content">
+    <view wx:if="{{loadError}}" class="auth-recovery">
+      <text class="auth-recovery-copy">{{loadError}}</text>
+      <button class="auth-recovery-button" bindtap="retryLoadData">重试加载</button>
+    </view>
     <!-- 页面标题区 -->
     <view class="page-header">
       <view class="header-main">

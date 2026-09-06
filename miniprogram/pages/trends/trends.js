@@ -1,10 +1,12 @@
 // pages/trends/trends.js
 const { getOuraSleepGrouped, getOuraReadiness, getOuraActivity, getOuraStress, getOuraSpo2, getTrainingTrends, getOuraHeartrateDetails, getDashboard, getTrendsOverview, getNutritionWeekly } = require('../../utils/request.js')
 const { formatLocalDate, getRecentLocalDates } = require('../../utils/date.js')
+const { showPageAuthFailure, loadPageAfterAuthentication, retryPageAuthentication } = require('../../utils/page-auth.js')
 
 Page({
   data: {
     loading: true,
+    authError: '',
     dateRange: '',
     trendAnchors: [
       { key: 'nutrition', label: '饮食', icon: '🥗' },
@@ -109,10 +111,7 @@ Page({
     this._hasShownOnce = false
     this.setDateRange()
 
-    const app = getApp()
-    if (app.globalData.isLoggedIn) {
-      this.loadData({ silent: true })
-    }
+    loadPageAfterAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   onUnload() {
@@ -136,7 +135,16 @@ Page({
 
   onLoginSuccess() {
     console.log('趋势页面：收到登录成功通知')
+    if (this._isActive) this.setData({ authError: '' })
     this.loadData({ silent: true })
+  },
+
+  onAuthFailure(error) {
+    showPageAuthFailure(this, error)
+  },
+
+  retryAuthentication() {
+    return retryPageAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   onPullDownRefresh() {
@@ -279,50 +287,97 @@ Page({
   },
 
   normalizeNutritionSeries(values, field) {
-    if (!Array.isArray(values)) return []
     const dates = this.getLast7Days()
-    const offset = Math.max(0, dates.length - values.length)
-    return values.map((item, index) => {
+    if (!Array.isArray(values)) {
+      return dates.map(date => ({ date, value: null }))
+    }
+
+    const recentValues = values.slice(-dates.length)
+    const offset = Math.max(0, dates.length - recentValues.length)
+    const valueByDate = {}
+    recentValues.forEach((item, index) => {
       const isObject = item && typeof item === 'object'
       const rawValue = isObject ? (item.value ?? item[field]) : item
       const value = rawValue === null || rawValue === undefined ? null : Number(rawValue)
-      return {
-        date: isObject ? (item.date || item.day || dates[offset + index] || '') : (dates[offset + index] || ''),
-        value: Number.isFinite(value) ? value : null
-      }
+      const explicitDate = isObject ? (item.date || item.day || '') : ''
+      const date = explicitDate ? String(explicitDate).slice(0, 10) : dates[offset + index]
+      if (date) valueByDate[date] = Number.isFinite(value) ? value : null
     })
+
+    return dates.map(date => ({
+      date,
+      value: Object.prototype.hasOwnProperty.call(valueByDate, date) ? valueByDate[date] : null
+    }))
   },
 
   buildNutritionTrendCards(nutrition = {}) {
     nutrition = nutrition || {}
     const definitions = [
-      ['calories', '热量', 'kcal', 0],
-      ['protein_g', '蛋白质', 'g', 1],
-      ['carbs_g', '碳水', 'g', 1],
-      ['fat_g', '脂肪', 'g', 1],
-      ['meals_count', '记录餐数', '餐', 0]
+      { field: 'calories', label: '热量', unit: 'kcal', decimals: 0, tone: 'calories', referenceMax: 2000, scaleStep: 500 },
+      { field: 'protein_g', label: '蛋白质', unit: 'g', decimals: 1, tone: 'protein', referenceMax: 60, scaleStep: 20 },
+      { field: 'carbs_g', label: '碳水', unit: 'g', decimals: 1, tone: 'carbs', referenceMax: 250, scaleStep: 50 },
+      { field: 'fat_g', label: '脂肪', unit: 'g', decimals: 1, tone: 'fat', referenceMax: 65, scaleStep: 20 },
+      { field: 'meals_count', label: '记录餐数', unit: '餐', decimals: 0, tone: 'meals', referenceMax: 4, scaleStep: 1 }
     ]
-    return definitions.map(([field, label, unit, decimals]) => {
-      const series = this.normalizeNutritionSeries(nutrition[field], field)
-      const valid = series.filter(item => (
-        item.value !== null && (field !== 'meals_count' || item.value > 0)
-      ))
+    const mealSeries = this.normalizeNutritionSeries(nutrition.meals_count, 'meals_count')
+    const hasMealMarkers = mealSeries.some(item => item.value !== null)
+    const recordedDates = new Set(
+      mealSeries.filter(item => item.value > 0).map(item => item.date)
+    )
+    const cards = definitions.map(definition => {
+      const { field, label, unit, decimals, tone, referenceMax, scaleStep } = definition
+      const series = field === 'meals_count'
+        ? mealSeries
+        : this.normalizeNutritionSeries(nutrition[field], field)
+      const isRecordedPoint = item => {
+        if (item.value === null) return false
+        if (field === 'meals_count') return item.value > 0
+        return hasMealMarkers ? recordedDates.has(item.date) : item.value > 0
+      }
+      const valid = series.filter(isRecordedPoint)
       const average = valid.length
         ? valid.reduce((sum, item) => sum + item.value, 0) / valid.length
         : null
+      const maxValue = valid.length
+        ? Math.max(...valid.map(item => item.value), 0)
+        : 0
+      const scaleMax = maxValue > referenceMax
+        ? Math.ceil((maxValue * 1.08) / scaleStep) * scaleStep
+        : referenceMax
+      const averagePercent = average !== null && scaleMax > 0
+        ? Math.min(100, Math.round((average / scaleMax) * 100))
+        : 0
+      const averageLineBottom = Math.round(64 + averagePercent * 1.46)
       return {
         field,
         label,
         unit,
+        tone,
         recordedCount: valid.length,
         average: average === null ? '--' : average.toFixed(decimals),
-        values: series.map(item => ({
-          ...item,
-          display: item.value === null ? '--' : item.value.toFixed(decimals),
-          dayLabel: item.date ? item.date.slice(5) : '--'
-        }))
+        scaleMax,
+        scaleLabel: `统一刻度 0–${scaleMax}${unit}`,
+        averagePercent,
+        averageLineBottom,
+        hasAverage: average !== null,
+        ariaLabel: `${label}近7日趋势，统一刻度0到${scaleMax}${unit}，${valid.length}个记录日，日均${average === null ? '暂无' : average.toFixed(decimals)}${unit}`,
+        values: series.map(item => {
+          const isEmpty = !isRecordedPoint(item)
+          const percent = isEmpty || scaleMax <= 0 || item.value <= 0
+            ? 0
+            : Math.min(100, Math.round((item.value / scaleMax) * 100))
+          return {
+            ...item,
+            isEmpty,
+            percent,
+            display: isEmpty ? '--' : item.value.toFixed(decimals),
+            dayLabel: item.date ? `周${this.getDayLabel(item.date)}` : '--',
+            dateLabel: item.date ? item.date.slice(5).replace('-', '/') : '--'
+          }
+        })
       }
     })
+    return cards.some(card => card.recordedCount > 0) ? cards : []
   },
 
   // 转换分组睡眠数据格式（支持主睡眠+午睡叠加）

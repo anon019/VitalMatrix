@@ -6,15 +6,22 @@
     <text class="page-subtitle">个人数据与训练配置</text>
   </view>
 
+  <view class="auth-recovery" wx:if="{{authError}}">
+    <view class="auth-recovery-icon">↻</view>
+    <text class="auth-recovery-title">设置数据暂时无法连接</text>
+    <text class="auth-recovery-copy">{{authError}}</text>
+    <button class="auth-recovery-button" bindtap="retryAuthentication">重试</button>
+  </view>
+
   <!-- 加载状态 -->
-  <view class="loading" wx:if="{{loading}}">
+  <view class="loading" wx:if="{{loading && !authError}}">
     <view class="settings-skeleton skeleton-heading"></view>
     <view class="settings-skeleton skeleton-card"></view>
     <view class="settings-skeleton skeleton-card short"></view>
   </view>
 
   <!-- 内容区域 -->
-  <view wx:else>
+  <view wx:elif="{{!authError}}">
     <!-- 后端用户资料 -->
     <view class="card profile-card">
       <view class="profile-heading">
@@ -285,9 +292,5 @@
       </view>
     </view>
 
-    <!-- 退出登录按钮 -->
-    <view class="logout-btn" bindtap="logout" hover-class="settings-action-pressed" role="button">
-      <text>退出登录</text>
-    </view>
   </view>
 </view>

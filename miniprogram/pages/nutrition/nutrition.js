@@ -8,10 +8,14 @@ const {
   clearCache
 } = require('../../utils/request.js')
 const { formatLocalDate } = require('../../utils/date.js')
+const { showPageAuthFailure, loadPageAfterAuthentication, retryPageAuthentication } = require('../../utils/page-auth.js')
 
 Page({
   data: {
     loading: true,
+    authError: '',
+    loadError: '',
+    loadingMore: false,
     submittingPhoto: false,
     uploadStatusText: '正在上传并识别食物…',
     selectedMealType: '', // 将根据时间自动选择
@@ -59,6 +63,7 @@ Page({
    * 生命周期函数--监听页面显示
    */
   onShow() {
+    this.initDateDisplay()
     if (!this._hasShownOnce) {
       this._hasShownOnce = true
       return
@@ -114,7 +119,19 @@ Page({
     // 根据当前时间自动选择餐次
     this.autoSelectMealType()
 
-    await this.loadData({ silent: true })
+    await loadPageAfterAuthentication(this, () => this.loadData({ silent: true }))
+  },
+
+  onAuthFailure(error) {
+    showPageAuthFailure(this, error)
+  },
+
+  retryLoadData() {
+    return this.loadData({ silent: true })
+  },
+
+  retryAuthentication() {
+    return retryPageAuthentication(this, () => this.loadData({ silent: true }))
   },
 
   /**
@@ -159,15 +176,21 @@ Page({
     }
 
     try {
-      await Promise.all([
+      const results = await Promise.allSettled([
         this.loadTodaySummary(),
         this.loadRecentMeals(),
         this.loadWeeklyCoverage()
       ])
+      if (!this._isActive) return
+      const failed = results.find(result => result.status === 'rejected')
+      if (failed) throw failed.reason
+      this.setData({ loadError: '' })
       this._hasLoadedOnce = true
       wx.setStorageSync('nutritionLastRefresh', Date.now())
     } catch (err) {
       console.error('Load data error:', err)
+      if (!this._isActive) return
+      this.setData({ loadError: '部分饮食数据加载失败，请重试' })
       if (!silent || !this._hasLoadedOnce) {
         wx.showToast({
           title: '加载失败',
@@ -207,13 +230,10 @@ Page({
         return
       }
 
-      console.log('[Summary] API response:', summary)
-      console.log('[Summary] meal_count field:', summary.meal_count)
-
       const totalCalories = Math.round(summary.total_calories || 0)
-      const totalProtein = summary.total_protein || 0
-      const totalCarbs = summary.total_carbs || 0
-      const totalFat = summary.total_fat || 0
+      const totalProtein = Number(summary.total_protein) || 0
+      const totalCarbs = Number(summary.total_carbs) || 0
+      const totalFat = Number(summary.total_fat) || 0
 
       // 计算营养进度（基于推荐摄入量）
       // 热量目标：2000 kcal，蛋白质：60g，碳水：250g，脂肪：65g
@@ -255,21 +275,9 @@ Page({
         summaryLabel: summary.flags?.partial_day ? '已记录摄入 · 今日仍可继续补充' : '已记录摄入 · 日参考进度'
       })
 
-      console.log('[Summary] Final todaySummary:', this.data.todaySummary)
     } catch (err) {
       console.warn('Load today summary error:', err)
-      // 今日没有数据时不显示汇总卡片
-      if (this._isActive) this.setData({
-        todaySummary: null,
-        calorieProgress: 0,
-        proteinProgress: 0,
-        carbsProgress: 0,
-        fatProgress: 0,
-        calorieProgressText: '0%',
-        proteinProgressText: '0%',
-        carbsProgressText: '0%',
-        fatProgressText: '0%'
-      })
+      throw err
     }
   },
 
@@ -283,6 +291,7 @@ Page({
       })
     } catch (error) {
       console.warn('Load nutrition coverage error:', error)
+      throw error
     }
   },
 
@@ -290,6 +299,7 @@ Page({
    * 加载最近餐食记录
    */
   async loadRecentMeals(forceRefresh = false) {
+    const revision = this._mealListRevision = (this._mealListRevision || 0) + 1
     try {
       const result = await getMeals({
         page: 1,
@@ -299,7 +309,7 @@ Page({
       const rawMeals = Array.isArray(result?.meals) ? result.meals : []
       const meals = rawMeals.map(meal => this.formatMealItem(meal))
 
-      if (!this._isActive) return
+      if (!this._isActive || revision !== this._mealListRevision) return
       this.setData({
         meals,
         currentPage: 1,
@@ -308,15 +318,27 @@ Page({
       return { rawMeals, meals }
     } catch (err) {
       console.error('Load recent meals error:', err)
-      if (forceRefresh) throw err
-      if (this._isActive) this.setData({ meals: [] })
+      throw err
     }
   },
 
   /**
    * 加载更多餐食记录
    */
-  async loadMoreMeals() {
+  loadMoreMeals() {
+    if (this._moreMealsPromise) return this._moreMealsPromise
+    if (!this._isActive || this._loadPromise || !this.data.hasMore) return Promise.resolve()
+    const promise = this.performLoadMoreMeals().finally(() => {
+      if (this._moreMealsPromise === promise) this._moreMealsPromise = null
+      if (this._isActive) this.setData({ loadingMore: false })
+    })
+    this._moreMealsPromise = promise
+    return promise
+  },
+
+  async performLoadMoreMeals() {
+    const revision = this._mealListRevision
+    this.setData({ loadingMore: true })
     const nextPage = this.data.currentPage + 1
 
     try {
@@ -328,12 +350,23 @@ Page({
       const rawMeals = Array.isArray(result?.meals) ? result.meals : []
       const moreMeals = rawMeals.map(meal => this.formatMealItem(meal))
 
-      if (!this._isActive) return
-      this.setData({
-        meals: [...this.data.meals, ...moreMeals],
+      if (!this._isActive || revision !== this._mealListRevision) return
+      const existingIds = new Set(this.data.meals.map(meal => String(meal.id)))
+      const uniqueMeals = moreMeals.filter(meal => {
+        const id = String(meal.id)
+        if (existingIds.has(id)) return false
+        existingIds.add(id)
+        return true
+      })
+      const patch = {
         currentPage: nextPage,
         hasMore: Number(result?.total) > nextPage * this.data.pageSize
+      }
+      uniqueMeals.forEach((meal, index) => {
+        patch[`meals[${this.data.meals.length + index}]`] = meal
       })
+      this.setData(patch)
+
     } catch (err) {
       console.error('Load more meals error:', err)
       if (!this._isActive) return
@@ -389,30 +422,25 @@ Page({
       return ''
     }
 
-    const nutritionAnalysis = meal.nutrition_analysis
-      || meal.ai_analysis?.nutrition_analysis
+    const nutritionAnalysis = meal.ai_analysis?.nutrition_analysis
+      || meal.nutrition_analysis
       || meal.analysis?.nutrition_analysis
       || {}
-    const overallRating = nutritionAnalysis.overall_rating
-      || meal.ai_analysis?.nutrition_analysis?.overall_rating
-      || meal.analysis?.nutrition_analysis?.overall_rating
-      || ''
+    const overallRating = nutritionAnalysis.overall_rating || ''
     const ratingColorClass = getRatingColorClass(overallRating)
 
     const mealId = meal.id || meal.meal_id
     const imageUnavailable = Boolean(this._unavailableMealImages?.has(String(mealId)))
 
     return {
-      ...meal,
       id: mealId,
       meal_type_label: mealTypeMap[meal.meal_type] || meal.meal_type,
       meal_time_formatted: timeFormatted,
       total_calories: Math.round(meal.total_calories || 0),
-      total_protein: (meal.total_protein || 0).toFixed(1),
-      total_carbs: (meal.total_carbs || 0).toFixed(1),
-      total_fat: (meal.total_fat || 0).toFixed(1),
+      total_protein: (Number(meal.total_protein) || 0).toFixed(1),
+      total_carbs: (Number(meal.total_carbs) || 0).toFixed(1),
+      total_fat: (Number(meal.total_fat) || 0).toFixed(1),
       thumbnail_path: imageUnavailable ? '' : resolveApiUrl(meal.thumbnail_path),
-      photo_path: resolveApiUrl(meal.photo_path),
       image_unavailable: imageUnavailable,
       overall_rating: overallRating,
       overall_score: nutritionAnalysis.overall_score,
@@ -485,7 +513,7 @@ Page({
       camera: 'back',
       sizeType: ['compressed'], // 使用压缩图
       success(res) {
-        console.log('Choose image success:', res)
+        console.log('Choose image success')
         const tempFiles = Array.isArray(res.tempFiles) ? res.tempFiles : []
         const tempFile = tempFiles[0]
         if (!tempFile?.tempFilePath) {
@@ -546,7 +574,7 @@ Page({
     wx.getImageInfo({
       src: filePath,
       success(imgInfo) {
-        console.log('Image info:', imgInfo)
+        console.log(`Image info: ${imgInfo.width || 0}x${imgInfo.height || 0}`)
 
         // 使用 wx.compressImage 压缩并转换格式
         wx.compressImage({
@@ -555,7 +583,7 @@ Page({
           compressedWidth: imgInfo.width > 1920 ? 1920 : undefined, // 限制最大宽度
           compressedHeight: imgInfo.height > 1920 ? 1920 : undefined,
           success(res) {
-            console.log('Compress success:', res.tempFilePath)
+            console.log('Compress success')
 
             wx.getFileInfo({
               filePath: res.tempFilePath,
@@ -622,7 +650,7 @@ Page({
     })
       .then(result => {
         if (!this._isActive) return result
-        console.log('Upload meal success:', result)
+        console.log('Upload meal success')
 
         this.setData({ submittingPhoto: false })
 
@@ -704,6 +732,10 @@ Page({
     const app = getApp()
     if (!app.globalData.pendingMealRecords) app.globalData.pendingMealRecords = {}
     app.globalData.pendingMealRecords[String(mealId)] = meal
+    this._mealListRevision = (this._mealListRevision || 0) + 1
+    this.setData({
+      meals: [this.formatMealItem(meal), ...this.data.meals.filter(item => String(item.id) !== String(mealId))]
+    })
 
     wx.navigateTo({
       url: `/pages/nutrition-detail/nutrition-detail?mealId=${mealId}`
@@ -744,8 +776,6 @@ Page({
    */
   viewMealDetail(e) {
     const { mealId } = e.currentTarget.dataset
-    console.log('View meal detail:', mealId)
-
     wx.navigateTo({
       url: `/pages/nutrition-detail/nutrition-detail?mealId=${mealId}`
     })
