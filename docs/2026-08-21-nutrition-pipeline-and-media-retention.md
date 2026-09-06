@@ -36,7 +36,7 @@
 
 ## 4. 推荐数据合同
 
-`gemini_analysis.recommendations.next_meal_recipes` 固定包含未来三顿正餐。每顿包含：
+`ai_analysis.recommendations.next_meal_recipes` 固定包含未来三顿正餐。每顿包含：
 
 - `meal_name`、`timing`、`total_calories`
 - `flavor_profile`、`experience_note`、`why_this_menu`

@@ -867,3 +867,8 @@ logging.basicConfig(
 - [ ] 小程序发布
 
 总计：**12-16天**完成MVP
+# 当前 AI 架构说明（2026-09-06）
+
+当前后台的 AI 运行时已统一为 Codex CLI：图片分析、每日建议和对话使用
+`gpt-5.6-luna` + `medium`，海报底图使用 `gpt-image-2`。数据库餐食分析字段为
+`ai_analysis`。本文后续较早的多 Provider 设计片段仅作历史设计记录，不代表当前运行配置。

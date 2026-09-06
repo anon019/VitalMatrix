@@ -6,7 +6,7 @@
 
 - Polar 训练数据同步与训练指标汇总
 - Oura 睡眠、准备度、活动、压力等恢复数据同步
-- Gemini 3.7 驱动的 AI 每日建议、风险标记与趋势分析
+- Codex CLI / GPT-5.6 Luna 驱动的 AI 每日建议、风险标记与趋势分析
 - 营养照片上传、分阶段识别、未来三餐建议与每日营养汇总
 - 按需生成 3:4 分享海报；关键营养数字和中文内容由后端确定性排版
 - Web Dashboard 与微信小程序双端展示
@@ -50,7 +50,7 @@ docs/           架构与集成文档
 ## 技术栈
 
 - Backend: FastAPI, SQLAlchemy, PostgreSQL, Redis, APScheduler
-- AI: Vertex AI Gemini / DeepSeek / Qwen（按配置启用）
+- AI: Codex CLI，GPT-5.6 Luna 识图 Medium / 文本 Low，GPT Image 2 海报
 - Web: React, TypeScript, Vite
 - Mini Program: WeChat Mini Program
 - Deploy: Linux, Nginx, systemd / supervisor
@@ -84,14 +84,12 @@ cp .env.example .env
 - Redis
 - Polar OAuth
 - Oura OAuth
-- AI Provider Key
+- CODEX_CLI_PATH、CODEX_MODEL 和服务账号的 Codex CLI 登录态
 - `MCP_API_KEY`
 
-默认 Gemini 链路使用 Vertex AI Application Default Credentials（ADC）。部署时还需要配置：
+使用 Python 3.11 或更高版本。服务运行账号必须安装并登录 Codex CLI；图片生成还依赖该账号可用的图像生成技能。
 
-- `GOOGLE_CLOUD_PROJECT`
-- `GOOGLE_CLOUD_LOCATION`
-- 具备 Vertex AI 调用权限的运行身份
+本次升级需要运行 Alembic 迁移，并将客户端的 gemini_analysis 替换为 ai_analysis。默认调用预算包含并发排队：核心识图总计 130 秒、文本 130 秒、海报 110 秒。反向代理与客户端超时应大于相应预算并留出传输余量。
 
 可参考模板文件：
 

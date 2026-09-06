@@ -11,13 +11,13 @@ const getApiBaseUrl = () => {
 
   if (envVersion === 'develop') {
     // 开发版：使用远程服务器（本地调试时也可改为 http://localhost:8000）
-    return 'https://health.jackverse.cn'
+    return 'https://your-domain.example.com'
   } else if (envVersion === 'trial') {
     // 体验版：使用测试服务器
-    return 'https://health.jackverse.cn'
+    return 'https://your-domain.example.com'
   } else {
     // 正式版：使用生产服务器
-    return 'https://health.jackverse.cn'
+    return 'https://your-domain.example.com'
   }
 }
 

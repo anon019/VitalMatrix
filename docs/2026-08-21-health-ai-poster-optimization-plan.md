@@ -1,32 +1,31 @@
 # Health 饮食、AI 建议与分享海报优化方案
 
-日期：2026-08-21
+日期：2026-08-21（2026-09-06 更新 AI 接入）
 
 ## 1. 结论与技术选型
 
 ### 模型
 
-- 饮食图片识别：Vertex AI `gemini-3.7-flash`
-- 每日综合健康建议与 AI 对话：Vertex AI `gemini-3.7-flash`
-- 可选 AI 海报视觉素材：Vertex AI `gemini-3.1-flash-image`（Nano Banana 2）
-- 高并发低成本的可选视觉素材：`gemini-3.1-flash-lite-image`（Nano Banana 2 Lite）
+- 饮食图片识别：Codex CLI `gpt-5.6-luna`，Medium
+- 每日综合健康建议与 AI 对话：Codex CLI `gpt-5.6-luna`，Low
+- 按需 AI 海报视觉素材：Codex CLI 调用 `gpt-image-2`
 
-`gemini-3.7-flash` 已于 2026-08-13 GA，支持图片输入、结构化输出和 Google Search；当前项目的 `global` Vertex 端点已经完成真实调用验证。官方模型页：
+当前后台不再持有或直连模型 API Key，统一复用服务器 Codex CLI 登录态。图片输入、结构化输出、建议生成与 GPT Image 文件落盘均已完成真实调用验证。官方模型页：
 
-- <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-7-flash>
-- <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-1-flash-image>
+- <https://developers.openai.com/api/docs/models/gpt-5.6-luna>
+- <https://developers.openai.com/api/docs/models/gpt-image-2>
 
 ### 海报
 
-按用户确认后的方向，采用“结构化数据模板 → Nano Banana 2 生成无文字底图 → 后端确定性排版”的按需方案：
+按用户确认后的方向，采用“结构化数据模板 → GPT Image 2 生成无文字底图 → 后端确定性排版”的按需方案：
 
-1. 只有用户点击“生成海报”时才调用 `gemini-3.1-flash-image`，上传和识图完成后不自动生成。
+1. 只有用户点击“生成海报”时才通过 Codex CLI 调用 `gpt-image-2`，上传和识图完成后不自动生成。
 2. 后端从餐食记录提取固定字段和完整首句；图片模型只生成本餐与未来三餐的视觉底图，全部关键文字由后端排版。
 3. 固定输出 3:4、1K 单张海报，不再生成无限长 Canvas；以手机分享清晰度换取更快的首次生成与加载，环境变量仍可切回 2K。
 4. 同一餐、同一内容和同一设计版本复用缓存；只有内容变化或 `force=true` 才重新计费。
 5. API 同时返回 `verified_metrics`；V9 放大未来三餐区域，后端在本餐主区域确定性绘制四项营养、完整一句话结论以及三餐文字，不再生成底部重复营养页脚。
 
-需要保留一个产品事实：Nano Banana 2 只负责视觉底图，模型偶发生成伪文字时应通过提示词和人工评测继续监控；用户可见的标题、营养数字、结论和餐单文字均由后端确定性绘制。
+需要保留一个产品事实：GPT Image 2 只负责视觉底图，模型偶发生成伪文字时应通过提示词和人工评测继续监控；用户可见的标题、营养数字、结论和餐单文字均由后端确定性绘制。
 
 ## 2. 实施状态与已修复问题
 
@@ -34,13 +33,14 @@
 
 本次检查前为旧 Preview；当前生产实际配置与生成记录为：
 
-- `AI_PROVIDER=gemini`
-- `GEMINI_BACKEND=vertexai`
-- `GEMINI_MODEL=gemini-3.7-flash`
-- `GEMINI_VISION_MODEL=gemini-3.7-flash`
-- 今日建议：`model=gemini-3.7-flash`、`prompt_version=recommendation-v2.1`
+- `AI_PROVIDER=codex`
+- `CODEX_MODEL=gpt-5.6-luna`
+- `CODEX_VISION_REASONING_EFFORT=medium`
+- `CODEX_TEXT_REASONING_EFFORT=low`
+- `CODEX_IMAGE_MODEL=gpt-image-2`
+- 今日建议：`model=gpt-5.6-luna`、`prompt_version=recommendation-v2.2`
 
-两个主链路均使用 Vertex AI `global` 端点；Gemini 3.x 不再发送旧式 `thinking_budget` 和采样参数。
+全部 AI 主链路均通过临时隔离工作目录执行 Codex CLI；文本与识图任务禁用技能和文件写入，图片任务只允许写入单次临时目录。
 
 ### 饮食图片分析
 
@@ -48,7 +48,7 @@
 
 - 提示词要求“识别准确率 > 90%”和“重量误差 < 20%”，但单张照片无法保证，容易制造虚假精确。
 - 每次识图默认联网搜索两餐菜谱，延迟和失败面明显增加，且菜谱内容盖过本餐记录本身。
-- JSON 结构在提示词中重复且体积大；没有用 Vertex 的结构化输出约束。
+- JSON 结构在提示词中重复且体积大；现已使用 Codex CLI 的结构化输出约束。
 - 缺少食物级置信度、热量范围、估算依据和用户确认问题。
 - 食谱字段存在契约漂移：后端新结构使用 `next_meal_recipes`，历史小程序仍读取 `next_meals`/`next_meal_menu`。
 - 用户画像改为读取真实资料；当前单用户资料为男性、1992 年 8 月出生、82 kg，不再在提示词里硬编码一个通用男性。
@@ -88,7 +88,7 @@ Web 已新增完整饮食页和 AI 建议页，并把今日页调整为饮食优
 建议从“一张图直接生成一篇长报告”改为四步闭环：
 
 1. 拍照：提供俯拍、光线、参照物和隐藏食材提示，客户端压缩并显示上传/分析进度。
-2. 识别：Gemini 3.7 Flash 输出食物、份量、置信度、视觉依据和不确定项。
+2. 识别：GPT-5.6 Luna Medium 输出食物、份量、置信度、视觉依据和不确定项。
 3. 确认：用户可一键修改食物名称、份量、烹饪方式和漏识别食材；修改结果作为后续评估数据。
 4. 行动：展示本餐一个结论、两个优点/短板，以及按时间顺序覆盖未来 24 小时的三顿正餐。详细做法折叠为次级内容。
 
@@ -127,7 +127,7 @@ Web 已新增完整饮食页和 AI 建议页，并把今日页调整为饮食优
 - 提供 2-3 个经过设计的模板，不让用户面对大量风格配置。
 - 内容超长时按字段限长和优先级裁剪，不按 Canvas 高度无限扩展。
 
-Nano Banana 接入方式：
+GPT Image 接入方式：
 
 - 上传餐食、打开详情、点击分享均不调用图片模型。
 - 点击“生成海报”后调用 `POST /api/v1/nutrition/meals/{meal_id}/poster`。
@@ -221,7 +221,7 @@ Nano Banana 接入方式：
 
 ### P0：稳定和纠偏（已完成）
 
-- 升级两个 Vertex 主链路到 Gemini 3.7 Flash。
+- 将全部 AI 主链路统一为 Codex CLI 与 GPT-5.6 Luna Medium。
 - 启用饮食 JSON Schema，加入置信度、热量范围和确认问题。
 - 默认关闭识图时的菜谱联网搜索。
 - 修正性别硬编码、模型默认值和旧思考参数。
@@ -233,7 +233,7 @@ Nano Banana 接入方式：
 
 - 上线食物/份量确认编辑。
 - 重做饮食详情信息层级和建议卡。
-- 完成 3:4 Nano Banana 2 按需海报、内容缓存、并发去重、每日额度和超时；V9 默认 1K 渐进式 JPEG，由后端确定性排版全部关键文字并取消重复营养页脚。
+- 完成 3:4 GPT Image 2 按需海报、内容缓存、并发去重、每日额度和超时；V9 默认 1K 渐进式 JPEG，由后端确定性排版全部关键文字并取消重复营养页脚。
 - 建立 30-50 张真实餐食的人工校正评测集。
 - 记录模型、延迟、token、置信度、用户修正率和失败原因。
 
