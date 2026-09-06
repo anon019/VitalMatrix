@@ -390,11 +390,11 @@ Page({
     }
 
     const nutritionAnalysis = meal.nutrition_analysis
-      || meal.gemini_analysis?.nutrition_analysis
+      || meal.ai_analysis?.nutrition_analysis
       || meal.analysis?.nutrition_analysis
       || {}
     const overallRating = nutritionAnalysis.overall_rating
-      || meal.gemini_analysis?.nutrition_analysis?.overall_rating
+      || meal.ai_analysis?.nutrition_analysis?.overall_rating
       || meal.analysis?.nutrition_analysis?.overall_rating
       || ''
     const ratingColorClass = getRatingColorClass(overallRating)

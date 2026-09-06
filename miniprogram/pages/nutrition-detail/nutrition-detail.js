@@ -140,6 +140,7 @@ Page({
     try {
       const meal = await getMealDetail(this.data.mealId, force)
       this.applyMealData(meal)
+      return true
     } catch (error) {
       console.error('加载餐食详情失败:', error)
       if (!this._isActive) return
@@ -149,13 +150,14 @@ Page({
           loadError: error.message || '网络开了小差，请稍后重试'
         })
       }
+      return false
     }
   },
 
   applyMealData(meal = {}) {
     if (!this._isActive) return
 
-    const rawAnalysis = meal.gemini_analysis || meal.analysis || {}
+    const rawAnalysis = meal.ai_analysis || meal.analysis || {}
     const nutritionAnalysis = meal.nutrition_analysis || rawAnalysis.nutrition_analysis || null
     const nutritionSummary = rawAnalysis.nutrition_summary || {}
     const quality = meal.analysis_quality || rawAnalysis.analysis_quality || {}
@@ -326,6 +328,14 @@ Page({
       const status = await pollPromise
       if (!this._isActive || !this._isVisible) return
       const recommendationStatus = String(status?.recommendation_status || 'pending').toLowerCase()
+      if (recommendationStatus === 'completed') {
+        // Only publish completion after the full analysis has been refreshed.
+        if (this._detailPromise) await this._detailPromise
+        const loaded = await this.loadMealDetail({ force: true, silent: true })
+        if (loaded) return
+        if (this._isActive && this._isVisible) this.scheduleRecommendationPoll()
+        return
+      }
       this.setData({
         analysisStatus: status?.analysis_status || this.data.analysisStatus,
         recommendationStatus,
@@ -333,12 +343,6 @@ Page({
         analysisError: status?.analysis_error || ''
       })
 
-      if (recommendationStatus === 'completed') {
-        this.clearRecommendationPolling()
-        if (this._detailPromise) await this._detailPromise
-        await this.loadMealDetail({ force: true, silent: true })
-        return
-      }
       if (recommendationStatus === 'failed') {
         this.clearRecommendationPolling()
         return

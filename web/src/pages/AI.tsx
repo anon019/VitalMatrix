@@ -84,7 +84,7 @@ export default function AI() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-[12px] font-semibold tracking-[0.16em] text-[#5e5ce6]">CONTEXT-AWARE COACH</p><h2 className="mt-1 text-[28px] font-semibold tracking-tight">AI 健康建议</h2><p className="mt-1 text-[14px] text-[#86868b]">优先级：饮食 → 睡眠与恢复 → 活动与训练</p></div>
-        <button onClick={() => void regenerate()} disabled={generating} className="rounded-full bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-50">{generating ? 'Gemini 正在生成…' : recommendation ? '重新生成今日建议' : '生成今日建议'}</button>
+        <button onClick={() => void regenerate()} disabled={generating} className="rounded-full bg-[#1d1d1f] px-4 py-2.5 text-[13px] font-medium text-white disabled:opacity-50">{generating ? 'Codex 正在生成…' : recommendation ? '重新生成今日建议' : '生成今日建议'}</button>
       </div>
 
       {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-[13px] text-red-700">{error}</div>}
@@ -104,7 +104,7 @@ export default function AI() {
         </>
       ) : <div className="card py-16 text-center"><p className="text-[14px] text-[#666]">今天还没有 AI 建议。</p><p className="mt-1 text-[12px] text-[#999]">先记录饮食和睡眠，再点击生成会更准确。</p></div>}
 
-      <section className="card p-5"><h3 className="text-[16px] font-semibold">追问 Gemini</h3><p className="mt-1 text-[12px] text-[#86868b]">对话会自动带入可信用户画像；客户端补充上下文不能覆盖个人资料。</p><form onSubmit={ask} className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={question} maxLength={4000} onChange={(e) => setQuestion(e.target.value)} placeholder="例如：基于我最近几天吃过的菜，今晚怎么搭配？" className="min-w-0 flex-1 rounded-xl border border-[#d2d2d7] px-4 py-3 text-[14px] outline-none focus:border-[#5e5ce6]" /><button disabled={chatting || !question.trim()} className="rounded-xl bg-[#5e5ce6] px-5 py-3 text-[13px] font-medium text-white disabled:opacity-40">{chatting ? '思考中…' : '发送'}</button></form>{chatReply && <div className="mt-4 whitespace-pre-wrap rounded-2xl bg-[#f6f6fb] p-4 text-[14px] leading-6 text-[#3a3a3c]">{chatReply}</div>}</section>
+      <section className="card p-5"><h3 className="text-[16px] font-semibold">追问 Codex</h3><p className="mt-1 text-[12px] text-[#86868b]">对话会自动带入可信用户画像；客户端补充上下文不能覆盖个人资料。</p><form onSubmit={ask} className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={question} maxLength={4000} onChange={(e) => setQuestion(e.target.value)} placeholder="例如：基于我最近几天吃过的菜，今晚怎么搭配？" className="min-w-0 flex-1 rounded-xl border border-[#d2d2d7] px-4 py-3 text-[14px] outline-none focus:border-[#5e5ce6]" /><button disabled={chatting || !question.trim()} className="rounded-xl bg-[#5e5ce6] px-5 py-3 text-[13px] font-medium text-white disabled:opacity-40">{chatting ? '思考中…' : '发送'}</button></form>{chatReply && <div className="mt-4 whitespace-pre-wrap rounded-2xl bg-[#f6f6fb] p-4 text-[14px] leading-6 text-[#3a3a3c]">{chatReply}</div>}</section>
     </div>
   )
 }

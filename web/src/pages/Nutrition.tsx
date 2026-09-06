@@ -50,7 +50,7 @@ function MealImage({ src, alt }: { src: string | null; alt: string }) {
 }
 
 function AnalysisDetails({ meal }: { meal: MealRecord }) {
-  const analysis = meal.gemini_analysis
+  const analysis = meal.ai_analysis
   const rating = analysis?.nutrition_analysis
   const quality = analysis?.analysis_quality
   const insights = analysis?.health_insights
@@ -256,6 +256,8 @@ export default function Nutrition() {
         const freshMeal = freshMeals.get(meal.id)
         if (freshMeal) return freshMeal
         const status = statuses.get(meal.id)
+        // Keep polling until the completed payload has actually been fetched.
+        if (status?.recommendation_status === 'completed') return meal
         return status ? {
           ...meal,
           analysis_status: status.analysis_status,
@@ -369,7 +371,7 @@ export default function Nutrition() {
         <form onSubmit={handleUpload} className="card p-5">
           <div className="flex items-center justify-between">
             <h3 className="text-[16px] font-semibold">记录一餐</h3>
-            <span className="text-[11px] text-[#86868b]">Gemini 3.7 Flash 识图</span>
+            <span className="text-[11px] text-[#86868b]">Codex · GPT-5.6 Luna 识图</span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="sm:row-span-2 flex min-h-44 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed border-[#c7c7cc] bg-[#fafafa]">
@@ -423,7 +425,7 @@ export default function Nutrition() {
                       {meal.analysis_is_legacy ? <button onClick={() => void reanalyze(meal.id)} disabled={reanalyzingId === meal.id} className="rounded-full border border-[#d2d2d7] px-3 py-2 text-[12px] text-[#555] disabled:opacity-50">{reanalyzingId === meal.id ? '正在重新分析…' : '用最新模型重做'}</button> : null}
                       {meal.recommendation_status === 'failed' ? <button onClick={() => void retryRecommendations(meal.id)} disabled={retryingRecommendationId === meal.id} className="rounded-full border border-sky-600 px-3 py-2 text-[12px] font-medium text-sky-700 disabled:opacity-50">{retryingRecommendationId === meal.id ? '正在启动…' : '重新生成建议'}</button> : null}
                       <button onClick={() => setExpandedMealId(expanded ? null : meal.id)} className="rounded-full bg-[#f2f2f4] px-3 py-2 text-[12px] text-[#454548]">{expanded ? '收起详情' : '查看分析'}</button>
-                      <button onClick={() => void generatePoster(meal.id)} disabled={posterLoadingId === meal.id} className="rounded-full border border-[#1f684b] px-3 py-2 text-[12px] font-medium text-[#1f684b] hover:bg-emerald-50 disabled:opacity-50">{posterLoadingId === meal.id ? 'Nano Banana 创作中…' : '生成分享海报'}</button>
+                      <button onClick={() => void generatePoster(meal.id)} disabled={posterLoadingId === meal.id} className="rounded-full border border-[#1f684b] px-3 py-2 text-[12px] font-medium text-[#1f684b] hover:bg-emerald-50 disabled:opacity-50">{posterLoadingId === meal.id ? 'GPT Image 创作中…' : '生成分享海报'}</button>
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"><Metric label="热量" value={meal.total_calories} unit="kcal" /><Metric label="蛋白质" value={meal.total_protein} unit="g" /><Metric label="碳水" value={meal.total_carbs} unit="g" /><Metric label="脂肪" value={meal.total_fat} unit="g" /></div>
@@ -442,7 +444,7 @@ export default function Nutrition() {
             <div className="mb-4 flex items-center justify-between"><div><h3 className="text-[17px] font-semibold">分享海报</h3><p className="text-[11px] text-[#86868b]">{poster.generated ? '本次新生成' : '已复用相同内容'} · {poster.layout_version}</p></div><button onClick={() => setPoster(null)} className="rounded-full bg-[#f0f0f2] px-3 py-2 text-[13px]">关闭</button></div>
             <img src={poster.poster_url} alt="饮食健康分享海报" className="mx-auto h-auto w-full max-w-md rounded-2xl bg-[#eee]" />
             <a href={poster.poster_url} download className="mt-4 block w-full rounded-xl bg-[#1f684b] py-3 text-center text-[14px] font-medium text-white">打开原图 / 保存</a>
-            <p className="mt-3 text-center text-[11px] text-[#86868b]">餐食画面由 Nano Banana 2 创作；标题、营养数字和餐单文字均由系统核验排版。</p>
+            <p className="mt-3 text-center text-[11px] text-[#86868b]">餐食画面由 GPT Image 2 创作；标题、营养数字和餐单文字均由系统核验排版。</p>
           </div>
         </div>
       )}

@@ -99,7 +99,7 @@ export interface MealRecord {
   analysis_started_at: string | null
   analysis_completed_at: string | null
   recommendation_updated_at: string | null
-  gemini_analysis: NutritionAnalysis | null
+  ai_analysis: NutritionAnalysis | null
   food_items: FoodItem[]
   created_at: string
   updated_at: string
