@@ -58,7 +58,7 @@
 
 `GET /api/v1/dashboard/today` 新增 `nutrition_today`、`nutrition_yesterday`。`oura_today`/`oura_yesterday` 内新增 `sleep_date`、`readiness_date`、`activity_date`、`stress_date`，页面应显示指标自己的来源日期。
 
-AI 建议新增 `requested_date`、`source_date`、`is_stale` 和 `generation_metadata`。其中 `generation_metadata.prompt_version` 当前为 `recommendation-v2.2`，`data_completeness` 包含近 7 天饮食记录天数、最近餐数、逐次训练数、Oura 上下文天数，以及睡眠/准备度/活动/训练是否可用。
+AI 建议新增 `requested_date`、`source_date`、`is_stale` 和 `generation_metadata`。其中 `generation_metadata.prompt_version` 当前为 `recommendation-v3.0`，新增 `context_version=health-context-v1` 和 `context_lookback_days=90`；`data_completeness` 包含已载入历史的饮食记录天数、最近餐数、逐次训练数、Oura 上下文天数，以及睡眠/准备度/活动/训练是否可用。
 
 - 指定历史日期接口不再回退到其他日期，缺失时为 `null`。
 - 今日接口允许回退最近建议，但必须用 `is_stale` 和 `source_date` 显示“最近建议”，不能冒充今日生成。
@@ -91,7 +91,7 @@ POST /api/v1/nutrition/meals/{meal_id}/poster?force=true
 - 餐食列表图片增加 `binderror`；详情图片失败后切换到“历史图片不可用”占位状态。签名 URL 最多刷新一次，404 不无限重试。
 - 餐食照片是长期健康档案，前端不得提供或调用任何按时间批量清理图片的入口。完整保留策略见 `docs/2026-08-21-nutrition-pipeline-and-media-retention.md`。
 - 新字段优先读取 `analysis_quality`、`calorie_range_low/high`、`uncertainty_notes`、`next_meal_recipes`；旧记录缺失字段时安全降级。
-- `nutrition-v3.0` 的 `next_meal_recipes` 必须展示从当前餐后开始、按时间顺序覆盖未来 24 小时的三顿正餐；每项读取 `meal_name`、`timing`、`total_calories`、`dishes` 和 `why_this_menu`。标注“结合近 7 天已记录餐食”，菜名不能在前端硬编码。
+- `nutrition-v3.0` 的 `next_meal_recipes` 必须展示从当前餐后开始、按时间顺序覆盖未来 24 小时的三顿正餐；每项读取 `meal_name`、`timing`、`total_calories`、`dishes` 和 `why_this_menu`。标注“结合近期已记录餐食与长期饮食历史”，菜名不能在前端硬编码。
 - 海报外层使用有明确高度的 `scroll-view scroll-y`；图片 `mode="widthFix"`，禁止固定图片高度和 `aspectFill`。
 - 底部操作栏固定并处理 `env(safe-area-inset-bottom)`，滚动内容预留等高 padding。
 - 保存流程：`wx.downloadFile` → `wx.getImageInfo` → 相册授权 → `wx.saveImageToPhotosAlbum`；403 时刷新签名 URL。
@@ -112,7 +112,7 @@ POST /api/v1/nutrition/meals/{meal_id}/poster?force=true
 6. AI 响应显示 model、source_date、is_stale、generation_metadata.data_completeness。is_stale=true 必须标注“最近建议”；指定日期 null 不回退。保留 summary/yesterday_review/today_recommendation/health_education 内容能力，视觉顺序改为饮食、睡眠恢复、活动训练、健康知识。
 7. 海报只在用户点击“生成精美海报”时 POST /nutrition/meals/{id}/poster；上传、打开详情和普通分享都不得自动调用。generated=false 是缓存命中。重新生成二次确认后才加 force=true。生成按钮防重复点击，超时 120 秒，显示首次生成可能需要等待和每日 5 次实际生成限制。
 8. 海报响应包含 layout_version=nutrition-poster-v9 和 verified_metrics。预览必须使用有明确高度的 scroll-view scroll-y，image mode=widthFix，不固定海报高度；固定底部操作栏处理 safe area，内容区预留操作栏高度。保存使用 downloadFile/getImageInfo/saveImageToPhotosAlbum，处理授权拒绝、403 刷新 URL、超时和重试。未来三餐图片是 AI 推荐示意，不能当作用户已经吃过的餐食照片；不再等待或校验底部 VERIFIED NUTRITION 模块。
-9. 营养新字段优先：analysis_quality、calorie_range_low/high、uncertainty_notes、next_meal_recipes；兼容旧记录缺失字段，删除 next_meals/next_meal_menu 的主路径依赖。nutrition-v3.0 必须把 next_meal_recipes 三项渲染为“未来 24 小时三餐”，显示 meal_name/timing/total_calories/dishes/why_this_menu，来自后端近 7 天上下文，不要硬编码菜名。
+9. 营养新字段优先：analysis_quality、calorie_range_low/high、uncertainty_notes、next_meal_recipes；兼容旧记录缺失字段，删除 next_meals/next_meal_menu 的主路径依赖。nutrition-v3.0 必须把 next_meal_recipes 三项渲染为“未来 24 小时三餐”，显示 meal_name/timing/total_calories/dishes/why_this_menu，来自后端近期明细与最多 90 天压缩历史上下文，不要硬编码菜名。
 10. 图片上传成功后先渲染核心识图结果。当 recommendation_status 为 pending/processing，独立展示“饮食建议生成中”并轮询 GET /nutrition/meals/{meal_id}/analysis-status；completed 后只刷新详情，failed 时保留核心结果并提供 POST /nutrition/meals/{meal_id}/recommendations 重试。不重新上传图片，不展示 analysis_quality.questions。
 11. 轮询和详情刷新必须绕过旧缓存；next_meal_recipes 的每道菜展示 portion/calories/protein、2-5 项 ingredients 和 2-3 条 cooking_steps，食材换行、步骤编号。历史图片 binderror 后显示占位，过期签名 URL 最多刷新一次。
 12. 做小而清晰的组件拆分，避免重复请求；页面卸载后不 setData；图片使用懒加载；保留现有设计语言但提升信息层级、空态、错误态、加载态和无障碍点击区域。
@@ -158,3 +158,16 @@ POST /api/v1/nutrition/meals/{meal_id}/poster?force=true
 - [ ] 界面不显示“需要我确认”或份量追问；多人餐照片仍返回单人正常摄入估算。
 - [ ] 每道推荐菜都有食材用量和编号做法；长内容正确换行，不挤成单行。
 - [ ] 历史图片缺失时显示明确占位，404/403 不无限重试。
+
+
+## 2026-09-18 增量适配
+
+当前模型仍是 Codex CLI `gpt-5.6-luna`（识图 Medium，文本 Low），没有切换到 Gemini。
+
+- 每日回顾标题读取后端返回值，可为“近期趋势与昨日回顾”；完整展示趋势分析与较长的饮食建议，不写死旧标题或截断长度。
+- `nutrition_recorded_days`、`oura_context_days` 不再固定表示近 7 天覆盖，不应直接除以 7 计算完整率。
+- 上传/重识图 409 表示任务正在处理；上传 422 表示无效图片，504 表示识图超时。不要自动循环重传。
+- 餐后建议已在 processing 时，接口返回真实状态且不重复排队；自动重试用尽后，用户主动重试才使用 `force=true`。
+- 延续“核心识图先展示、后台三餐建议再刷新”的交互。状态以 `analysis-status` 顶层字段为准。
+
+完整接口说明和测试记录见 [本轮优化文档](2026-09-18-ai-context-and-nutrition-performance.md)。
