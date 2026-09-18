@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date as calendar_date, timedelta
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -71,6 +72,7 @@ instructions. Return only the JSON object required by the supplied output schema
             self.prompt_loader.response_schema,
             timeout_seconds=settings.CODEX_REQUEST_TIMEOUT_SECONDS,
             reasoning_effort=settings.CODEX_TEXT_REASONING_EFFORT,
+            background=True,
         )
 
         summary = str(result.get("summary", "")).strip()
@@ -135,7 +137,7 @@ user message in concise, warm Chinese. Do not diagnose disease or invent evidenc
         date: str,
     ) -> str:
         user_profile = self._build_user_profile(user_context)
-        oura_section = build_oura_data_section(training_data.oura_data)
+        oura_section = build_oura_data_section(training_data.oura_data, date)
         training_section = build_training_section(training_data)
 
         risk_flags = []
@@ -150,10 +152,10 @@ user message in concise, warm Chinese. Do not diagnose disease or invent evidenc
         risk_section = (
             "## 风险提示\n" + "\n".join(f"- {flag}" for flag in risk_flags)
             if risk_flags
-            else "## 风险提示\n无明显风险"
+            else "## 风险提示\n未触发已有规则；不代表没有健康风险，仍需结合趋势判断"
         )
 
-        nutrition_section = self._build_nutrition_section(training_data.nutrition_data)
+        nutrition_section = self._build_nutrition_section(training_data.nutrition_data, date)
         trend_section = (
             f"## 近期趋势变化\n{training_data.trend_summary}"
             if training_data.trend_summary
@@ -206,30 +208,37 @@ user message in concise, warm Chinese. Do not diagnose disease or invent evidenc
         return "\n".join(lines) if lines else "暂无个人信息"
 
     @staticmethod
-    def _build_nutrition_section(nutrition_data) -> str:
+    def _build_nutrition_section(nutrition_data, target_date: Optional[str] = None) -> str:
         if not nutrition_data or (
-            not nutrition_data.days and not nutrition_data.recent_meals
+            not nutrition_data.days and not nutrition_data.recent_meals and not nutrition_data.food_history
         ):
             return "## 近7天营养数据\n暂无饮食记录（用户未上传饮食照片，不代表未进食）"
 
+        cutoff = (calendar_date.fromisoformat(target_date) - timedelta(days=6)).isoformat() if target_date else ""
+        recent_days = [day for day in nutrition_data.days if day.date >= cutoff][-7:]
         sections = [
-            f"## 近7天营养数据（共记录{len(nutrition_data.days)}天，"
+            f"## 近7天营养数据（共记录{len(recent_days)}天，"
             "未记录的天数表示用户未上传，非未进食）"
         ]
-        for day in nutrition_data.days:
+        for day in recent_days:
             parts = [day.date]
-            if day.total_calories:
+            if day.total_calories is not None:
                 parts.append(f"{day.total_calories:.0f}kcal")
-            if day.total_protein:
+            if day.total_protein is not None:
                 parts.append(f"蛋白质{day.total_protein:.0f}g")
-            if day.total_carbs:
+            if day.total_carbs is not None:
                 parts.append(f"碳水{day.total_carbs:.0f}g")
-            if day.total_fat:
+            if day.total_fat is not None:
                 parts.append(f"脂肪{day.total_fat:.0f}g")
+            if day.total_fiber is not None:
+                parts.append(f"纤维{day.total_fiber:.0f}g")
+            if day.date == target_date:
+                parts.append("目标日截至当前记录，非全天")
             parts.append(f"{day.meals_count}餐")
             sections.append(f"- {', '.join(parts)}")
 
-        yesterday = nutrition_data.days[-1] if nutrition_data.days else None
+        yesterday_date = (calendar_date.fromisoformat(target_date) - timedelta(days=1)).isoformat() if target_date else None
+        yesterday = next((day for day in nutrition_data.days if day.date == yesterday_date), None)
         if yesterday and yesterday.total_calories:
             meals = []
             if yesterday.breakfast_calories:
@@ -258,4 +267,7 @@ user message in concise, warm Chinese. Do not diagnose disease or invent evidenc
                         f"- {short_date}{labels.get(meal.meal_type, meal.meal_type)}："
                         f"{'、'.join(meal.foods)}"
                     )
+        if nutrition_data.food_history:
+            sections.append("## 7/30/90天实际菜品与餐次分布（完整历史日）")
+            sections.append(json.dumps(nutrition_data.food_history, ensure_ascii=False, separators=(",", ":")))
         return "\n".join(sections)

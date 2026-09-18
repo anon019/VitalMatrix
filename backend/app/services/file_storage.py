@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Optional
 from PIL import Image, ImageOps, UnidentifiedImageError
+from app.services.nutrition_errors import InvalidMealImageError
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +86,22 @@ class FileStorageService:
             thumbnail_path = date_dir / thumbnail_filename
 
             # 只解码一次，同时写出规范化原图和缩略图。
-            await asyncio.to_thread(
+            write_task = asyncio.create_task(asyncio.to_thread(
                 self._normalize_and_save_images_sync,
-                file_content,
-                original_path,
-                thumbnail_path,
-            )
+                file_content, original_path, thumbnail_path,
+            ))
+            try:
+                await asyncio.shield(write_task)
+            except asyncio.CancelledError:
+                # A worker thread cannot be cancelled. Let it finish before cleanup.
+                await asyncio.gather(write_task, return_exceptions=True)
+                original_path.unlink(missing_ok=True)
+                thumbnail_path.unlink(missing_ok=True)
+                raise
+            except Exception:
+                original_path.unlink(missing_ok=True)
+                thumbnail_path.unlink(missing_ok=True)
+                raise
 
             logger.info(f"Saved original photo: {original_path}")
             logger.info(f"Saved thumbnail: {thumbnail_path}")
@@ -109,6 +120,8 @@ class FileStorageService:
 
             return web_original, web_thumbnail, abs_original, abs_thumbnail
 
+        except InvalidMealImageError:
+            raise
         except Exception as e:
             logger.error(f"Failed to save meal photo: {str(e)}", exc_info=True)
             raise IOError(f"Failed to save meal photo: {str(e)}")
@@ -147,9 +160,9 @@ class FileStorageService:
                 warnings.simplefilter("error", Image.DecompressionBombWarning)
                 with Image.open(BytesIO(file_content)) as source:
                     if source.format not in {"JPEG", "PNG", "WEBP"}:
-                        raise ValueError("仅支持 JPEG、PNG 和 WebP 图片")
+                        raise InvalidMealImageError("仅支持 JPEG、PNG 和 WebP 图片")
                     if source.width * source.height > self.max_image_pixels:
-                        raise ValueError("图片像素过大，最多支持 4000 万像素")
+                        raise InvalidMealImageError("图片像素过大，最多支持 4000 万像素")
 
                     image = ImageOps.exif_transpose(source)
                     image.load()
@@ -168,8 +181,8 @@ class FileStorageService:
                         image = image.convert("RGB")
 
                     return image
-        except (UnidentifiedImageError, Image.DecompressionBombError) as exc:
-            raise ValueError("图片文件无效或像素规模不安全") from exc
+        except (UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning, OSError) as exc:
+            raise InvalidMealImageError("图片文件无效或像素规模不安全") from exc
 
     async def _generate_thumbnail(self, original_path: Path, thumbnail_path: Path):
         """

@@ -253,7 +253,7 @@ def test_health_education_excludes_record_completeness_as_a_topic():
     config = yaml.safe_load(prompt_path.read_text(encoding="utf-8"))
     task_template = config["task_template"]
 
-    assert config["version"] == "recommendation-v2.2"
+    assert config["version"] == "recommendation-v3.0"
     assert "绝不能作为健康知识主题" in task_template
     assert "运动营养学、运动生理学、运动学" in task_template
     assert '"label": "循证依据"' in task_template

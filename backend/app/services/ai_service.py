@@ -2,13 +2,15 @@
 AI服务 - AI建议生成与管理
 """
 import logging
+import json
 from datetime import date, timedelta
 from typing import Optional, List
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, desc, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, load_only
 
+from app.ai.context_summary import CONTEXT_DAYS, CONTEXT_VERSION, build_health_history, meal_history_summary
 from app.ai.factory import AIProviderFactory
 from app.ai.base import (
     UserContext,
@@ -20,7 +22,7 @@ from app.ai.base import (
     NutritionDayRecord,
     RecentMealRecord,
 )
-from app.models.nutrition import MealRecord, NutritionDailySummary
+from app.models.nutrition import MealRecord, FoodItem, NutritionDailySummary
 from app.models.polar import PolarExercise
 from app.models.user import User
 from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
@@ -120,6 +122,8 @@ class AIService:
                     "unknown",
                 ),
                 "target_date": target_date.isoformat(),
+                "context_version": CONTEXT_VERSION,
+                "context_lookback_days": CONTEXT_DAYS,
                 "data_completeness": {
                     "nutrition_recorded_days": len(nutrition.days) if nutrition else 0,
                     "nutrition_recent_meals": len(nutrition.recent_meals) if nutrition else 0,
@@ -391,9 +395,10 @@ class AIService:
         nutrition_data = await self._get_nutrition_data(user_id, target_date)
 
         # 获取趋势摘要
-        trend_summary = await self._get_trend_summary(user_id, target_date)
+        trend_summary = await self._get_trend_summary(user_id, target_date, oura_data, nutrition_data)
 
         return TrainingData(
+            target_date=target_date.isoformat(),
             zone2_min=zone2_min,
             hi_min=hi_min,
             total_duration_min=total_duration_min,
@@ -423,7 +428,7 @@ class AIService:
         - 活动/压力：使用昨天的数据，因为需要评估昨天一整天的活动和压力状态
         """
         yesterday = target_date - timedelta(days=1)
-        context_start = target_date - timedelta(days=6)
+        context_start = target_date - timedelta(days=CONTEXT_DAYS)
 
         # 睡眠数据（今天的数据 = 昨晚睡到今早醒来的睡眠 + 午睡）
         # 策略：获取所有睡眠记录，累加时长，使用long_sleep的日汇总评分
@@ -431,12 +436,14 @@ class AIService:
             select(OuraSleep)
             .where(and_(
                 OuraSleep.user_id == user_id,
-                OuraSleep.day >= context_start,
+                OuraSleep.day >= target_date - timedelta(days=CONTEXT_DAYS - 1),
                 OuraSleep.day <= target_date,
             ))
             .order_by(
                 # long_sleep优先（它包含日汇总评分）
-                (OuraSleep.sleep_type == 'long_sleep').desc()
+                (OuraSleep.sleep_type == 'long_sleep').desc(),
+                OuraSleep.total_sleep_duration.desc().nullslast(),
+                OuraSleep.id
             )
         )
         recent_sleeps = sleep_result.scalars().all()
@@ -465,7 +472,7 @@ class AIService:
                 total_light_sleep += s.light_sleep_duration
 
             # 使用long_sleep的评分和其他指标（它包含日汇总评分）
-            if s.sleep_type == 'long_sleep':
+            if s.sleep_type == 'long_sleep' and sleep is None:
                 sleep = s
                 sleep_score = s.sleep_score
                 sleep_efficiency = s.efficiency
@@ -495,7 +502,7 @@ class AIService:
             select(OuraDailyReadiness)
             .where(and_(
                 OuraDailyReadiness.user_id == user_id,
-                OuraDailyReadiness.day >= context_start,
+                OuraDailyReadiness.day >= target_date - timedelta(days=CONTEXT_DAYS - 1),
                 OuraDailyReadiness.day <= target_date,
             ))
         )
@@ -546,8 +553,13 @@ class AIService:
         for record in recent_sleeps:
             # 每天优先保留 long_sleep；避免午睡覆盖主睡眠评分和恢复指标。
             existing = sleep_by_day.get(record.day)
-            if existing is None or record.sleep_type == "long_sleep":
+            if existing is None:
                 sleep_by_day[record.day] = record
+
+        sleep_durations = {}
+        for record in recent_sleeps:
+            if record.total_sleep_duration is not None:
+                sleep_durations[record.day] = sleep_durations.get(record.day, 0) + record.total_sleep_duration
 
         recent_days = []
         for current_day in (
@@ -563,8 +575,13 @@ class AIService:
             recent_days.append(OuraDailyContext(
                 date=current_day.isoformat(),
                 sleep_score=daily_sleep.sleep_score if daily_sleep else None,
-                total_sleep_hours=round(daily_sleep.total_sleep_duration / 3600, 1)
-                if daily_sleep and daily_sleep.total_sleep_duration else None,
+                sleep_efficiency=daily_sleep.efficiency if daily_sleep else None,
+                deep_sleep_min=round(daily_sleep.deep_sleep_duration / 60, 1)
+                if daily_sleep and daily_sleep.deep_sleep_duration is not None else None,
+                rem_sleep_min=round(daily_sleep.rem_sleep_duration / 60, 1)
+                if daily_sleep and daily_sleep.rem_sleep_duration is not None else None,
+                total_sleep_hours=round(sleep_durations[current_day] / 3600, 2)
+                if current_day in sleep_durations else None,
                 average_hrv=daily_sleep.average_hrv if daily_sleep else None,
                 resting_heart_rate=daily_sleep.lowest_heart_rate if daily_sleep else None,
                 readiness_score=daily_readiness.score if daily_readiness else None,
@@ -577,9 +594,9 @@ class AIService:
                 sedentary_min=daily_activity.sedentary_time if daily_activity else None,
                 inactivity_alerts=daily_activity.inactivity_alerts if daily_activity else None,
                 stress_high_min=round(daily_stress.stress_high / 60)
-                if daily_stress and daily_stress.stress_high else None,
+                if daily_stress and daily_stress.stress_high is not None else None,
                 recovery_high_min=round(daily_stress.recovery_high / 60)
-                if daily_stress and daily_stress.recovery_high else None,
+                if daily_stress and daily_stress.recovery_high is not None else None,
                 day_summary=daily_stress.day_summary if daily_stress else None,
             ))
 
@@ -610,14 +627,14 @@ class AIService:
         )
 
     async def _get_nutrition_data(self, user_id: uuid.UUID, target_date: date) -> Optional[NutritionData]:
-        """获取近7天营养数据"""
-        start_date = target_date - timedelta(days=7)
+        """历史完整日用于趋势；目标日记录单独展示，不参与完整日均值。"""
+        start_date = target_date - timedelta(days=CONTEXT_DAYS)
 
         result = await self.db.execute(
             select(NutritionDailySummary)
             .where(and_(
                 NutritionDailySummary.user_id == user_id,
-                NutritionDailySummary.date > start_date,
+                NutritionDailySummary.date >= start_date,
                 NutritionDailySummary.date <= target_date,
             ))
             .order_by(NutritionDailySummary.date)
@@ -630,172 +647,65 @@ class AIService:
                 continue
             days.append(NutritionDayRecord(
                 date=s.date.isoformat(),
-                total_calories=float(s.total_calories) if s.total_calories else None,
-                total_protein=float(s.total_protein) if s.total_protein else None,
-                total_carbs=float(s.total_carbs) if s.total_carbs else None,
-                total_fat=float(s.total_fat) if s.total_fat else None,
-                total_fiber=float(s.total_fiber) if s.total_fiber else None,
+                total_calories=float(s.total_calories) if s.total_calories is not None else None,
+                total_protein=float(s.total_protein) if s.total_protein is not None else None,
+                total_carbs=float(s.total_carbs) if s.total_carbs is not None else None,
+                total_fat=float(s.total_fat) if s.total_fat is not None else None,
+                total_fiber=float(s.total_fiber) if s.total_fiber is not None else None,
                 meals_count=s.meals_count or 0,
-                breakfast_calories=float(s.breakfast_calories) if s.breakfast_calories else None,
-                lunch_calories=float(s.lunch_calories) if s.lunch_calories else None,
-                dinner_calories=float(s.dinner_calories) if s.dinner_calories else None,
-                snack_calories=float(s.snack_calories) if s.snack_calories else None,
+                breakfast_calories=float(s.breakfast_calories) if s.breakfast_calories is not None else None,
+                lunch_calories=float(s.lunch_calories) if s.lunch_calories is not None else None,
+                dinner_calories=float(s.dinner_calories) if s.dinner_calories is not None else None,
+                snack_calories=float(s.snack_calories) if s.snack_calories is not None else None,
                 flags=s.flags,
             ))
 
         meals_result = await self.db.execute(
             select(MealRecord)
-            .options(selectinload(MealRecord.food_items))
+            .options(
+                load_only(MealRecord.id, MealRecord.meal_time, MealRecord.meal_type,
+                          MealRecord.total_calories, MealRecord.total_protein),
+                selectinload(MealRecord.food_items).load_only(FoodItem.food_name),
+            )
             .where(and_(
                 MealRecord.user_id == user_id,
-                MealRecord.meal_time >= start_of_day_hk(target_date - timedelta(days=6)),
+                MealRecord.meal_time >= start_of_day_hk(start_date),
+                MealRecord.analysis_status == "completed",
                 MealRecord.meal_time < start_of_day_hk(target_date + timedelta(days=1)),
             ))
             .order_by(desc(MealRecord.meal_time))
-            .limit(30)
         )
         meals = meals_result.scalars().all()
         recent_meals = [
             RecentMealRecord(
                 date=format_hk(meal.meal_time, "%Y-%m-%dT%H:%M:%S%z"),
                 meal_type=meal.meal_type.value,
-                foods=[item.food_name for item in meal.food_items if item.food_name][:8],
+                foods=[item.food_name[:80] for item in meal.food_items if item.food_name][:8],
                 total_calories=float(meal.total_calories) if meal.total_calories else None,
                 total_protein=float(meal.total_protein) if meal.total_protein else None,
             )
-            for meal in meals
+            for meal in meals[:20]
+            if format_hk(meal.meal_time, "%Y-%m-%d") >= (target_date - timedelta(days=6)).isoformat()
         ]
 
-        if not days and not recent_meals:
+        if not days and not meals:
             return None
 
-        return NutritionData(days=days, recent_meals=recent_meals)
+        return NutritionData(days=days, recent_meals=recent_meals,
+                             food_history=meal_history_summary(meals, target_date - timedelta(days=1)))
 
-    async def _get_trend_summary(self, user_id: uuid.UUID, target_date: date) -> Optional[str]:
-        """计算近14天关键指标趋势摘要（纯文本）"""
-        day_14_ago = target_date - timedelta(days=14)
-        day_7_ago = target_date - timedelta(days=7)
-
-        lines = []
-
-        # --- 健康趋势 (from OuraSleep long_sleep) ---
-        oura_result = await self.db.execute(
-            select(
-                OuraSleep.day,
-                OuraSleep.average_hrv,
-                OuraSleep.lowest_heart_rate,
-                OuraSleep.sleep_score,
-            ).where(and_(
-                OuraSleep.user_id == user_id,
-                OuraSleep.day > day_14_ago,
-                OuraSleep.day <= target_date,
-                OuraSleep.sleep_type == 'long_sleep',
-            )).order_by(OuraSleep.day)
-        )
-        oura_rows = oura_result.all()
-
-        hrv_rows = [
-            (row.day, row.average_hrv)
-            for row in oura_rows
-            if row.average_hrv is not None
-        ]
-        if len(hrv_rows) >= 4:
-            recent = [value for day, value in hrv_rows if day > day_7_ago]
-            earlier = [value for day, value in hrv_rows if day <= day_7_ago]
-            if recent and earlier:
-                recent_avg = sum(recent) / len(recent)
-                earlier_avg = sum(earlier) / len(earlier)
-                if earlier_avg > 0:
-                    change_pct = ((recent_avg - earlier_avg) / earlier_avg) * 100
-                    direction = "上升" if change_pct > 0 else "下降"
-                    lines.append(
-                        f"HRV趋势: 近7天均值{recent_avg:.0f}ms vs 前7天{earlier_avg:.0f}ms ({direction}{abs(change_pct):.0f}%)"
-                    )
-
-        rhr_rows = [
-            (row.day, row.lowest_heart_rate)
-            for row in oura_rows
-            if row.lowest_heart_rate is not None
-        ]
-        if len(rhr_rows) >= 4:
-            recent = [value for day, value in rhr_rows if day > day_7_ago]
-            earlier = [value for day, value in rhr_rows if day <= day_7_ago]
-            if recent and earlier:
-                recent_avg = sum(recent) / len(recent)
-                earlier_avg = sum(earlier) / len(earlier)
-                if earlier_avg > 0:
-                    change_pct = ((recent_avg - earlier_avg) / earlier_avg) * 100
-                    direction = "上升" if change_pct > 0 else "下降"
-                    lines.append(
-                        f"静息心率趋势: 近7天均值{recent_avg:.0f}bpm vs 前7天{earlier_avg:.0f}bpm ({direction}{abs(change_pct):.0f}%)"
-                    )
-
-        sleep_rows = [
-            (row.day, row.sleep_score)
-            for row in oura_rows
-            if row.sleep_score is not None
-        ]
-        if len(sleep_rows) >= 4:
-            recent = [value for day, value in sleep_rows if day > day_7_ago]
-            earlier = [value for day, value in sleep_rows if day <= day_7_ago]
-            if recent and earlier:
-                recent_avg = sum(recent) / len(recent)
-                earlier_avg = sum(earlier) / len(earlier)
-                change = recent_avg - earlier_avg
-                direction = "上升" if change > 0 else "下降"
-                lines.append(
-                    f"睡眠评分趋势: 近7天均值{recent_avg:.0f} vs 前7天{earlier_avg:.0f} ({direction}{abs(change):.0f}分)"
-                )
-
-        # --- 训练负荷趋势 (TRIMP) ---
-        trimp_result = await self.db.execute(
-            select(DailyTrainingSummary.date, DailyTrainingSummary.trimp)
-            .where(and_(
+    async def _get_trend_summary(self, user_id: uuid.UUID, target_date: date,
+                                 oura_data=None, nutrition_data=None) -> str:
+        """Reuse loaded histories and add 90 completed days of training summaries."""
+        result = await self.db.execute(
+            select(DailyTrainingSummary).where(and_(
                 DailyTrainingSummary.user_id == user_id,
-                DailyTrainingSummary.date > day_14_ago,
-                DailyTrainingSummary.date <= target_date,
+                DailyTrainingSummary.date >= target_date - timedelta(days=CONTEXT_DAYS),
+                DailyTrainingSummary.date < target_date,
             )).order_by(DailyTrainingSummary.date)
         )
-        trimp_rows = trimp_result.all()
-
-        if trimp_rows:
-            recent = [float(r.trimp) for r in trimp_rows if r.date > day_7_ago]
-            earlier = [float(r.trimp) for r in trimp_rows if r.date <= day_7_ago]
-            recent_sum = sum(recent)
-            earlier_sum = sum(earlier)
-            if earlier_sum > 0:
-                change_pct = ((recent_sum - earlier_sum) / earlier_sum) * 100
-                direction = "增加" if change_pct > 0 else "减少"
-                lines.append(f"训练负荷趋势: 近7天TRIMP总量{recent_sum:.0f} vs 前7天{earlier_sum:.0f} ({direction}{abs(change_pct):.0f}%)")
-            elif recent_sum > 0:
-                lines.append(f"训练负荷趋势: 近7天TRIMP总量{recent_sum:.0f} (前7天无训练)")
-
-        # --- 营养趋势 ---
-        nutrition_result = await self.db.execute(
-            select(
-                NutritionDailySummary.date,
-                NutritionDailySummary.total_calories,
-                NutritionDailySummary.total_protein,
-            ).where(and_(
-                NutritionDailySummary.user_id == user_id,
-                NutritionDailySummary.date > day_7_ago,
-                NutritionDailySummary.date <= target_date,
-            )).order_by(NutritionDailySummary.date)
-        )
-        nutrition_rows = nutrition_result.all()
-
-        if nutrition_rows:
-            cals = [float(r.total_calories) for r in nutrition_rows if r.total_calories]
-            proteins = [float(r.total_protein) for r in nutrition_rows if r.total_protein]
-            if cals:
-                avg_cal = sum(cals) / len(cals)
-                lines.append(f"营养趋势: 近{len(cals)}天平均热量{avg_cal:.0f}kcal" +
-                            (f", 平均蛋白质{sum(proteins)/len(proteins):.0f}g" if proteins else ""))
-
-        if not lines:
-            return None
-
-        return "\n".join(lines)
+        context = build_health_history(oura_data, nutrition_data, result.scalars().all(), target_date)
+        return json.dumps(context, ensure_ascii=False, separators=(",", ":"))
 
     async def _create_recommendation(
         self,

@@ -23,6 +23,14 @@ class CodexCLIError(RuntimeError):
     """Raised when a non-interactive Codex run cannot produce a usable result."""
 
 
+class CodexCLITimeoutError(CodexCLIError, TimeoutError):
+    """Queue or execution exhausted its deadline."""
+
+
+class CodexCLIUnavailableError(CodexCLIError):
+    """Local CLI is missing; automatic inference retries cannot repair it."""
+
+
 class CodexCLIRunner:
     """Run Codex in ephemeral per-request workspaces.
 
@@ -36,16 +44,22 @@ class CodexCLIRunner:
         self.model = settings.CODEX_MODEL
         self.reasoning_effort = settings.CODEX_REASONING_EFFORT
         self._semaphore = asyncio.Semaphore(settings.CODEX_MAX_CONCURRENCY)
+        self._background_semaphore = asyncio.Semaphore(max(1, settings.CODEX_MAX_CONCURRENCY - 1))
 
     @asynccontextmanager
-    async def _slot(self, timeout_seconds: int):
+    async def _slot(self, timeout_seconds: int, *, background: bool = False):
         """Queueing and execution share one deadline, preventing stale jobs."""
         try:
             async with asyncio.timeout(timeout_seconds):
-                async with self._semaphore:
-                    yield
+                if background:
+                    async with self._background_semaphore:
+                        async with self._semaphore:
+                            yield
+                else:
+                    async with self._semaphore:
+                        yield
         except TimeoutError as exc:
-            raise CodexCLIError(f"Codex CLI 排队及执行超过 {timeout_seconds} 秒") from exc
+            raise CodexCLITimeoutError(f"Codex CLI 排队及执行超过 {timeout_seconds} 秒") from exc
 
     @staticmethod
     async def _stop_process(process) -> None:
@@ -70,7 +84,7 @@ class CodexCLIRunner:
     def _resolve_command(self) -> str:
         resolved = shutil.which(self.command)
         if not resolved:
-            raise CodexCLIError(f"Codex CLI 不可用: {self.command}")
+            raise CodexCLIUnavailableError(f"Codex CLI 不可用: {self.command}")
         return resolved
 
     @classmethod
@@ -158,7 +172,7 @@ class CodexCLIRunner:
             )
         except TimeoutError as exc:
             await self._stop_process(process)
-            raise CodexCLIError(f"Codex CLI 调用超过 {timeout_seconds} 秒") from exc
+            raise CodexCLITimeoutError(f"Codex CLI 调用超过 {timeout_seconds} 秒") from exc
         except asyncio.CancelledError:
             await self._stop_process(process)
             raise
@@ -221,8 +235,9 @@ class CodexCLIRunner:
         image_paths: Iterable[str | Path] = (),
         timeout_seconds: int | None = None,
         reasoning_effort: str | None = None,
+        background: bool = False,
     ) -> dict[str, Any]:
-        async with self._slot(timeout_seconds or settings.CODEX_REQUEST_TIMEOUT_SECONDS):
+        async with self._slot(timeout_seconds or settings.CODEX_REQUEST_TIMEOUT_SECONDS, background=background):
             with tempfile.TemporaryDirectory(prefix="health-codex-") as directory:
                 workdir = Path(directory)
                 schema_path = workdir / "response.schema.json"

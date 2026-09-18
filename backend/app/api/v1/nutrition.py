@@ -18,6 +18,7 @@ from app.config import settings
 from app.models.user import User
 from app.models.nutrition import MealType
 from app.services.nutrition_service import get_nutrition_service
+from app.services.nutrition_errors import MealAnalysisBusyError, InvalidMealImageError
 from app.services.poster_service import get_poster_service
 from app.schemas.nutrition import (
     MealRecordResponse,
@@ -144,6 +145,12 @@ async def upload_and_analyze_meal(
 
     except HTTPException:
         raise
+    except MealAnalysisBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc), headers={"Retry-After": "5"}) from exc
+    except InvalidMealImageError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="餐食分析超时，请稍后重试") from exc
     except Exception as e:
         logger.error(f"Failed to upload and analyze meal: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -324,6 +331,10 @@ async def reanalyze_meal(
 
         return meal
 
+    except MealAnalysisBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc), headers={"Retry-After": "5"}) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="餐食分析超时，请稍后重试") from exc
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -368,7 +379,14 @@ async def generate_meal_recommendations(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="餐次记录不存在")
     if analysis_status["analysis_status"] != "completed":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="核心识图尚未完成")
-    should_generate = force or analysis_status["recommendation_status"] != "completed"
+    await enforce_rate_limit(
+        f"nutrition:recommendations:{current_user.id}", limit=30, window_seconds=86400
+    )
+    if (not force and analysis_status["recommendation_attempts"] >= 3
+            and analysis_status["recommendation_status"] == "failed"):
+        raise HTTPException(status_code=409, detail="自动重试已用完，请主动重新生成（force=true）")
+    already_processing = analysis_status["recommendation_status"] == "processing"
+    should_generate = not already_processing and (force or analysis_status["recommendation_status"] != "completed")
     if should_generate:
         background_tasks.add_task(
             nutrition_service.generate_recommendations_for_meal,
@@ -380,7 +398,7 @@ async def generate_meal_recommendations(
         "meal_id": str(meal_id),
         "analysis_status": analysis_status["analysis_status"],
         "recommendation_status": (
-            "pending" if should_generate else "completed"
+            "pending" if should_generate else analysis_status["recommendation_status"]
         ),
     }
 

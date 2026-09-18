@@ -4,20 +4,22 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import hashlib
 import time
 import uuid
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, func, and_, desc, case, or_, text
+from sqlalchemy import select, func, and_, desc, case, or_, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, load_only
 from app.config import settings
 
 from app.models.nutrition import MealRecord, FoodItem, NutritionDailySummary, MealType
 from app.models.user import User
 from app.services.codex_nutrition_service import get_codex_nutrition_service
 from app.services.file_storage import get_file_storage
+from app.services.nutrition_errors import MealAnalysisBusyError
 from app.utils.datetime_helper import date_hk, format_hk, now_hk, today_hk, start_of_day_hk
 from app.utils.distributed_lock import distributed_lock
 
@@ -68,6 +70,22 @@ class NutritionService:
         }
 
     async def analyze_and_save_meal(
+        self, db: AsyncSession, user_id: uuid.UUID, meal_type: MealType,
+        meal_time: datetime, image_content: bytes, notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        # Serialize identical uploads before querying the completed-result cache.
+        image_hash = hashlib.sha256(image_content).hexdigest()
+        key = f"nutrition-upload:{user_id}:{meal_type.value}:{date_hk(meal_time)}:{image_hash}"
+        async with distributed_lock(
+            key, ttl_seconds=settings.NUTRITION_CORE_TOTAL_TIMEOUT_SECONDS + 60
+        ) as acquired:
+            if not acquired:
+                raise MealAnalysisBusyError("这张餐食图片正在分析，请等待当前请求完成")
+            return await self._analyze_and_save_meal_unlocked(
+                db, user_id, meal_type, meal_time, image_content, notes
+            )
+
+    async def _analyze_and_save_meal_unlocked(
         self,
         db: AsyncSession,
         user_id: uuid.UUID,
@@ -105,6 +123,9 @@ class NutritionService:
                 and_(
                     MealRecord.user_id == user_id,
                     MealRecord.image_sha256 == image_sha256,
+                    MealRecord.meal_type == meal_type,
+                    MealRecord.meal_time >= start_of_day_hk(date_hk(meal_time)),
+                    MealRecord.meal_time < start_of_day_hk(date_hk(meal_time) + timedelta(days=1)),
                     MealRecord.created_at >= duplicate_since,
                     MealRecord.analysis_status == "completed",
                 )
@@ -204,7 +225,7 @@ class NutritionService:
                 "deduplicated": False,
             }
 
-        except Exception as e:
+        except (Exception, asyncio.CancelledError) as e:
             if photo_path or thumbnail_path:
                 try:
                     await db.rollback()
@@ -250,10 +271,11 @@ class NutritionService:
             return context
 
         history_end = before_time or now_hk()
-        history_start = history_end - timedelta(days=7)
+        history_start = history_end - timedelta(days=90)
         meal_conditions = [
             MealRecord.user_id == user_id,
             MealRecord.meal_time < history_end,
+            MealRecord.analysis_status == "completed",
             MealRecord.meal_time >= history_start,
         ]
         if exclude_meal_id:
@@ -261,12 +283,24 @@ class NutritionService:
 
         meals_result = await db.execute(
             select(MealRecord)
-            .options(selectinload(MealRecord.food_items))
+            .options(
+                load_only(MealRecord.id, MealRecord.meal_time, MealRecord.meal_type),
+                selectinload(MealRecord.food_items).load_only(FoodItem.food_name),
+            )
             .where(and_(*meal_conditions))
             .order_by(desc(MealRecord.meal_time))
-            .limit(20)
         )
         recent_meals = meals_result.scalars().all()
+
+        recent_analyses = []
+        if recent_meals:
+            analysis_result = await db.execute(
+                select(MealRecord.ai_analysis).where(
+                    MealRecord.user_id == user_id,
+                    MealRecord.id.in_([meal.id for meal in recent_meals[:20]]),
+                ).order_by(desc(MealRecord.meal_time), desc(MealRecord.id))
+            )
+            recent_analyses = analysis_result.scalars().all()
 
         meal_type_labels = {
             MealType.BREAKFAST: "早餐",
@@ -276,7 +310,7 @@ class NutritionService:
         }
         recent_lines = []
         recommended_names = []
-        for meal in recent_meals:
+        for meal in recent_meals[:20]:
             food_names = [item.food_name for item in meal.food_items[:8] if item.food_name]
             if food_names:
                 recent_lines.append(
@@ -285,7 +319,8 @@ class NutritionService:
                     f"{'、'.join(food_names)}"
                 )
 
-            recommendations = (meal.ai_analysis or {}).get("recommendations") or {}
+        for analysis in recent_analyses:
+            recommendations = (analysis or {}).get("recommendations") or {}
             recipes = recommendations.get("next_meal_recipes") or []
             for recipe in recipes[:1]:
                 for dish in (recipe.get("dishes") or [])[:4]:
@@ -293,10 +328,15 @@ class NutritionService:
                     if name and name not in recommended_names:
                         recommended_names.append(name)
 
-        recent_context = "\n".join(recent_lines) if recent_lines else "近7天暂无已记录餐食"
+        recent_context = "\n".join(recent_lines) if recent_lines else "此前90天暂无已记录餐食"
         if recommended_names:
             recent_context += "\n最近已推荐菜品：" + "、".join(recommended_names[:12])
 
+        from app.ai.context_summary import meal_history_summary
+        context["food_history"] = meal_history_summary(
+            recent_meals, date.fromisoformat(format_hk(history_end, "%Y-%m-%d"))
+        )
+        context["history_cutoff"] = format_hk(history_end, "%Y-%m-%dT%H:%M:%S%z")
         context["recent_meals"] = recent_context
         return context
 
@@ -389,7 +429,7 @@ class NutritionService:
         """生成扩展建议；使用独立会话，失败不影响已经保存的核心餐食。"""
         from app.database.session import AsyncSessionLocal
 
-        lock_key = f"nutrition-recommendations:{meal_id}"
+        lock_key = f"nutrition-meal:{meal_id}"
         async with distributed_lock(
             lock_key, ttl_seconds=settings.NUTRITION_RECOMMENDATION_TIMEOUT_SECONDS + 60
         ) as acquired:
@@ -410,14 +450,18 @@ class NutritionService:
                     return False
                 if meal.recommendation_status == "completed" and not force:
                     return True
+                if not force and (meal.recommendation_attempts or 0) >= 3:
+                    return False
 
                 meal.recommendation_status = "processing"
-                meal.recommendation_attempts = int(meal.recommendation_attempts or 0) + 1
+                meal.recommendation_attempts = 1 if force else int(meal.recommendation_attempts or 0) + 1
                 meal.analysis_error = None
-                meal.recommendation_updated_at = now_hk()
+                attempt_started_at = now_hk()
+                meal.recommendation_updated_at = attempt_started_at
                 core_analysis = dict(meal.ai_analysis)
                 meal_type = meal.meal_type.value
                 meal_time = meal.meal_time
+                core_version = meal.analysis_completed_at
                 user_context = await self._get_user_context(
                     db,
                     user_id,
@@ -441,12 +485,13 @@ class NutritionService:
                     result = await db.execute(
                         select(MealRecord).where(
                             and_(MealRecord.id == meal_id, MealRecord.user_id == user_id)
-                        )
+                        ).with_for_update()
                     )
                     meal = result.scalar_one_or_none()
-                    if meal:
+                    if (meal and meal.analysis_completed_at == core_version
+                            and meal.recommendation_updated_at == attempt_started_at):
                         meal.recommendation_status = "failed"
-                        meal.analysis_error = str(exc)[:500]
+                        meal.analysis_error = "建议生成暂时失败，可稍后重试"
                         meal.recommendation_updated_at = now_hk()
                         analysis = dict(meal.ai_analysis or {})
                         current = dict(analysis.get("recommendations") or {})
@@ -460,10 +505,11 @@ class NutritionService:
                 result = await db.execute(
                     select(MealRecord).where(
                         and_(MealRecord.id == meal_id, MealRecord.user_id == user_id)
-                    )
+                    ).with_for_update()
                 )
                 meal = result.scalar_one_or_none()
-                if not meal:
+                if (not meal or meal.analysis_completed_at != core_version
+                        or meal.recommendation_updated_at != attempt_started_at):
                     return False
                 analysis = dict(meal.ai_analysis or {})
                 analysis["recommendations"] = recommendations
@@ -479,9 +525,21 @@ class NutritionService:
         """恢复待处理、失败或超时中断的扩展建议任务。"""
         from app.database.session import AsyncSessionLocal
 
-        stale_before = now_hk() - timedelta(minutes=10)
+        stale_before = now_hk() - timedelta(
+            seconds=max(600, settings.NUTRITION_RECOMMENDATION_TIMEOUT_SECONDS + 60)
+        )
         retry_before = now_hk() - timedelta(minutes=10)
         async with AsyncSessionLocal() as db:
+            await db.execute(
+                update(MealRecord).where(
+                    MealRecord.recommendation_status == "processing",
+                    MealRecord.recommendation_attempts >= 3,
+                    MealRecord.recommendation_updated_at < stale_before,
+                ).values(recommendation_status="failed",
+                         analysis_error="建议生成中断，自动重试已用完，可手动重新生成",
+                         recommendation_updated_at=now_hk())
+            )
+            await db.commit()
             result = await db.execute(
                 select(MealRecord.id, MealRecord.user_id)
                 .where(
@@ -506,10 +564,13 @@ class NutritionService:
 
         completed = 0
         for pending_meal_id, pending_user_id in pending:
-            if await self.generate_recommendations_for_meal(
-                pending_meal_id, pending_user_id
-            ):
-                completed += 1
+            try:
+                if await self.generate_recommendations_for_meal(
+                    pending_meal_id, pending_user_id
+                ):
+                    completed += 1
+            except Exception:
+                logger.exception("Failed to resume meal recommendation: meal_id=%s", pending_meal_id)
         return completed
 
     async def get_meal_by_id(
@@ -858,7 +919,17 @@ class NutritionService:
         )
         return result.scalar_one_or_none()
 
-    async def reanalyze_meal(
+    async def reanalyze_meal(self, db: AsyncSession, meal_id: uuid.UUID,
+                             user_id: uuid.UUID) -> MealRecord:
+        async with distributed_lock(
+            f"nutrition-meal:{meal_id}",
+            ttl_seconds=settings.NUTRITION_CORE_TOTAL_TIMEOUT_SECONDS + 60,
+        ) as acquired:
+            if not acquired:
+                raise MealAnalysisBusyError("这餐正在生成分析或建议，请稍后再试")
+            return await self._reanalyze_meal_unlocked(db, meal_id, user_id)
+
+    async def _reanalyze_meal_unlocked(
         self,
         db: AsyncSession,
         meal_id: uuid.UUID,
@@ -970,6 +1041,7 @@ class NutritionService:
             select(MealRecord)
             .options(selectinload(MealRecord.food_items))
             .where(MealRecord.id == meal_id)
+            .execution_options(populate_existing=True)
         )
         meal_record = result.scalar_one()
 

@@ -1,5 +1,6 @@
 """Shared prompt sections for structured training and Oura context."""
 from typing import Optional
+from datetime import date, timedelta
 
 from app.ai.base import OuraData, TrainingData
 
@@ -57,10 +58,13 @@ def build_training_section(training_data: TrainingData) -> str:
         f"- 训练天数：{training_data.training_days}天",
         f"- 休息天数：{training_data.rest_days}天",
     ])
+    if training_data.target_date:
+        target = date.fromisoformat(training_data.target_date)
+        sections.append(f"统计口径：逐次明细为{target - timedelta(days=7)}至{target - timedelta(days=1)}；本周汇总从{target - timedelta(days=target.weekday())}开始，是不完整自然周，与滚动7天不可直接比较。")
     return "\n".join(sections)
 
 
-def build_oura_data_section(oura_data: Optional[OuraData]) -> str:
+def build_oura_data_section(oura_data: Optional[OuraData], target_date: Optional[str] = None) -> str:
     """Render current recovery signals and a compact seven-day Oura timeline."""
     if not oura_data:
         return "## Oura综合上下文\n暂无数据"
@@ -106,7 +110,10 @@ def build_oura_data_section(oura_data: Optional[OuraData]) -> str:
     if not oura_data.recent_days:
         sections.append("- 暂无可用日级数据")
     else:
-        for day in oura_data.recent_days:
+        cutoff = (date.fromisoformat(target_date) - timedelta(days=6)).isoformat() if target_date else ""
+        for day in oura_data.recent_days[-7:]:
+            if day.date < cutoff:
+                continue
             sections.append(
                 f"- {day.date}：睡眠评分{_value(day.sleep_score)}，睡眠{_value(day.total_sleep_hours, '小时')}，"
                 f"HRV{_value(day.average_hrv, 'ms')}，静息心率{_value(day.resting_heart_rate, 'bpm')}，"

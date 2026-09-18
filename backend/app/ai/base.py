@@ -52,9 +52,10 @@ class RecentMealRecord(BaseModel):
 
 
 class NutritionData(BaseModel):
-    """近7天营养数据"""
+    """最多90天日汇总、近期餐食和压缩后的历史菜品。"""
     days: List[NutritionDayRecord] = Field(default_factory=list)
     recent_meals: List[RecentMealRecord] = Field(default_factory=list)
+    food_history: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ExerciseSession(BaseModel):
@@ -79,6 +80,9 @@ class ExerciseSession(BaseModel):
 class OuraDailyContext(BaseModel):
     """近一段时间的 Oura 日级上下文。"""
     date: str
+    sleep_efficiency: Optional[int] = None
+    deep_sleep_min: Optional[float] = None
+    rem_sleep_min: Optional[float] = None
     sleep_score: Optional[int] = None
     total_sleep_hours: Optional[float] = None
     average_hrv: Optional[int] = None
@@ -125,12 +129,13 @@ class OuraData(BaseModel):
     sedentary_min: Optional[int] = None
     inactivity_alerts: Optional[int] = None
 
-    # 近7天日级上下文（不是只看单日睡眠）
+    # 最多90天日级上下文；渲染时只展示最近7天明细，其余压缩统计
     recent_days: List[OuraDailyContext] = Field(default_factory=list)
 
 
 class TrainingData(BaseModel):
     """训练数据"""
+    target_date: Optional[str] = None
     # 昨日数据
     zone2_min: int
     hi_min: int
