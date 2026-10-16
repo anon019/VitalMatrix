@@ -954,6 +954,47 @@ async def resume_nutrition_recommendations_job():
 
 
 
+_research_rollover_day = None
+
+
+@scheduler.scheduled_job(IntervalTrigger(minutes=1), max_instances=1, coalesce=True)
+async def materialize_health_research_job():
+    """Consume committed source changes; daily rollover finalizes yesterday."""
+    global _research_rollover_day
+    from sqlalchemy.dialects.postgresql import insert
+    from app.api.dependencies import resolve_default_user
+    from app.models.research import HealthDirtyDay
+    from app.services.research_service import process_dirty_days
+    try:
+        async with AsyncSessionLocal() as db:
+            today=today_hk()
+            if _research_rollover_day != today:
+                user=await resolve_default_user(db)
+                stmt=insert(HealthDirtyDay).values([
+                    {"user_id":user.id,"day":d,"requested_at":now_hk()} for d in (today-timedelta(days=1),today)])
+                await db.execute(stmt.on_conflict_do_update(index_elements=["user_id","day"],set_={"requested_at":stmt.excluded.requested_at}))
+                await db.commit()
+                _research_rollover_day=today
+            count=await process_dirty_days(db,limit=31)
+            if count:logger.info("Health research materialized %s days",count)
+    except Exception:
+        logger.exception("Health research materialization failed; dirty days remain queued")
+
+
+@scheduler.scheduled_job(CronTrigger(hour=7, minute=20), max_instances=1, coalesce=True)
+async def sync_polar_research_job():
+    """Additional channels are separate from the frequent exercise poll."""
+    from app.services.provider_research import sync_polar_research
+    try:
+        users=await get_active_users()
+        for user in users:
+            async with AsyncSessionLocal() as db:
+                async with PolarSyncService(db) as service:
+                    await sync_polar_research(service,user.id,days=7)
+    except Exception:
+        logger.exception("Polar research synchronization failed")
+
+
 def shutdown_scheduler():
     """关闭调度器"""
     try:

@@ -113,6 +113,15 @@ async def update_user_profile(
             current_user.training_plan = request.training_plan
 
         # 保存到数据库
+        if db.is_modified(current_user):
+            from app.services.provider_research import save_provider_records
+            from app.services.research_service import json_value
+            from app.utils.datetime_helper import now_hk
+            fields=("weight","height","gender","birth_year","birth_month","hr_max","resting_hr","health_goal","training_plan")
+            await save_provider_records(db,current_user.id,"manual","profile_snapshot",[{
+                "day":str(now_hk().date()),"id":now_hk().isoformat(),"capture_reason":"profile_update",
+                "profile":{f:json_value(getattr(current_user,f)) for f in fields},
+            }])
         await db.commit()
         await db.refresh(current_user)
 

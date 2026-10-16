@@ -290,7 +290,10 @@ class OuraSyncService:
             select(OuraAuth).where(OuraAuth.user_id == user_id)
         )
         auth = result.scalar_one_or_none()
-        if auth and auth.capabilities and not force:
+        checked_at = (auth.capabilities.get("session", {}).get("checked_at")
+                      if auth and auth.capabilities else None)
+        if (auth and auth.capabilities and not force and checked_at
+                and _parse_iso_datetime(checked_at) > now_hk() - timedelta(hours=24)):
             return dict(auth.capabilities)
 
         # 结束当前只读事务后再调用外部 API，避免网络延迟占用数据库事务。
@@ -300,6 +303,8 @@ class OuraSyncService:
             self.oura_client.get_personal_info(access_token),
             self.oura_client.probe_capabilities(access_token, today_hk()),
         )
+        capabilities = {name: {**value, "checked_at": now_hk().isoformat()}
+                        for name, value in capabilities.items()}
 
         result = await self.db.execute(
             select(OuraAuth).where(OuraAuth.user_id == user_id)
@@ -315,6 +320,9 @@ class OuraSyncService:
                     or auth.oura_user_id
                 )
             auth.updated_at = now_hk()
+            if personal_info:
+                from app.services.provider_research import save_provider_records
+                await save_provider_records(self.db, user_id, "oura", "physical_info", [personal_info])
             await self.db.commit()
 
         unavailable = [
@@ -452,6 +460,11 @@ class OuraSyncService:
                 user_id, all_data.get("rest_mode_period", [])
             )
 
+            from app.services.provider_research import save_provider_records
+            stats["session"] = await save_provider_records(
+                self.db, user_id, "oura", "session", all_data.get("session", [])
+            )
+
             heart_rate_start = datetime.combine(
                 start_date, time.min, tzinfo=now_hk().tzinfo
             )
@@ -461,6 +474,12 @@ class OuraSyncService:
             stats["heart_rate"] = await self._sync_heart_rate_samples(
                 user_id, heart_rate_data
             )
+
+            await save_provider_records(self.db, user_id, "oura", "sync_status", [{
+                "day": str(today), "range_start": str(start_date), "range_end": str(end_date),
+                "channels": getattr(self.oura_client, "collection_status", {}),
+                "capabilities": capabilities, "processed_records": stats,
+            }])
 
             # 更新最后同步时间
             result = await self.db.execute(

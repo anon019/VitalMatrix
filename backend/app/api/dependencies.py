@@ -2,7 +2,7 @@
 API依赖项
 """
 import hmac
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,7 +51,8 @@ def get_configured_primary_user_id(*, required: bool = False) -> uuid.UUID | Non
 
 
 async def verify_mcp_api_key(
-    credentials: HTTPAuthorizationCredentials = Depends(api_key_header)
+    credentials: HTTPAuthorizationCredentials = Depends(api_key_header),
+    x_api_key: str | None = Header(default=None),
 ) -> bool:
     """
     验证MCP API Key
@@ -65,14 +66,17 @@ async def verify_mcp_api_key(
     Raises:
         HTTPException: API Key无效
     """
-    if not credentials:
+    if not settings.MCP_API_KEY:
+        raise HTTPException(status_code=503, detail="健康数据访问密钥尚未配置")
+    token = credentials.credentials if isinstance(credentials, HTTPAuthorizationCredentials) else x_api_key
+    if not isinstance(token, str) or not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="缺少API Key",
         )
 
     # 使用常数时间比较防止时序攻击
-    if not hmac.compare_digest(credentials.credentials, settings.MCP_API_KEY):
+    if not hmac.compare_digest(token.encode(), settings.MCP_API_KEY.encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的API Key",

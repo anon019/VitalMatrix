@@ -31,6 +31,7 @@ class OuraClient:
     def __init__(self):
         self.client_id = settings.OURA_CLIENT_ID
         self.client_secret = settings.OURA_CLIENT_SECRET
+        self.collection_status = {}
         self.redirect_uri = settings.OURA_REDIRECT_URI
         # trust_env=False: 忽略代理环境变量，直连Oura API
         self.http_client = httpx.AsyncClient(timeout=30.0, trust_env=False)
@@ -179,16 +180,19 @@ class OuraClient:
                 method, url, headers=headers, **kwargs
             )
             response.raise_for_status()
+            self.collection_status[endpoint] = {"status": "success", "http_status": response.status_code}
             return response.json() if response.content else {}
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Oura API请求失败: {endpoint} - {e.response.status_code}")
+            self.collection_status[endpoint] = {"status": "unavailable_or_failed", "http_status": e.response.status_code}
             raise OuraAPIError(
                 f"API请求失败: {e.response.status_code}",
                 status_code=e.response.status_code,
             )
         except Exception as e:
             logger.error(f"Oura API请求异常: {endpoint} - {str(e)}")
+            self.collection_status[endpoint] = {"status": "failed", "error_type": type(e).__name__}
             raise OuraAPIError(f"API请求异常: {str(e)}")
 
     async def _get_paginated_collection(
@@ -565,6 +569,10 @@ class OuraClient:
             logger.error(f"获取Oura心率数据失败: {str(e)}")
             return []
 
+    async def get_sessions(self, access_token: str, start_date: date, end_date: date):
+        return await self._get_paginated_collection("/usercollection/session", access_token,
+            {"start_date":start_date.isoformat(),"end_date":end_date.isoformat()})
+
     async def get_workouts(
         self, access_token: str, start_date: date, end_date: date
     ) -> List[Dict[str, Any]]:
@@ -630,6 +638,7 @@ class OuraClient:
         }
         endpoints = {
             "workout": "/usercollection/workout",
+            "session": "/usercollection/session",
             "enhanced_tag": "/usercollection/enhanced_tag",
             "rest_mode_period": "/usercollection/rest_mode_period",
             "daily_resilience": "/usercollection/daily_resilience",
@@ -684,6 +693,7 @@ class OuraClient:
             "workout": [],
             "enhanced_tag": [],
             "rest_mode_period": [],
+            "session": [],
         }
 
         # 并行获取所有数据
@@ -703,6 +713,7 @@ class OuraClient:
             ("sleep_time", self.get_sleep_time(access_token, start_date, end_date)),
         ]
         optional_calls = [
+            ("session", "session", self.get_sessions),
             (
                 "cardiovascular_age",
                 "daily_cardiovascular_age",

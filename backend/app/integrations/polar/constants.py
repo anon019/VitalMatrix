@@ -9,8 +9,8 @@ POLAR_BASE_URL = "https://www.polaraccesslink.com/v3"
 
 # API资源端点
 EXERCISES_ENDPOINT = f"{POLAR_BASE_URL}/exercises"
-PHYSICAL_INFO_ENDPOINT = f"{POLAR_BASE_URL}/users/physical-information"
-DAILY_ACTIVITY_ENDPOINT = f"{POLAR_BASE_URL}/users/activity-transactions"
+PHYSICAL_INFO_ENDPOINT = f"{POLAR_BASE_URL}/users/physical-info"
+DAILY_ACTIVITY_ENDPOINT = f"{POLAR_BASE_URL}/users/activities"
 
 # OAuth Scopes
 POLAR_SCOPES = [

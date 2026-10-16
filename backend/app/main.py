@@ -204,6 +204,7 @@ from app.api.v1 import (  # noqa: E402
     training,
     trends,
     user,
+    research,
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
@@ -216,12 +217,13 @@ app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["MCP"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(nutrition.router, prefix="/api/v1", tags=["营养饮食"])
 app.include_router(trends.router, prefix="/api/v1/trends", tags=["趋势数据"])
+app.include_router(research.router, prefix="/api/v1/research", tags=["个人健康数据集"])
 
 # 挂载 MCP Server (Model Context Protocol)
 # MCP 应用在模块顶部初始化，lifespan 在 FastAPI lifespan 中管理
 if mcp_app is not None:
     app.mount("", mcp_app)
-    logger.info("🔌 MCP Server 已挂载到 /mcp (SSE: /mcp/sse)")
+    logger.info("🔌 MCP Server 已挂载到 /mcp (Streamable HTTP)")
 
 
 if __name__ == "__main__":

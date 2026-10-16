@@ -14,6 +14,7 @@ from app.models.training import DailyTrainingSummary, WeeklyTrainingSummary
 from app.models.ai import AIRecommendation
 from app.models.health_report import HealthReport
 from app.models.nutrition import MealRecord, FoodItem, NutritionDailySummary
+from app.models.research import HealthSourceRecord, HealthJournalEntry, HealthDailyFeature, HealthDirtyDay
 
 __all__ = [
     "User",

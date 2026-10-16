@@ -1,7 +1,7 @@
 """
 FastMCP Server Configuration
 
-配置 MCP 服务器，支持 SSE transport + API Key 认证
+配置 MCP 服务器，支持 Streamable HTTP + API Key 认证
 """
 import hmac
 import logging
@@ -22,27 +22,25 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
+        if not settings.MCP_API_KEY:
+            return JSONResponse(status_code=503, content={"error": "Health data access key not configured"})
+
         # 获取 Authorization header
         auth_header = request.headers.get("Authorization", "")
 
         # 验证 Bearer token（使用常数时间比较防止时序攻击）
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]  # 去掉 "Bearer " 前缀
-            if hmac.compare_digest(token, settings.MCP_API_KEY):
+            if hmac.compare_digest(token.encode(), settings.MCP_API_KEY.encode()):
                 return await call_next(request)
 
         # 也支持 X-API-Key header（兼容某些客户端）
         api_key = request.headers.get("X-API-Key", "")
-        if hmac.compare_digest(api_key, settings.MCP_API_KEY):
-            return await call_next(request)
-
-        # 如果没有配置 API Key，允许访问（向后兼容）
-        if not settings.MCP_API_KEY:
-            logger.warning("MCP_API_KEY not configured, allowing unauthenticated access")
+        if api_key and hmac.compare_digest(api_key.encode(), settings.MCP_API_KEY.encode()):
             return await call_next(request)
 
         # 认证失败
-        logger.warning(f"MCP auth failed from {request.client.host}")
+        logger.warning("MCP auth failed")
         return JSONResponse(
             status_code=401,
             content={
@@ -76,6 +74,13 @@ mcp = FastMCP(
     - 训练数据：Polar 运动手表
     - 睡眠/准备度/活动/压力：Oura Ring
     - 饮食：用户上传的餐食照片 + AI 分析
+
+    深度研究优先使用统一研究工具：get_research_catalog、get_research_profile、
+    get_research_context、get_research_days、query_health_records、explore_health_pattern。
+    它们包含来源、覆盖率、缺失与过时状态，可查询完整历史（分页）。
+    先读取catalog与profile，再取context；必要时下钻records及高频采样。
+    日期按UTC+8；不要把记录缺失当成零，不要把AI估算当成测量。
+    滞后相关仅用于探索，不代表因果或诊断。
     """
 )
 
@@ -84,15 +89,13 @@ def get_mcp_app():
     """获取 MCP ASGI 应用（带 API Key 认证）"""
     # 导入 tools 以注册所有工具
     from . import tools  # noqa: F401
+    from . import research_tools  # noqa: F401
 
     # 获取 MCP HTTP 应用
-    mcp_app = mcp.http_app()
+    mcp_app = mcp.http_app(path="/mcp", transport="streamable-http")
 
     # 添加 API Key 认证中间件
-    if settings.MCP_API_KEY:
-        mcp_app.add_middleware(APIKeyAuthMiddleware)
-        logger.info(f"MCP Server initialized with API Key auth: {mcp.name}")
-    else:
-        logger.warning(f"MCP Server initialized WITHOUT auth: {mcp.name}")
+    mcp_app.add_middleware(APIKeyAuthMiddleware)
+    logger.info("MCP Server initialized with required API Key auth: %s", mcp.name)
 
     return mcp_app
