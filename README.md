@@ -2,6 +2,11 @@
 
 个人健康数据与 AI 分析系统，整合 Polar 训练数据、Oura 恢复数据、营养记录，并提供 Web Dashboard、微信小程序和 MCP 接入能力。
 
+## 个人健康数据集
+
+后端提供持续整理的每日研究指标、来源证据与质量说明，以及带密钥的 REST/MCP 查询和登录用户健康日志录入。使用与接入见 [个人健康数据集文档](docs/personal-health-dataset.md)，Mac 前端适配见 [前端契约](docs/personal-health-dataset-frontend.md)，微信小程序实施清单与可复制 prompt 见 [小程序接入说明](docs/personal-health-dataset-miniprogram.md)。
+
+
 ## 功能概览
 
 - Polar 训练数据同步与训练指标汇总
